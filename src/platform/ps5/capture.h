@@ -26,6 +26,20 @@ int ps_capture_headers(ps_capture *session, void *destination, size_t capacity);
 int ps_capture_read(ps_capture *session, void *destination, size_t capacity, uint8_t descriptor[0x70]);
 // Stop, close, terminate, STOP, unregister. NULL is harmless; consumes the session.
 int ps_capture_close(ps_capture *session);
+
+// Ask the encoder for an IDR as soon as possible (sceAvcap2RequestKeyFrame). 0 or error.
+int ps_capture_request_keyframe(ps_capture *session);
+// Change target and peak bitrate in bit/s at runtime; 0 keeps a value. 0 or error.
+int ps_capture_set_bitrate(ps_capture *session, uint32_t average, uint32_t peak);
+// Game audio over the same session. encoder: 0 raw PCM, 2 Opus (48 kHz stereo, bitrate in bit/s,
+// frame_index 1 = 10 ms, 0 = 20 ms). One audio channel per session; ps_capture_close closes it too.
+int ps_capture_audio_open(ps_capture *session, uint32_t encoder, uint32_t bitrate, uint32_t frame_index);
+// Research variant: explicit purpose, config word 0x1C and open flag; returns the raw Avcap2 code on failure.
+int ps_capture_audio_open_ex(ps_capture *session, uint32_t encoder, uint32_t bitrate, uint32_t frame_index,
+                             uint32_t purpose, uint32_t field_1c, uint8_t flag);
+// Nonblocking: >0 bytes of one packet, 0 means try again, <0 error. header receives the packet meta.
+int ps_capture_audio_read(ps_capture *session, void *destination, size_t capacity, uint8_t header[0x10]);
+int ps_capture_audio_close(ps_capture *session);
 #ifdef __cplusplus
 }
 #endif

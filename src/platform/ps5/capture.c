@@ -25,6 +25,10 @@ struct ps_capture {
     handle_fn stop, close;
     int (*headers)(intptr_t, void *);
     int (*read)(intptr_t, void *, size_t, void *, uint32_t);
+    uint32_t av;
+    // Audio channel (docs/re/avcap2-exports.md, R2); shares the video session's resource grant.
+    intptr_t audio;
+    int audio_opened, audio_started;
 };
 
 // Callback ABI currently has no verified instance context, so resource ownership
@@ -89,6 +93,7 @@ int ps_capture_close(ps_capture *s)
 #define CLEANUP(flag, expression, name) do { \
     if (flag) { rc = (expression); LOG(name " rc=%#x\n", rc); if (rc < 0) failed = 1; } \
 } while (0)
+    if (ps_capture_audio_close(s)) failed = 1;
     CLEANUP(s->started, s->stop(s->handle), "Stop");
     CLEANUP(s->opened, s->close(s->handle), "Close");
     CLEANUP(s->initialized, s->terminate(), "Terminate");
@@ -129,6 +134,7 @@ int ps_capture_open(ps_capture **out)
     uint32_t av = module(load, "libSceAvcap2.sprx");
     uint32_t ra = module(load, "libSceResourceArbitrator.sprx");
     if (!av || !ra) goto fail;
+    s->av = av;
     intptr_t base = kernel_dynlib_mapbase_addr(-1, ra);
     if (!base) goto fail;
     int (*reg)(int, void *, void *) = (void *)(base + 0xdb0);
@@ -218,4 +224,102 @@ int ps_capture_read(ps_capture *s, void *destination, size_t capacity, uint8_t d
     if (rc == AGAIN || rc == 0) return 0;
     if (rc < 0 || (size_t)rc > capacity) { LOG("ReadVideo rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
     return rc;
+}
+
+// Optional Avcap2 calls, resolved by name on first use (docs/re/avcap2-exports.md).
+static void *avcap_symbol(ps_capture *s, const char *name)
+{
+    return s && s->av ? (void *)kernel_dynlib_dlsym(-1, s->av, name) : NULL;
+}
+
+int ps_capture_request_keyframe(ps_capture *s)
+{
+    if (!s || !s->started) return PS_CAPTURE_ERROR;
+    int (*request)(intptr_t) = avcap_symbol(s, "sceAvcap2RequestKeyFrame");
+    if (!request) return PS_CAPTURE_ERROR;
+    int rc = request(s->handle);
+    if (rc < 0) { LOG("RequestKeyFrame rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
+    return 0;
+}
+
+int ps_capture_set_bitrate(ps_capture *s, uint32_t average, uint32_t peak)
+{
+    if (!s || !s->started) return PS_CAPTURE_ERROR;
+    int (*set)(intptr_t, void *) = avcap_symbol(s, "sceAvcap2SetVideoBitrate");
+    if (!set) return PS_CAPTURE_ERROR;
+    uint8_t request[0x10] = {0};
+    u64(request, 0, sizeof request);
+    u32(request, 8, average);
+    u32(request, 0xc, peak);
+    int rc = set(s->handle, request);
+    if (rc < 0) { LOG("SetVideoBitrate rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
+    return 0;
+}
+
+int ps_capture_audio_open(ps_capture *s, uint32_t encoder, uint32_t bitrate, uint32_t frame_index)
+{
+    // cfg+0x1C is the ResourceArbitrator id the server checks against the active list, like
+    // OpenVideo's cfg+0x28 (docs/re/avcap2-exports.md, R2-Nachtrag).
+    return ps_capture_audio_open_ex(s, encoder, bitrate, frame_index, 2, RESOURCE, 0);
+}
+
+int ps_capture_audio_open_ex(ps_capture *s, uint32_t encoder, uint32_t bitrate, uint32_t frame_index,
+                             uint32_t purpose, uint32_t field_1c, uint8_t flag)
+{
+    if (!s || !s->started || s->audio_opened) return PS_CAPTURE_ERROR;
+    int (*open_audio)(intptr_t *, const void *, uint8_t) = avcap_symbol(s, "sceAvcap2OpenAudio");
+    int (*start)(intptr_t) = avcap_symbol(s, "sceAvcap2Start");
+    if (!open_audio || !start) return PS_CAPTURE_ERROR;
+    uint8_t config[0x38] = {0};
+    u64(config, 0, sizeof config);
+    u64(config, 8, 0x18);
+    u32(config, 0x10, 0);
+    u32(config, 0x14, purpose);  // 2 Remoteplay: the full game-audio mix
+    u32(config, 0x18, encoder);
+    u32(config, 0x1c, field_1c);
+    u64(config, 0x20, encoder == 2 ? 0x18 : 0x10);
+    u32(config, 0x28, bitrate);
+    u32(config, 0x30, frame_index);
+    int rc = open_audio(&s->audio, config, flag);
+    LOG("OpenAudio encoder=%u purpose=%u 1c=%#x flag=%u rc=%#x\n", encoder, purpose, field_1c, flag, rc);
+    if (rc) return rc < 0 ? rc : PS_CAPTURE_ERROR;
+    s->audio_opened = 1;
+    rc = start(s->audio);
+    LOG("audio Start rc=%#x\n", rc);
+    if (rc) { ps_capture_audio_close(s); return PS_CAPTURE_ERROR; }
+    s->audio_started = 1;
+    return 0;
+}
+
+int ps_capture_audio_read(ps_capture *s, void *destination, size_t capacity, uint8_t header[0x10])
+{
+    if (!s || !s->audio_started || !destination || !header) return PS_CAPTURE_ERROR;
+    if (!atomic_load(&granted) || atomic_load(&revoked)) return PS_CAPTURE_REVOKED;
+    int (*read_audio)(intptr_t, void *, size_t, void *, uint32_t) = avcap_symbol(s, "sceAvcap2ReadAudio");
+    if (!read_audio) return PS_CAPTURE_ERROR;
+    memset(header, 0, 0x10);
+    u64(header, 0, 0x10);
+    int rc = read_audio(s->audio, destination, capacity, header, 1);
+    if (rc == AGAIN || rc == 0) return 0;
+    if (rc < 0 || (size_t)rc > capacity) { LOG("ReadAudio rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
+    return rc;
+}
+
+int ps_capture_audio_close(ps_capture *s)
+{
+    if (!s) return 0;
+    int failed = 0, rc;
+    if (s->audio_started) {
+        rc = s->stop(s->audio);
+        LOG("audio Stop rc=%#x\n", rc);
+        failed |= rc < 0;
+    }
+    if (s->audio_opened) {
+        rc = s->close(s->audio);
+        LOG("audio Close rc=%#x\n", rc);
+        failed |= rc < 0;
+    }
+    s->audio_started = s->audio_opened = 0;
+    s->audio = 0;
+    return failed ? PS_CAPTURE_ERROR : 0;
 }

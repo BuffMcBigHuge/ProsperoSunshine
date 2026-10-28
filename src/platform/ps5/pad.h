@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Native virtual controller: the system's own virtual-pad device that Remote Play feeds.
+// Ported from ps5-mcp's RemoteEye (C#); layouts measured on FW 13.00.
+#ifndef PROSPERO_PAD_H
+#define PROSPERO_PAD_H
+#include <stdint.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// ScePadButton bits.
+enum ps_pad_button {
+    PS_PAD_CREATE = 0x1, PS_PAD_L3 = 0x2, PS_PAD_R3 = 0x4, PS_PAD_OPTIONS = 0x8,
+    PS_PAD_UP = 0x10, PS_PAD_RIGHT = 0x20, PS_PAD_DOWN = 0x40, PS_PAD_LEFT = 0x80,
+    PS_PAD_L2 = 0x100, PS_PAD_R2 = 0x200, PS_PAD_L1 = 0x400, PS_PAD_R1 = 0x800,
+    PS_PAD_TRIANGLE = 0x1000, PS_PAD_CIRCLE = 0x2000, PS_PAD_CROSS = 0x4000, PS_PAD_SQUARE = 0x8000,
+    PS_PAD_PS = 0x10000, PS_PAD_TOUCHPAD = 0x100000
+};
+
+typedef struct {
+    uint32_t buttons;
+    uint8_t lx, ly, rx, ry;  // 0..255, 128 is centre
+    uint8_t l2, r2;          // 0..255 analog triggers
+} ps_pad_state;
+
+typedef struct ps_pad ps_pad;
+
+// The signed-in user owning the first home folder, or 0 if none could be found.
+uint32_t ps_pad_default_user(void);
+// Adds a DualSense-type virtual controller for user_id. Returns 0 or a negative error/errno.
+// A new controller makes the system ask "Who's using this controller?" once.
+int ps_pad_open(uint32_t user_id, ps_pad **out);
+// Feeds one state; it stays in effect until the next one.
+int ps_pad_send(ps_pad *pad, const ps_pad_state *state);
+// Releases every button and centres both sticks.
+int ps_pad_neutral(ps_pad *pad);
+// Sends a neutral state, removes the controller and frees the handle. NULL is harmless.
+int ps_pad_close(ps_pad *pad);
+
+#ifdef __cplusplus
+}
+#endif
+#endif
