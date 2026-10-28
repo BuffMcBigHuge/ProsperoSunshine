@@ -2,6 +2,12 @@
 
 Stand: 28. Oktober 2026. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
 
+## Stand (28. Oktober 2026, abends)
+
+Erledigt und live belegt (Details in `STATUS.md`): Phase 0 komplett, Spikes R1–R5 positiv (R6 ohne mDNS), Phase 1 bis auf Spiele als Bildquelle, P2.1–P2.4, P3.1–P3.4, P4.1–P4.2, P5.1, aus P6 die 30-Minuten-Sitzung und zehn Wiederverbindungen, P6.4 (automatischer Testclient in `tools/moonlight/`), P7.1 (CI-Workflow, noch nicht auf GitHub gelaufen). Ende-zu-Ende-Stream mit einem moonlight-common-c-Client funktioniert.
+
+Als Nächstes: Test mit einer echten Moonlight-App, Spiele als Bildquelle (P1.4), Bild-/Ton-Synchronisation (P5.2), Watchdog-Test für Eingaben (P4.3), Fehlerinjektion (P6.2), Host-API mit der PS5-App abstimmen (P2.5), restliche Release-Vorbereitung (P7.2–P7.4).
+
 ## Zielbild v1.0
 
 Ein unveränderter Moonlight-Client im lokalen Netz fügt die PS5 per IP hinzu, paart sich und streamt den PS5-Bildschirm mit H.264 1080p SDR, Stereo-Ton und einem Controller. Kein PC vermittelt im Betrieb. Nach Sitzungsende sind alle eigenen Ressourcen freigegeben.
@@ -164,9 +170,10 @@ In dieser Reihenfolge, jeweils mit eigenem Spike: 60 FPS stabil, Moonlight-Disco
 
 | Risiko | Wirkung | Wahrscheinlichkeit | Gegenmaßnahme |
 | --- | --- | --- | --- |
-| Kein IDR auf Anforderung (R1) | Nach Verlust bis zu ~1 s Standbild | mittel | Kurzes GOP, Einfrieren bis IDR |
-| Kein Audio-Zugang (R2) | v1.0 ohne Ton | mittel | Vorschau-Release, Audio als eigenes Ziel |
-| Boost-Teile bauen nicht (P0.2) | Gesamtbau-Ansatz kippt | niedrig bis mittel | Gegenentwurf aus ADR-001 |
+| ~~Kein IDR auf Anforderung (R1)~~ | erledigt: `RequestKeyFrame` liefert IDR nach 2–3 Frames | – | – |
+| ~~Kein Audio-Zugang (R2)~~ | erledigt: PCM über `OpenAudio` mit RA-Id 180 | – | – |
+| ~~Boost-Teile bauen nicht (P0.2)~~ | erledigt: Boost 1.92 gebaut, ein Patch für Process v2 | – | – |
+| Encoder-Bitrate über 15 Mbit/s | Encoder stoppt | sicher bei > 15 Mbit/s | Host klemmt auf 15 Mbit/s (Spitze ×1,12) |
 | Firmware-Update ändert Offsets | Capture fällt aus | sicher bei Update | Strikte Versionsprüfung, kontrollierte Ablehnung |
 | Avcap2 im Spiel belegt oder gesperrt | Kein Bild in bestimmten Titeln | unbekannt | Früh mit regulärem Spiel testen (P1.4), Meldung statt Absturz |
 | Zuordnungsdialog des virtuellen Pads | Bedienung blockiert | mittel | R5, einmalige Bestätigung vor Streambeginn |

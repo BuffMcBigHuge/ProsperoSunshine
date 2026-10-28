@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Builds the SDK image, runs the portable tests under sanitizers, builds the host and probes, and
+# uploads the ELFs. Third-party builds (out/deps) are cached by the pinned sources and build scripts.
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build SDK image
+        run: docker build -t prosperosunshine-sdk:v0.45 -f scripts/Dockerfile .
+
+      - name: Cache third-party builds
+        uses: actions/cache@v4
+        with:
+          # deps.sh rebuilds a library whenever its extracted source tree is missing, so the
+          # extracted trees are cached together with the build output.
+          path: |
+            out/deps
+            .cache/deps/dl
+            .cache/deps/src
+          key: deps-${{ hashFiles('deps.lock', 'scripts/deps.sh', 'scripts/deps/**', 'patches/**', 'scripts/Dockerfile') }}
+
+      - name: Unit tests (ASan/UBSan)
+        run: docker run --rm --mount type=bind,source="$PWD",target=/repo prosperosunshine-sdk:v0.45 bash scripts/test.sh
+
+      - name: Build host and probes
+        run: docker run --rm --mount type=bind,source="$PWD",target=/repo prosperosunshine-sdk:v0.45 bash scripts/build.sh
+
+      - name: Collect licences
+        run: |
+          mkdir -p dist/licenses
+          cp out/*.elf dist/
+          cp out/deps/licenses/* dist/licenses/
+          cp LICENSE dist/licenses/prosperosunshine.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prosperosunshine-${{ github.sha }}
+          path: dist/
