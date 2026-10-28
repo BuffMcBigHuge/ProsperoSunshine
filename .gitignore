@@ -1,0 +1,6 @@
+out/
+.cache/
+build/
+__pycache__/
+*.pyc
+*.elf
