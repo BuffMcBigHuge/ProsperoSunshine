@@ -3,14 +3,31 @@
 // "launching" it starts nothing, it only marks a session as running so nvhttp/stream can proceed.
 #include "src/logging.h"
 #include "src/process.h"
+#include <fstream>
 
 using namespace std::literals;
+
+// assets/ps5_screen.png, embedded by CMakeLists.txt.
+extern const unsigned char prospero_cover_png[];
+extern const std::size_t prospero_cover_png_size;
 
 namespace proc {
 proc_t proc;
 
 namespace {
 constexpr int screen_app_id = 1;
+
+std::filesystem::path cover_path() { return platf::appdata() / "assets" / "ps5_screen.png"; }
+
+// Clients fetch box art for every app; an empty answer makes some (Moonlight Web) drop the list.
+void install_cover() {
+    std::error_code ec;
+    const auto path = cover_path();
+    if (std::filesystem::file_size(path, ec) == prospero_cover_png_size) return;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    std::ofstream(path, std::ios::binary)
+        .write(reinterpret_cast<const char *>(prospero_cover_png), static_cast<std::streamsize>(prospero_cover_png_size));
+}
 
 std::vector<ctx_t> screen_app() {
     ctx_t app{};
@@ -32,6 +49,7 @@ public:
 }
 
 std::unique_ptr<platf::deinit_t> init() {
+    install_cover();
     proc = proc_t({}, screen_app());
     return std::make_unique<proc_deinit_t>();
 }
@@ -64,8 +82,7 @@ void proc_t::terminate() {
 const std::vector<ctx_t> &proc_t::get_apps() const { return _apps; }
 std::vector<ctx_t> &proc_t::get_apps() { return _apps; }
 
-// No cover art is shipped yet; nvhttp answers the asset request without an image.
-std::string proc_t::get_app_image(int) { return {}; }
+std::string proc_t::get_app_image(int) { return cover_path().string(); }
 
 std::string proc_t::get_last_run_app_name() { return _app.name; }
 

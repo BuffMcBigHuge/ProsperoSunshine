@@ -25,7 +25,8 @@ int CaptureSession::start() {
         return size < 0 ? size : -1;
     }
     headers_.assign(buffer_.begin(), buffer_.begin() + size);
-    next_index_ = 0;
+    // Frame numbers continue across a restart, so a stream that recovers from a lost capture
+    // keeps counting forwards.
     return 0;
 }
 

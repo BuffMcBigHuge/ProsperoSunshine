@@ -8,7 +8,9 @@ Erledigt und live belegt (Details in `STATUS.md`): Phase 0 komplett, Spikes R1�
 
 P7.2 (Lizenzübersicht `docs/licenses.md`) und P7.3 (englische README mit Voraussetzungen, Ablauf und Grenzen) sind erledigt.
 
-Als Nächstes: Test mit einer echten Moonlight-App, Spiele als Bildquelle (P1.4), Bild-/Ton-Synchronisation (P5.2), früherer Eingabe-Watchdog (P4.3-Folgepunkt), weitere Fehlerinjektion wie Ruhemodus und Ressourcenentzug (P6.2), Host-API mit der PS5-App abstimmen (P2.5), Release (P7.4).
+Inzwischen außerdem: echte Moonlight-Clients (Web und PC) gepairt und gestreamt, Spiele als Bildquelle (P1.4), automatischer Wiederanlauf bei Ressourcenentzug durch Spielstart/-ende, Begrenzung auf eine Sitzung, App-Cover.
+
+Als Nächstes: PS5-App (Phase 8), Bild-/Ton-Synchronisation (P5.2), früherer Eingabe-Watchdog (P4.3-Folgepunkt), weitere Fehlerinjektion wie Ruhemodus und Ressourcenentzug (P6.2), Host-API mit der PS5-App abstimmen (P2.5), Release (P7.4).
 
 ## Zielbild v1.0
 
@@ -152,6 +154,20 @@ Jeder Spike endet mit einer schriftlichen Antwort in `docs/` („geht, so“ ode
 | P6.4 | Automatisierter Smoke-Test vom PC: Moonlight-Client in Docker (Kandidat: moonlight-embedded, falls ein Datei-/Null-Ausgabemodus vorhanden ist) paart, startet, zählt Frames | M | Ein Befehl prüft einen Build gegen die Konsole |
 
 **Abnahme Phase 6:** wie `PLAN.md` M6: 30-Minuten-Sitzung, zehn Wiederverbindungen, fünf Host-Zyklen, kein Speicheranstieg, keine hängenden Eingaben oder Ressourcen; danach ein zweiter Client auf anderer Plattform.
+
+## Phase 8: PS5-App „ProsperoSunshine“ (läuft parallel, eigene Session)
+
+Eine Homebrew-App auf der Konsole (Vorbild: PS5SD) macht den Host ohne PC bedienbar und ist der Produktweg aus P2.5.
+
+| ID | Aufgabe | Aufwand | Ergebnis und Nachweis |
+| --- | --- | --- | --- |
+| P8.1 | App-Gerüst, Build, Packaging, Installation nach dem PS5SD-Muster | M | App startet auf der Konsole |
+| P8.2 | Einstellungen lesen/schreiben (`/data/prosperosunshine/sunshine.conf`: Hostname, Log-Stufe, `ping_timeout`, Verschlüsselung, Basisport) | S | Wert in der App ändern, Host neu starten, Wirkung im Log |
+| P8.3 | Host-Status, wartende Pairing-Anfragen und PIN-Eingabe über den Steuer-Socket (lokal 127.0.0.1:47995) | S | Moonlight paart mit PIN-Eingabe auf der Konsole |
+| P8.4 | Autoload des Host-ELF über den Payload Manager an/aus | S | Nach Neustart der Konsole läuft der Host bzw. nicht |
+| P8.5 | Host starten/neu starten aus der App | S | Schaltfläche lädt das ELF neu |
+
+**Abnahme Phase 8:** Ein Nutzer ohne PC kann den Host einrichten, Moonlight pairen und Autoload festlegen.
 
 ## Release 0.1 (öffentlich)
 
