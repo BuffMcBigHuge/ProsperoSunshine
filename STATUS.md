@@ -10,7 +10,7 @@ Eine 30-Minuten-Sitzung und zehn Wiederverbindungen liefen fehlerfrei.
 
 Echte Moonlight-Clients (Moonlight Web, Moonlight PC) sind gepairt und streamen; Spiele (GTA III, Mario 64) erscheinen im Stream, und Spielstart/-ende überbrückt der Host automatisch.
 
-**Noch nicht geprüft:** Bild-/Ton-Synchronisation, Ruhemodus, Moonlight auf Handy/TV, die verkürzte Abbruch-Erkennung (2 s) im Haltetest.
+**Noch nicht geprüft:** Bild-/Ton-Synchronisation, Ruhemodus, Moonlight auf Handy/TV.
 
 ## Nachweise nach Roadmap
 
@@ -51,7 +51,7 @@ Echte Moonlight-Clients (Moonlight Web, Moonlight PC) sind gepairt und streamen;
 - **MAC-Adresse** in `/serverinfo` ist 0: weder `getifaddrs` noch `sceNetGetMacAddress` liefern sie im Payload. Betrifft nur Wake-on-LAN.
 - **Boost.Filesystem `create_directories`** scheitert bei neuen verschachtelten Pfaden, wenn `errno` vorher belegt ist (ein Libc-Aufruf setzt kein `errno`). Der Host nutzt nur `std::filesystem` und ist nicht betroffen.
 - **Zweite RTSP-Verbindung** wird ohne erklärende Fehlermeldung geschlossen (Upstream-Verhalten).
-- **Eingaben nach hartem Verbindungsabbruch** wirkten mit Sunshines Standard (`ping_timeout` 10 s) ≈ 5,6 s nach. Der Host setzt jetzt 2 s als Standard (Moonlight pingt alle 100 ms); die Nachmessung steht noch aus.
+- **Eingaben nach hartem Verbindungsabbruch** wirkten mit Sunshines Standard (`ping_timeout` 10 s) ≈ 5,6 s nach. Mit dem neuen Host-Standard von 2 s (Moonlight pingt alle 100 ms) erkennt der Host den Abbruch nach 1,8 s und setzt das Pad dann neutral (gemessen mit `tools/moonlight/hold_kill_test.sh`).
 - **Entzug der Capture-Ressource** passiert bei Spielstart/-ende und auch ohne erkennbaren Anlass (einmal kurz nach Anmeldung eines neuen virtuellen Pads). Der Host stellt Video und Ton jeweils nach ≈ 2 s wieder her; der Client sieht eine kurze Pause.
 - **Nur eine Sitzung gleichzeitig:** Eine zweite Streaming-Sitzung (z. B. Moonlight Web, das während einer laufenden Sitzung erneut verbindet) wird beendet, weil sonst zwei Leser denselben Avcap2-Kanal leeren.
 - **Avcap2-Symbolauflösung war nicht threadsicher:** `kernel_dynlib_dlsym` aus mehreren Threads gleichzeitig ließ Ton und Keyframe-Anforderung scheitern; alle Funktionen werden jetzt einmal beim Öffnen aufgelöst.
