@@ -169,6 +169,8 @@ Eine Homebrew-App auf der Konsole (Vorbild: PS5SD) macht den Host ohne PC bedien
 
 **Abnahme Phase 8:** Ein Nutzer ohne PC kann den Host einrichten, Moonlight pairen und Autoload festlegen.
 
+Stand: P8.1, P8.3, P8.4 und P8.5 live geprüft (Branch `claude/ps5-settings-app-b5c39b`, Commit `8dc11eb`); P8.2 umgesetzt, Live-Prüfung offen; P8.6 neu: Optik auf das Niveau von ProsperoStore/ProsperoEden/Playden heben.
+
 ## Release 0.1 (öffentlich)
 
 | ID | Aufgabe | Aufwand |
