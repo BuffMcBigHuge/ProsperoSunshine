@@ -1,0 +1,364 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Sunshine's platf:: layer for the PS5: networking, game audio from Avcap2, the native virtual pad
+// and placeholders for what v1.0 does not forward (mouse, keyboard, touch, pen).
+#include "input/gamepad_map.hpp"
+#include "platform/ps5/pad.h"
+#include "platform/ps5/shared_capture.hpp"
+#include "src/logging.h"
+#include "src/platform/common.h"
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <net/if_dl.h>
+#include <netinet/in.h>
+#include <pthread.h>
+#include <pthread_np.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <array>
+#include <cstring>
+#include <mutex>
+#include <thread>
+#include <boost/asio/ip/address.hpp>
+
+using namespace std::literals;
+
+extern "C" int sceNetGetMacAddress(uint8_t address[6], int flags);  // libSceNet, linked by default
+
+namespace platf {
+
+std::unique_ptr<deinit_t> init() { return std::make_unique<deinit_t>(); }
+
+namespace publish {
+// Discovery via mDNS comes after v1.0 (ROADMAP R6); clients add the console by IP.
+std::unique_ptr<deinit_t> start() { return nullptr; }
+}
+
+std::filesystem::path appdata() { return "/data/prosperosunshine"; }
+
+std::string get_host_name() {
+    char name[256] = {};
+    if (gethostname(name, sizeof name - 1) == 0 && name[0]) return name;
+    return "PS5";
+}
+
+std::string get_mac_address(const std::string_view &address) {
+    ifaddrs *list = nullptr;
+    if (getifaddrs(&list) != 0) return "00:00:00:00:00:00";
+    std::string interface_name, mac = "00:00:00:00:00:00";
+    for (auto *a = list; a; a = a->ifa_next) {
+        if (!a->ifa_addr || (a->ifa_addr->sa_family != AF_INET && a->ifa_addr->sa_family != AF_INET6)) continue;
+        if (from_sockaddr(a->ifa_addr) == address) interface_name = a->ifa_name;
+    }
+    for (auto *a = list; a && !interface_name.empty(); a = a->ifa_next) {
+        if (!a->ifa_addr || a->ifa_addr->sa_family != AF_LINK || interface_name != a->ifa_name) continue;
+        const auto *dl = reinterpret_cast<const sockaddr_dl *>(a->ifa_addr);
+        if (dl->sdl_alen != 6) continue;
+        const auto *b = reinterpret_cast<const unsigned char *>(LLADDR(dl));
+        char buf[18];
+        std::snprintf(buf, sizeof buf, "%02x:%02x:%02x:%02x:%02x:%02x", b[0], b[1], b[2], b[3], b[4], b[5]);
+        mac = buf;
+    }
+    freeifaddrs(list);
+    // The payload's getifaddrs reports no AF_LINK entries; ask the network library instead.
+    if (mac == "00:00:00:00:00:00") {
+        uint8_t b[6] = {};
+        if (sceNetGetMacAddress(b, 0) == 0) {
+            char buf[18];
+            std::snprintf(buf, sizeof buf, "%02x:%02x:%02x:%02x:%02x:%02x", b[0], b[1], b[2], b[3], b[4], b[5]);
+            mac = buf;
+        }
+    }
+    return mac;
+}
+
+std::string from_sockaddr(const sockaddr *const addr) { return from_sockaddr_ex(addr).second; }
+
+std::pair<std::uint16_t, std::string> from_sockaddr_ex(const sockaddr *const addr) {
+    char text[INET6_ADDRSTRLEN] = {};
+    std::uint16_t port = 0;
+    if (addr->sa_family == AF_INET6) {
+        const auto *in6 = reinterpret_cast<const sockaddr_in6 *>(addr);
+        inet_ntop(AF_INET6, &in6->sin6_addr, text, sizeof text);
+        port = ntohs(in6->sin6_port);
+    } else if (addr->sa_family == AF_INET) {
+        const auto *in = reinterpret_cast<const sockaddr_in *>(addr);
+        inet_ntop(AF_INET, &in->sin_addr, text, sizeof text);
+        port = ntohs(in->sin_port);
+    }
+    return {port, text};
+}
+
+void set_thread_name(std::string_view name) {
+    const std::string copy(name.substr(0, 15));
+    pthread_set_name_np(pthread_self(), copy.c_str());
+}
+
+void adjust_thread_priority(thread_priority_e) {}
+void streaming_will_start() {}
+void streaming_will_stop() {}
+void open_url(const std::string &) {}
+
+std::unique_ptr<deinit_t> enable_socket_qos(uintptr_t, boost::asio::ip::address &, uint16_t, qos_data_type_e, bool) {
+    return nullptr;
+}
+
+namespace {
+socklen_t to_sockaddr(const boost::asio::ip::address &address, uint16_t port, sockaddr_storage &out) {
+    std::memset(&out, 0, sizeof out);
+    if (address.is_v6()) {
+        auto *in6 = reinterpret_cast<sockaddr_in6 *>(&out);
+        in6->sin6_family = AF_INET6;
+        in6->sin6_port = htons(port);
+        const auto bytes = address.to_v6().to_bytes();
+        std::memcpy(&in6->sin6_addr, bytes.data(), bytes.size());
+        return sizeof(sockaddr_in6);
+    }
+    auto *in = reinterpret_cast<sockaddr_in *>(&out);
+    in->sin_family = AF_INET;
+    in->sin_port = htons(port);
+    const auto bytes = address.to_v4().to_bytes();
+    std::memcpy(&in->sin_addr, bytes.data(), bytes.size());
+    return sizeof(sockaddr_in);
+}
+
+bool send_one(int fd, const sockaddr_storage &to, socklen_t to_len, const char *header, size_t header_size,
+              const char *payload, size_t payload_size) {
+    iovec iov[2];
+    int count = 0;
+    if (header_size) iov[count++] = {const_cast<char *>(header), header_size};
+    iov[count++] = {const_cast<char *>(payload), payload_size};
+    msghdr msg{};
+    msg.msg_name = const_cast<sockaddr_storage *>(&to);
+    msg.msg_namelen = to_len;
+    msg.msg_iov = iov;
+    msg.msg_iovlen = count;
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        if (sendmsg(fd, &msg, 0) >= 0) return true;
+        // A full send buffer on a nonblocking socket: give the NIC a moment instead of dropping.
+        if (errno != EAGAIN && errno != ENOBUFS) return false;
+        std::this_thread::sleep_for(100us);
+    }
+    return false;
+}
+}
+
+bool send_batch(const batched_send_info_t &info) {
+    sockaddr_storage to;
+    const socklen_t to_len = to_sockaddr(info.target_address, info.target_port, to);
+    for (size_t i = 0; i < info.block_count; ++i) {
+        const auto block = info.buffer_for_payload_offset((info.block_offset + i) * info.payload_size);
+        const size_t size = std::min(info.payload_size, block.size);
+        if (!send_one(static_cast<int>(info.native_socket), to, to_len, info.headers ? info.headers + (info.block_offset + i) * info.header_size : nullptr,
+                      info.headers ? info.header_size : 0, block.buffer, size))
+            return false;
+    }
+    return true;
+}
+
+bool send(send_info_t &info) {
+    sockaddr_storage to;
+    const socklen_t to_len = to_sockaddr(info.target_address, info.target_port, to);
+    return send_one(static_cast<int>(info.native_socket), to, to_len, info.header, info.header_size, info.payload,
+                    info.payload_size);
+}
+
+namespace {
+class sleep_timer final : public high_precision_timer {
+public:
+    void sleep_for(const std::chrono::nanoseconds &duration) override { std::this_thread::sleep_for(duration); }
+    explicit operator bool() override { return true; }
+};
+}
+
+std::unique_ptr<high_precision_timer> create_high_precision_timer() { return std::make_unique<sleep_timer>(); }
+
+// Silent microphone: keeps the audio stream alive with correctly paced zero frames.
+namespace {
+class silent_mic final : public mic_t {
+public:
+    silent_mic(int channels, std::uint32_t rate, std::uint32_t frame_size)
+        : samples_(static_cast<size_t>(channels) * frame_size),
+          period_(std::chrono::nanoseconds(1'000'000'000LL * frame_size / rate)),
+          next_(std::chrono::steady_clock::now()) {}
+    capture_e sample(std::vector<float> &frame_buffer) override {
+        next_ += period_;
+        std::this_thread::sleep_until(next_);
+        frame_buffer.assign(samples_, 0.0f);
+        return capture_e::ok;
+    }
+
+private:
+    size_t samples_;
+    std::chrono::nanoseconds period_;
+    std::chrono::steady_clock::time_point next_;
+};
+
+// Game audio from Avcap2 as raw PCM: float32, stereo, 48 kHz, 1024 frames per packet (R2). Sunshine's
+// own Opus encoder then cuts the frames Moonlight negotiated (5 ms by default).
+class avcap_mic final : public mic_t {
+public:
+    static std::unique_ptr<mic_t> open(int channels, std::uint32_t frame_size) {
+        int rc = 0;
+        auto shared = prospero::SharedCapture::acquire(rc);
+        if (!shared) {
+            BOOST_LOG(error) << "PS5 audio: capture session unavailable: "sv << rc;
+            return nullptr;
+        }
+        {
+            std::lock_guard lock(shared->control());
+            rc = ps_capture_audio_open(shared->session(), 0, 0, 0);
+        }
+        if (rc) {
+            BOOST_LOG(error) << "PS5 audio: OpenAudio failed: "sv << rc;
+            return nullptr;
+        }
+        return std::unique_ptr<mic_t>(new avcap_mic(std::move(shared), channels, frame_size));
+    }
+
+    ~avcap_mic() override {
+        std::lock_guard lock(shared_->control());
+        ps_capture_audio_close(shared_->session());
+    }
+
+    capture_e sample(std::vector<float> &frame_buffer) override {
+        const size_t needed = static_cast<size_t>(frame_size_) * 2;
+        while (pending_.size() < needed) {
+            const int rc = ps_capture_audio_read(shared_->session(), packet_.data(), packet_.size(), header_);
+            if (rc < 0) {
+                BOOST_LOG(error) << "PS5 audio: ReadAudio failed: "sv << rc;
+                return capture_e::capture_error;
+            }
+            if (rc == 0) {
+                std::this_thread::sleep_for(1ms);
+                continue;
+            }
+            const auto *samples = reinterpret_cast<const float *>(packet_.data());
+            pending_.insert(pending_.end(), samples, samples + rc / sizeof(float));
+        }
+        // Stereo from the console; any further requested channels stay silent.
+        frame_buffer.assign(static_cast<size_t>(frame_size_) * channels_, 0.0f);
+        for (std::uint32_t i = 0; i < frame_size_; ++i)
+            for (int c = 0; c < std::min(channels_, 2); ++c)
+                frame_buffer[i * channels_ + c] = pending_[i * 2 + c];
+        pending_.erase(pending_.begin(), pending_.begin() + static_cast<std::ptrdiff_t>(needed));
+        return capture_e::ok;
+    }
+
+private:
+    avcap_mic(std::shared_ptr<prospero::SharedCapture> shared, int channels, std::uint32_t frame_size)
+        : shared_(std::move(shared)), channels_(channels), frame_size_(frame_size), packet_(0xC000) {}
+    std::shared_ptr<prospero::SharedCapture> shared_;
+    int channels_;
+    std::uint32_t frame_size_;
+    std::vector<uint8_t> packet_;
+    uint8_t header_[0x10] = {};
+    std::vector<float> pending_;
+};
+
+class silent_audio_control final : public audio_control_t {
+public:
+    int set_sink(const std::string &) override { return 0; }
+    std::unique_ptr<mic_t> microphone(const std::uint8_t *, int channels, std::uint32_t sample_rate,
+                                      std::uint32_t frame_size, bool, bool) override {
+        if (sample_rate == 48000) {
+            if (auto mic = avcap_mic::open(channels, frame_size)) {
+                BOOST_LOG(info) << "PS5 audio: game audio via Avcap2, "sv << channels << " channels, "sv << frame_size
+                                << " frames per packet"sv;
+                return mic;
+            }
+        }
+        BOOST_LOG(warning) << "PS5 audio: sending silence (rate "sv << sample_rate << ')';
+        return std::make_unique<silent_mic>(channels, sample_rate, frame_size);
+    }
+    bool is_sink_available(const std::string &) override { return true; }
+    std::optional<sink_t> sink_info() override {
+        sink_t sink;
+        sink.host = "ps5";
+        return sink;
+    }
+};
+}
+
+std::unique_ptr<audio_control_t> audio_control() { return std::make_unique<silent_audio_control>(); }
+
+// Input: one native virtual DualSense per Moonlight gamepad slot.
+struct input_raw_t {
+    std::mutex mutex;
+    std::array<ps_pad *, MAX_GAMEPADS> pads{};
+    uint32_t user = 0;
+};
+
+void freeInput(input_raw_t *input) {
+    if (!input) return;
+    for (auto *&pad : input->pads) {
+        ps_pad_close(pad);
+        pad = nullptr;
+    }
+    delete input;
+}
+
+input_t input() {
+    auto *raw = new input_raw_t;
+    raw->user = ps_pad_default_user();
+    BOOST_LOG(info) << "PS5 input: virtual pads for user "sv << std::hex << raw->user << std::dec;
+    return input_t{raw};
+}
+
+int alloc_gamepad(input_t &input, const gamepad_id_t &id, const gamepad_arrival_t &, feedback_queue_t) {
+    if (id.globalIndex < 0 || id.globalIndex >= MAX_GAMEPADS) return -1;
+    std::lock_guard lock(input->mutex);
+    auto *&pad = input->pads[id.globalIndex];
+    if (pad) return 0;
+    const int rc = ps_pad_open(input->user, &pad);
+    if (rc) {
+        BOOST_LOG(error) << "PS5 virtual pad "sv << id.globalIndex << " failed: "sv << rc;
+        pad = nullptr;
+        return -1;
+    }
+    BOOST_LOG(info) << "PS5 virtual pad "sv << id.globalIndex << " attached"sv;
+    return 0;
+}
+
+int rebind_gamepad(input_t &, const gamepad_id_t &, feedback_queue_t) { return 0; }
+
+void free_gamepad(input_t &input, int nr) {
+    if (nr < 0 || nr >= MAX_GAMEPADS) return;
+    std::lock_guard lock(input->mutex);
+    ps_pad_close(input->pads[nr]);  // sends a neutral state before removal
+    input->pads[nr] = nullptr;
+}
+
+void gamepad_update(input_t &input, int nr, const gamepad_state_t &state) {
+    if (nr < 0 || nr >= MAX_GAMEPADS) return;
+    std::lock_guard lock(input->mutex);
+    if (!input->pads[nr]) return;
+    const auto mapped = prospero::map_gamepad(state.buttonFlags, state.lt, state.rt, state.lsX, state.lsY, state.rsX,
+                                              state.rsY);
+    const ps_pad_state pad{mapped.buttons, mapped.lx, mapped.ly, mapped.rx, mapped.ry, mapped.l2, mapped.r2};
+    ps_pad_send(input->pads[nr], &pad);
+}
+
+std::vector<supported_gamepad_t> &supported_gamepads(input_t *) {
+    static std::vector<supported_gamepad_t> pads{{"ds5", true, ""}};
+    return pads;
+}
+
+platform_caps::caps_t get_capabilities() { return 0; }
+
+std::unique_ptr<client_input_t> allocate_client_input_context(input_t &) { return std::make_unique<deinit_t>(); }
+
+// Not forwarded in v1.0.
+void move_mouse(input_t &, int, int) {}
+void move_mouse(input_t &, const touch_port_t &, int, int) {}
+void abs_mouse(input_t &, const touch_port_t &, float, float) {}
+void button_mouse(input_t &, int, bool) {}
+void scroll(input_t &, int) {}
+void hscroll(input_t &, int) {}
+void keyboard_update(input_t &, uint16_t, bool, uint8_t, bool) {}
+void unicode(input_t &, const char *, int) {}
+void touch_update(client_input_t *, const touch_port_t &, const touch_input_t &) {}
+void pen_update(client_input_t *, const touch_port_t &, const pen_input_t &) {}
+void gamepad_touch(input_t &, const gamepad_touch_t &) {}
+void gamepad_motion(input_t &, const gamepad_motion_t &) {}
+void gamepad_battery(input_t &, const gamepad_battery_t &) {}
+}

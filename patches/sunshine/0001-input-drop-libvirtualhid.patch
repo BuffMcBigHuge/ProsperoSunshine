@@ -1,0 +1,26 @@
+ProsperoSunshine: drop libvirtualhid from input.cpp
+
+The PS5 has no libvirtualhid; keyboard and mouse are not forwarded in v1.0, and
+gamepads go through platf::alloc_gamepad/gamepad_update (src/sunshine/platform_ps5.cpp).
+
+--- a/src/input.cpp	2026-10-28 21:41:34.364205700 +0100
++++ b/src/input.cpp	2026-10-28 21:41:34.623783500 +0100
+@@ -33,7 +33,6 @@
+ #include "input.h"
+ #include "logging.h"
+ #include "platform/common.h"
+-#include "platform/virtualhid_input.h"
+ #include "thread_pool.h"
+ #include "utility.h"
+ 
+@@ -2419,9 +2418,7 @@
+         key_press_repeat_id = nullptr;
+         reset_mouse_buttons();
+         reset_keyboard_keys();
+-        auto &context = platf::virtualhid::get_input_context(platf_input);
+-        context.refresh_keyboard();
+-        context.refresh_mouse();
++        // ProsperoSunshine: no libvirtualhid keyboard/mouse on the PS5; gamepads use the platform layer.
+       }
+     });
+   }

@@ -1,0 +1,32 @@
+ProsperoSunshine: url_get_host without libcurl on the PS5
+
+Follows 0003. Parses scheme://[userinfo@]host[:port] directly; only the omitted Web UI calls it.
+
+--- a/src/httpcommon.cpp
++++ b/src/httpcommon.cpp
+@@ -280,6 +280,18 @@
+    * @brief Extract the host component from a URL string.
+    */
+   std::string url_get_host(const std::string &url) {
++#ifdef __SCE__
++    // scheme://[userinfo@]host[:port][/...] without libcurl; IPv6 literals keep their brackets off.
++    auto rest = url.substr(url.find("://") == std::string::npos ? 0 : url.find("://") + 3);
++    rest = rest.substr(0, rest.find_first_of("/?#"));
++    if (const auto at = rest.rfind('@'); at != std::string::npos) {
++      rest = rest.substr(at + 1);
++    }
++    if (!rest.empty() && rest.front() == '[') {
++      return rest.substr(1, rest.find(']') - 1);
++    }
++    return rest.substr(0, rest.find(':'));
++#else
+     CURLU *curlu = curl_url();
+     curl_url_set(curlu, CURLUPART_URL, url.c_str(), static_cast<unsigned int>(url.length()));
+     char *host;
+@@ -291,5 +303,6 @@
+     curl_free(host);
+     curl_url_cleanup(curlu);
+     return result;
++#endif
+   }
+ }  // namespace http

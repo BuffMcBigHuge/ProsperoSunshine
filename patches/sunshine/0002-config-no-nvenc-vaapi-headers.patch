@@ -1,0 +1,37 @@
+ProsperoSunshine: config.cpp without NVENC/VAAPI headers on the PS5
+
+The config parser maps option strings to NVENC and VAAPI constants. Neither encoder exists on the
+console, so instead of shipping both SDK headers the few enum values are defined for __SCE__.
+
+--- a/src/config.cpp
++++ b/src/config.cpp
+@@ -43,14 +43,27 @@
+   #include <AMF/components/VideoEncoderVCE.h>
+ #endif
+ 
+-#if !defined(__ANDROID__) && !defined(__APPLE__)
++#if !defined(__ANDROID__) && !defined(__APPLE__) && !defined(__SCE__)
+   // For NVENC legacy constants
+   #include <ffnvcodec/nvEncodeAPI.h>
+ #endif
+ 
+-#if (defined(linux) || defined(__FreeBSD__)) && !defined(DOXYGEN)
++#if (defined(linux) || defined(__FreeBSD__)) && !defined(DOXYGEN) && !defined(__SCE__)
+   // For VAAPI rate control types
+   #include <va/va.h>
++#endif
++
++#ifdef __SCE__
++// ProsperoSunshine: no NVENC or VAAPI on the PS5. The config parser still names their constants,
++// so the values from nvEncodeAPI.h and va.h are given here.
++enum { NV_ENC_MULTI_PASS_DISABLED = 0x0, NV_ENC_TWO_PASS_QUARTER_RESOLUTION = 0x1, NV_ENC_TWO_PASS_FULL_RESOLUTION = 0x2 };
++enum { NV_ENC_H264_ENTROPY_CODING_MODE_CABAC = 0x1, NV_ENC_H264_ENTROPY_CODING_MODE_CAVLC = 0x2 };
++  #define VA_RC_CBR 0x00000002
++  #define VA_RC_VBR 0x00000004
++  #define VA_RC_CQP 0x00000010
++  #define VA_RC_ICQ 0x00000040
++  #define VA_RC_QVBR 0x00000400
++  #define VA_RC_AVBR 0x00000800
+ #endif
+ 
+ namespace fs = std::filesystem;

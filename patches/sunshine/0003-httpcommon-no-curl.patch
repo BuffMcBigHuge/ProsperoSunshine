@@ -1,0 +1,81 @@
+ProsperoSunshine: httpcommon without libcurl on the PS5
+
+libcurl is only used to download cover art for the Web UI, which is not built. download_file()
+reports failure, url_escape() keeps the same percent-encoding without curl.
+
+--- a/src/httpcommon.h
++++ b/src/httpcommon.h
+@@ -5,7 +5,11 @@
+ #pragma once
+ 
+ // lib includes
+-#include <curl/curl.h>
++#ifndef __SCE__
++  #include <curl/curl.h>
++#else
++  #define CURL_SSLVERSION_TLSv1_2 6  // ProsperoSunshine: no libcurl on the PS5
++#endif
+ 
+ // local includes
+ #include "network.h"
+--- a/src/httpcommon.cpp
++++ b/src/httpcommon.cpp
+@@ -14,7 +14,9 @@
+ #include <boost/property_tree/json_parser.hpp>
+ #include <boost/property_tree/ptree.hpp>
+ #include <boost/property_tree/xml_parser.hpp>
+-#include <curl/curl.h>
++#ifndef __SCE__
++  #include <curl/curl.h>
++#endif
+ #include <Simple-Web-Server/server_http.hpp>
+ #include <Simple-Web-Server/server_https.hpp>
+ 
+@@ -206,6 +208,13 @@
+    * @brief Send a static file response for a Web UI request.
+    */
+   bool download_file(const std::string &url, const std::string &file, long ssl_version) {
++#ifdef __SCE__
++    // ProsperoSunshine: only the omitted Web UI downloads cover art; there is no libcurl here.
++    (void) file;
++    (void) ssl_version;
++    BOOST_LOG(warning) << "download_file is unavailable on the PS5: "sv << url;
++    return false;
++#else
+     CURL *curl = curl_easy_init();
+     if (!curl) {
+       BOOST_LOG(error) << "Couldn't create CURL instance";
+@@ -238,16 +247,33 @@
+     curl_easy_cleanup(curl);
+     fclose(fp);
+     return result == CURLE_OK;
++#endif
+   }
+ 
+   /**
+    * @brief Percent-encode URL data for use in HTTP query strings.
+    */
+   std::string url_escape(const std::string &url) {
++#ifdef __SCE__
++    // Same output as curl_easy_escape: RFC 3986 unreserved characters stay, the rest is %XX.
++    static constexpr char hex[] = "0123456789ABCDEF";
++    std::string result;
++    for (const unsigned char c : url) {
++      if (std::isalnum(c) || c == '-' || c == '.' || c == '_' || c == '~') {
++        result += static_cast<char>(c);
++      } else {
++        result += '%';
++        result += hex[c >> 4];
++        result += hex[c & 15];
++      }
++    }
++    return result;
++#else
+     char *string = curl_easy_escape(nullptr, url.c_str(), static_cast<int>(url.length()));
+     std::string result(string);
+     curl_free(string);
+     return result;
++#endif
+   }
+ 
+   /**
