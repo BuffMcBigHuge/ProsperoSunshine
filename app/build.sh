@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Builds the ProsperoSunshine PS5 app (a title folder for ShadowMountPlus) inside app/Dockerfile's
+# image. app/build.ps1 starts it; run by hand:
+#
+#   docker run --rm -v "$PWD":/repo -v prosperosunshine-app-cache:/cache prosperosunshine-app:1 \
+#       bash app/build.sh
+#
+# The app is drawn with ps5-homebrew-ui (GPL-3.0-or-later), which also brings the PS5 build: its
+# tools/build.sh compiles everything under src/, links it against ps5-opengl, signs it and puts the
+# title folder together. This script fetches the kit at a pinned commit, stages a copy of it with the
+# kit's own app, designs and demo replaced by app/src, and runs the kit's `make app` there.
+#
+# Inputs (all optional):
+#   /cache/ps5-opengl-sdk   the ps5-opengl SDK (manifest.sha256 inside); app/build.ps1 copies it from
+#                           PS5SD's build volume, PS5_OPENGL_SDK overrides the path
+#   HOST_ELF                the host payload to bundle (default out/prospero_sunshine.elf)
+# Output: build/app/PPSA47989/ (the title folder) and build/app/PPSA47989.zip.
+set -euo pipefail
+
+repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+app_src="$repo/app"
+cache=${APP_CACHE:-/cache}
+kit_url=https://github.com/Phononenom/ps5-homebrew-ui
+kit_rev=bf44d80384d5b8f8f4f213cf98d748887211328d
+kit="$cache/ps5-homebrew-ui"
+stage="$cache/stage"
+glsdk=${PS5_OPENGL_SDK:-$cache/ps5-opengl-sdk}
+host_elf=${HOST_ELF:-$repo/out/prospero_sunshine.elf}
+out="$repo/build/app"
+
+[ -f "$glsdk/manifest.sha256" ] || {
+    echo "app/build.sh: no ps5-opengl SDK at $glsdk (see app/README.md, Building)" >&2
+    exit 2
+}
+
+# ---- the kit, pinned ---------------------------------------------------------------
+if [ ! -d "$kit/.git" ]; then
+    git clone -q "$kit_url" "$kit"
+fi
+if [ "$(git -C "$kit" rev-parse HEAD)" != "$kit_rev" ]; then
+    git -C "$kit" fetch -q origin "$kit_rev" 2>/dev/null || git -C "$kit" fetch -q origin
+    git -C "$kit" checkout -q --detach "$kit_rev"
+fi
+
+# ---- the staged tree ---------------------------------------------------------------
+# The kit without its own app (src/app, src/concepts, src/demo, src/main.cpp), music and second
+# sound set, plus app/src and app/sce_sys. .deps, build and the generated libc.prx survive between
+# runs, so only the first build fetches the payload SDK and builds the host tools.
+mkdir -p "$stage"
+rsync -a --delete \
+    --exclude=/.git --exclude=/.deps --exclude=/build --exclude=/dist --exclude=/runtime/libc.prx \
+    --exclude=/src/app --exclude=/src/concepts --exclude=/src/demo --exclude=/src/main.cpp \
+    --exclude=/assets/audio/music --exclude=/assets/audio/sfx/paper \
+    --exclude=/sce_sys \
+    "$kit/" "$stage/"
+rsync -a --delete "$app_src/src/" "$stage/src/app/"
+mv "$stage/src/app/main.cpp" "$stage/src/main.cpp"
+rm -rf "$stage/sce_sys"
+mkdir -p "$stage/sce_sys"
+cp "$app_src/sce_sys/param.json" "$app_src/sce_sys/icon0.png" "$stage/sce_sys/"
+
+# ---- build -------------------------------------------------------------------------
+make -C "$stage" app PS5_OPENGL_PREFIX="$glsdk" USE_CCACHE=0 PS5_CLANG=clang-18
+
+# ---- the title folder --------------------------------------------------------------
+title_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["titleId"])' "$app_src/sce_sys/param.json")
+title="$stage/dist/$title_id"
+if [ -f "$host_elf" ]; then
+    mkdir -p "$title/payloads"
+    cp "$host_elf" "$title/payloads/prospero_sunshine.elf"
+    echo "app/build.sh: bundled $(basename "$host_elf") ($(stat -c %s "$host_elf") bytes)"
+else
+    echo "app/build.sh: WARNING: no host ELF at $host_elf; the app will use the one on the console" >&2
+fi
+mkdir -p "$title/licenses"
+cp "$repo/LICENSE" "$title/licenses/ProsperoSunshine-LICENSE.txt"
+cp "$kit/LICENSE" "$title/licenses/ps5-homebrew-ui-LICENSE.txt"
+cp "$kit/THIRD_PARTY_NOTICES.md" "$title/licenses/ps5-homebrew-ui-THIRD_PARTY_NOTICES.md"
+printf '%s\n' "ps5-homebrew-ui (GPL-3.0-or-later): $kit_url at $kit_rev" > "$title/licenses/SOURCES.txt"
+rm -rf "$out/$title_id" "$out/$title_id.zip"
+mkdir -p "$out"
+cp -a "$title" "$out/"
+(cd "$out" && python3 -m zipfile -c "$title_id.zip" "$title_id")
+python3 "$stage/tools/zip-open-modes.py" "$out/$title_id.zip"
+echo "app/build.sh: $out/$title_id ($(stat -c %s "$out/$title_id/eboot.bin") bytes eboot.bin)"

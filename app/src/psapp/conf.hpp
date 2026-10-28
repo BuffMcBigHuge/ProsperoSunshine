@@ -1,0 +1,74 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// sunshine.conf as the app edits it. Sunshine reads "key = value", one option a line, '#' starts a
+// comment, and a key that is missing keeps its default (config.cpp in Sunshine a679b059). The app
+// knows a handful of keys (kOptions); it changes only their lines and keeps every other line,
+// comments included. Pure code, tested on the PC (app/tests).
+#pragma once
+
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace psapp
+{
+
+enum class OptionKind
+{
+    text,   // free text (sunshine_name)
+    choice, // one of `choices` (the value written is choices[i].value)
+    number, // an integer in [min, max]
+};
+
+struct Choice
+{
+    const char *value; // as written to the file
+    const char *label; // as shown
+};
+
+struct OptionSpec
+{
+    const char *key;
+    const char *label;
+    const char *help;
+    OptionKind kind;
+    const char *default_label; // what the host does without the key
+    std::vector<Choice> choices;
+    long min = 0;
+    long max = 0;
+    long step = 1;
+    long fallback = 0; // the first number offered when the key is not set
+};
+
+// The options the app offers, in screen order.
+const std::vector<OptionSpec> &option_specs();
+const OptionSpec *find_option(std::string_view key);
+
+// Checks a value for an option; an empty optional means "fine", else the reason.
+std::optional<std::string> validate(const OptionSpec &spec, std::string_view value);
+
+class Config
+{
+  public:
+    // Parses the file's text. Never fails: lines it does not understand are kept as they are.
+    static Config parse(std::string_view text);
+
+    // The value of a key, or nothing when the key is not set (the host's default applies).
+    std::optional<std::string> get(std::string_view key) const;
+    // Sets a key: replaces its line (the last one, which is what Sunshine uses, and drops earlier
+    // duplicates) or appends one. An empty optional removes the key's lines.
+    void set(std::string_view key, std::optional<std::string> value);
+
+    std::string text() const;
+
+  private:
+    struct Line
+    {
+        std::string raw;
+        std::string key; // empty for comments, blank and malformed lines
+        std::string value;
+    };
+    std::vector<Line> lines_;
+};
+
+} // namespace psapp
