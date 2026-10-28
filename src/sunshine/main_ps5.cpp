@@ -35,17 +35,20 @@ struct klog_backend : boost::log::sinks::basic_formatted_sink_backend<char, boos
     }
 };
 
-void add_klog_sink() {
+using klog_sink = boost::log::sinks::synchronous_sink<klog_backend>;
+
+boost::shared_ptr<klog_sink> add_klog_sink() {
     namespace expr = boost::log::expressions;
-    auto sink = boost::make_shared<boost::log::sinks::synchronous_sink<klog_backend>>();
+    auto sink = boost::make_shared<klog_sink>();
     sink->set_formatter(expr::stream << '[' << expr::attr<int>("Severity") << "] " << expr::smessage);
-    sink->set_filter(expr::attr<int>("Severity") >= 2);  // info and above
+    sink->set_filter(expr::attr<int>("Severity") >= 2);  // info and above until the config is read
     boost::log::core::get()->add_sink(sink);
+    return sink;
 }
 }
 
 int main(int argc, char *argv[]) {
-    add_klog_sink();
+    const auto klog = add_klog_sink();
     std::error_code ec;
     std::filesystem::create_directories(platf::appdata(), ec);
     klog_printf("ProsperoSunshine: host appdata=%s mkdir_ec=%d config=%s\n", platf::appdata().c_str(), ec.value(),
@@ -59,6 +62,8 @@ int main(int argc, char *argv[]) {
         klog_printf("ProsperoSunshine: host config::parse returned %d\n", rc);
         return rc < 0 ? 1 : 0;
     }
+    // From here on the kernel log follows min_log_level from sunshine.conf like the file log.
+    klog->set_filter(boost::log::expressions::attr<int>("Severity") >= config::sunshine.min_log_level);
     auto log_guard = logging::init(config::sunshine.min_log_level, config::sunshine.log_file);
     if (!log_guard) klog_printf("ProsperoSunshine: host logging failed to initialize\n");
     BOOST_LOG(info) << "ProsperoSunshine host starting, data in "sv << platf::appdata().string();

@@ -4,9 +4,11 @@ Stand: 28. Oktober 2026. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN
 
 ## Stand (28. Oktober 2026, abends)
 
-Erledigt und live belegt (Details in `STATUS.md`): Phase 0 komplett, Spikes R1–R5 positiv (R6 ohne mDNS), Phase 1 bis auf Spiele als Bildquelle, P2.1–P2.4, P3.1–P3.4, P4.1–P4.2, P5.1, aus P6 die 30-Minuten-Sitzung und zehn Wiederverbindungen, P6.4 (automatischer Testclient in `tools/moonlight/`), P7.1 (CI-Workflow, noch nicht auf GitHub gelaufen). Ende-zu-Ende-Stream mit einem moonlight-common-c-Client funktioniert.
+Erledigt und live belegt (Details in `STATUS.md`): Phase 0 komplett, Spikes R1–R5 positiv (R6 ohne mDNS), Phase 1 bis auf Spiele als Bildquelle, P2.1–P2.4, P3.1–P3.4, P4.1–P4.2, P5.1, aus P6 die 30-Minuten-Sitzung und zehn Wiederverbindungen, P6.4 (automatischer Testclient in `tools/moonlight/`), P4.3 geprüft (Pad wird nach Abbruch neutral, ≈ 5,6 s Nachlauf), P6.2 Paketverlust (10 % ohne Abbruch), P7.1 (CI-Workflow, noch nicht auf GitHub gelaufen). Ende-zu-Ende-Stream mit einem moonlight-common-c-Client funktioniert.
 
-Als Nächstes: Test mit einer echten Moonlight-App, Spiele als Bildquelle (P1.4), Bild-/Ton-Synchronisation (P5.2), Watchdog-Test für Eingaben (P4.3), Fehlerinjektion (P6.2), Host-API mit der PS5-App abstimmen (P2.5), restliche Release-Vorbereitung (P7.2–P7.4).
+P7.2 (Lizenzübersicht `docs/licenses.md`) und P7.3 (englische README mit Voraussetzungen, Ablauf und Grenzen) sind erledigt.
+
+Als Nächstes: Test mit einer echten Moonlight-App, Spiele als Bildquelle (P1.4), Bild-/Ton-Synchronisation (P5.2), früherer Eingabe-Watchdog (P4.3-Folgepunkt), weitere Fehlerinjektion wie Ruhemodus und Ressourcenentzug (P6.2), Host-API mit der PS5-App abstimmen (P2.5), Release (P7.4).
 
 ## Zielbild v1.0
 

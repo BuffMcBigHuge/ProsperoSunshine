@@ -285,6 +285,7 @@ std::unique_ptr<audio_control_t> audio_control() { return std::make_unique<silen
 struct input_raw_t {
     std::mutex mutex;
     std::array<ps_pad *, MAX_GAMEPADS> pads{};
+    std::array<bool, MAX_GAMEPADS> active{};  // last state had something pressed or deflected
     uint32_t user = 0;
 };
 
@@ -336,6 +337,10 @@ void gamepad_update(input_t &input, int nr, const gamepad_state_t &state) {
                                               state.rsY);
     const ps_pad_state pad{mapped.buttons, mapped.lx, mapped.ly, mapped.rx, mapped.ry, mapped.l2, mapped.r2};
     ps_pad_send(input->pads[nr], &pad);
+    // Sunshine neutralises held input with an all-zero state when a session ends (P4.3).
+    const bool active = state.buttonFlags || state.lt || state.rt || state.lsX || state.lsY || state.rsX || state.rsY;
+    if (input->active[nr] && !active) BOOST_LOG(debug) << "PS5 virtual pad "sv << nr << " released to neutral"sv;
+    input->active[nr] = active;
 }
 
 std::vector<supported_gamepad_t> &supported_gamepads(input_t *) {
