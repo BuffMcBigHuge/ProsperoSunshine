@@ -10,7 +10,7 @@ RUN curl -fL "https://github.com/ps5-payload-dev/sdk/releases/download/${SDK_VER
 ENV PS5_PAYLOAD_SDK=/opt/ps5-payload-sdk
 RUN apt-get update -qq && apt-get install -y --no-install-recommends libclang-rt-18-dev \
     && rm -rf /var/lib/apt/lists/*
-# OpenSSL's Configure generates a Makefile.
-RUN apt-get update -qq && apt-get install -y --no-install-recommends make \
+# OpenSSL's Configure generates a Makefile; Boost ships as .tar.xz; patches/ is applied with patch.
+RUN apt-get update -qq && apt-get install -y --no-install-recommends make xz-utils patch \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /repo

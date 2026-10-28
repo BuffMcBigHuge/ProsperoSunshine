@@ -1,0 +1,15 @@
+The PS5 sysroot is FreeBSD-derived but its libc has no close_range(); Boost.Process v2 assumes
+every FreeBSD does. Make that path opt-in so the portable /dev/fd fallback is used. Sunshine only
+includes the v1 headers, so this merely keeps the (unused) compiled v2 library building.
+
+--- a/libs/process/src/posix/close_handles.cpp
++++ b/libs/process/src/posix/close_handles.cpp
+@@ -17,7 +17,7 @@
+ // linux has close_range since 5.19
+ 
+ 
+-#if defined(__FreeBSD__)
++#if defined(__FreeBSD__) && defined(BOOST_PROCESS_V2_USE_FREEBSD_CLOSE_RANGE)
+ 
+ // https://www.freebsd.org/cgi/man.cgi?query=close_range&apropos=0&sektion=0&manpath=FreeBSD+13.1-RELEASE+and+Ports&arch=default&format=html
+ // __FreeBSD__

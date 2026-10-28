@@ -1,95 +1,63 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-only
-# Fetch the sources pinned in deps.lock, verify them and build static PS5 libraries into out/deps.
+# Fetch the sources pinned in deps.lock, verify and patch them, and build static PS5 libraries into
+# out/deps. Each library with a build step has its own scripts/deps/<name>.sh; finished builds leave
+# a stamp so later runs only redo what changed. Pass library names to limit the run to those.
 set -euo pipefail
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-sdk=${PS5_PAYLOAD_SDK:-/opt/ps5-payload-sdk}
+export sdk=${PS5_PAYLOAD_SDK:-/opt/ps5-payload-sdk}
+export prefix="$root/out/deps"
+export work=${DEPS_WORK:-/tmp/prospero-deps}
+export jobs=$(nproc)
 dl="$root/.cache/deps/dl"
-work=${DEPS_WORK:-/tmp/prospero-deps}
-prefix="$root/out/deps"
-jobs=$(nproc)
-mkdir -p "$dl" "$prefix/include" "$prefix/lib"
-rm -rf "$work" && mkdir -p "$work"
+srcroot="$root/.cache/deps/src"
+mkdir -p "$dl" "$srcroot" "$prefix/include" "$prefix/lib" "$prefix/licenses" "$work"
 
-declare -A src
-while read -r name version sha url; do
+# Source trees are extracted once into .cache/deps/src/<name>; a stamp records archive hash and
+# patch set, so a changed pin or patch re-extracts the tree.
+declare -A src version
+order=()
+while read -r name ver sha url; do
     [[ -z "$name" || "$name" == \#* ]] && continue
-    file="$dl/$name-$version.tar.gz"
+    ext=${url##*/}; ext=${ext#*.}
+    [[ "$ext" == tar.* ]] || ext=tar.gz
+    file="$dl/$name-$ver.$ext"
     [[ -f "$file" ]] || curl -fsSL -o "$file" "$url"
     echo "$sha  $file" | sha256sum -c --quiet -
-    mkdir -p "$work/$name"
-    tar -xzf "$file" -C "$work/$name" --strip-components=1
-    src[$name]="$work/$name"
+    dir="$srcroot/$name"
+    patches=("$root/patches/$name"/*.patch)
+    [[ -e "${patches[0]}" ]] || patches=()
+    want="$sha $(cat "${patches[@]}" /dev/null | sha256sum | cut -d' ' -f1)"
+    if [[ "$(cat "$dir/.prospero-stamp" 2>/dev/null)" != "$want" ]]; then
+        rm -rf "$dir"
+        mkdir -p "$dir"
+        tar -xf "$file" -C "$dir" --strip-components=1
+        for p in "${patches[@]}"; do
+            echo "Applying $(basename "$p") to $name"
+            patch -d "$dir" -p1 --forward --quiet < "$p"
+        done
+        echo "$want" > "$dir/.prospero-stamp"
+        rm -f "$prefix/.stamp-$name"
+    fi
+    src[$name]=$dir
+    version[$name]=$ver
+    order+=("$name")
 done < "$root/deps.lock"
 
-cc="$sdk/bin/prospero-clang"
-ar="$sdk/bin/prospero-ar"
-cflags="-O2 -fPIC"
-
-# OpenSSL: libcrypto and libssl only. async needs ucontext, which the payload libc does not promise.
-(cd "${src[openssl]}" && \
-    CC="$cc" AR="$ar" RANLIB="$sdk/bin/prospero-ranlib" ./Configure BSD-x86_64 \
-        no-shared no-module no-dso no-engine no-async no-tests no-apps no-docs no-ui-console \
-        --prefix="$prefix" --libdir=lib --openssldir=/user/homebrew/etc/ssl $cflags >/dev/null && \
-    make -j"$jobs" build_libs >/dev/null && make install_dev >/dev/null)
-
-# Opus: float build with runtime CPU detection.
-"$sdk/bin/prospero-cmake" -S "${src[opus]}" -B "$work/opus-build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX="$prefix" -DOPUS_BUILD_PROGRAMS=OFF -DOPUS_BUILD_TESTING=OFF \
-    -DCMAKE_VERBOSE_MAKEFILE=OFF >/dev/null
-cmake --build "$work/opus-build" >/dev/null
-cmake --install "$work/opus-build" >/dev/null
-
-# ENet: moonlight's fork, configured by its own CMake feature checks.
-"$sdk/bin/prospero-cmake" -S "${src[enet]}" -B "$work/enet-build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX="$prefix" -DCMAKE_VERBOSE_MAKEFILE=OFF >/dev/null
-cmake --build "$work/enet-build" >/dev/null
-cmake --install "$work/enet-build" >/dev/null
-mv -f "$prefix/lib/static/libenet.a" "$prefix/lib/libenet.a" && rmdir "$prefix/lib/static"
-
-# nanors: the same three sources Sunshine compiles directly. Its SIMD kernels use per-function
-# target attributes, but clang's immintrin.h hides AVX2/AVX-512 types on __SCE__ targets unless the
-# feature is enabled for the whole file, so the macro is masked for that one include.
-# Its dispatch uses __builtin_cpu_supports, whose compiler-rt support the SDK does not link;
-# the prelude answers the same questions from CPUID and XCR0 instead.
-n="${src[nanors]}"
-mkdir -p "$work/nanors-build" "$prefix/include/nanors"
-cat > "$work/nanors-build/prelude.h" <<'EOF'
-#include <stdint.h>
-#include <string.h>
-#include <cpuid.h>
-#pragma push_macro("__SCE__")
-#undef __SCE__
-#include <immintrin.h>
-#pragma pop_macro("__SCE__")
-static inline int prospero_cpu_supports(const char *feature) {
-    unsigned a, b, c, d, b7 = 0, c7 = 0, xcr0 = 0;
-    if (!__get_cpuid(1, &a, &b, &c, &d)) return 0;
-    const unsigned c1 = c;
-    if (__get_cpuid_count(7, 0, &a, &b, &c, &d)) { b7 = b; c7 = c; }
-    if (c1 & (1u << 27)) { unsigned hi; __asm__("xgetbv" : "=a"(xcr0), "=d"(hi) : "c"(0)); }
-    const int ymm = (xcr0 & 0x06) == 0x06, zmm = (xcr0 & 0xE6) == 0xE6;
-    if (!strcmp(feature, "ssse3")) return (c1 >> 9) & 1;
-    if (!strcmp(feature, "avx2")) return ymm && ((b7 >> 5) & 1);
-    if (!strcmp(feature, "avx512f")) return zmm && ((b7 >> 16) & 1);
-    if (!strcmp(feature, "gfni")) return (c7 >> 8) & 1;
-    return 0;
-}
-#define __builtin_cpu_init() ((void)0)
-#define __builtin_cpu_supports(feature) prospero_cpu_supports(feature)
-EOF
-for f in rs.c deps/obl/oblas_common.c deps/obl/oblas_lite.c; do
-    "$cc" -std=gnu11 $cflags -include "$work/nanors-build/prelude.h" -I"$n" -I"$n/deps/obl" \
-        -c "$n/$f" -o "$work/nanors-build/$(basename "$f" .c).o"
+selected=("$@")
+[[ ${#selected[@]} -gt 0 ]] || selected=("${order[@]}")
+for name in "${selected[@]}"; do
+    script="$root/scripts/deps/$name.sh"
+    [[ -f "$script" ]] || continue
+    stamp="$prefix/.stamp-$name"
+    stamp_want="${version[$name]} $(sha256sum "$script" | cut -d' ' -f1)"
+    [[ "$(cat "$stamp" 2>/dev/null)" == "$stamp_want" ]] && continue
+    echo "Building $name ${version[$name]}"
+    for dep in "${order[@]}"; do
+        var="src_${dep//-/_}"
+        export "$var=${src[$dep]}"
+    done
+    bash "$script"
+    echo "$stamp_want" > "$stamp"
 done
-"$ar" rcs "$prefix/lib/libnanors.a" "$work/nanors-build"/*.o
-cp "$n/rs.h" "$n/deps/obl"/*.h "$prefix/include/nanors/"
-
-# Upstream licence texts travel with the binaries.
-mkdir -p "$prefix/licenses"
-cp "${src[openssl]}/LICENSE.txt" "$prefix/licenses/openssl.txt"
-cp "${src[opus]}/COPYING" "$prefix/licenses/opus.txt"
-cp "${src[enet]}/LICENSE" "$prefix/licenses/enet.txt"
-cp "$n/LICENSE" "$prefix/licenses/nanors.txt"
-cp "${src[moonlight-common-c]}/LICENSE.txt" "$prefix/licenses/moonlight-common-c.txt"
 ls -la "$prefix/lib"/*.a

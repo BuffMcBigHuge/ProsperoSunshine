@@ -1,0 +1,126 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# PS5 build. Configure with the SDK's prospero-cmake (scripts/build.sh does this inside Docker);
+# third-party libraries come prebuilt from scripts/deps.sh in out/deps.
+cmake_minimum_required(VERSION 3.25)
+project(ProsperoSunshine LANGUAGES C CXX)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+set(CMAKE_C_FLAGS_RELEASE "-O2")
+set(CMAKE_CXX_FLAGS_RELEASE "-O2")
+# std::jthread/stop_token sit behind libc++'s experimental gate in SDK v0.45.
+add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fexperimental-library>)
+set(PROSPERO_WARNINGS -Wall -Wextra -Werror)
+
+set(PROSPERO_OUT "${CMAKE_SOURCE_DIR}/out" CACHE PATH "Where ELFs and libraries are placed")
+set(PROSPERO_DEPS "${PROSPERO_OUT}/deps" CACHE PATH "Prefix of the prebuilt third-party libraries")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROSPERO_OUT}")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROSPERO_OUT}")
+set(CMAKE_EXECUTABLE_SUFFIX ".elf")
+
+# Prebuilt static archives from out/deps as imported targets.
+function(prospero_dep name)
+    add_library(dep::${name} STATIC IMPORTED GLOBAL)
+    set_target_properties(dep::${name} PROPERTIES
+        IMPORTED_LOCATION "${PROSPERO_DEPS}/lib/lib${name}.a"
+        INTERFACE_INCLUDE_DIRECTORIES "${PROSPERO_DEPS}/include"
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${PROSPERO_DEPS}/include")
+endfunction()
+foreach(lib ssl crypto opus enet nanors)
+    prospero_dep(${lib})
+endforeach()
+set_target_properties(dep::ssl PROPERTIES INTERFACE_LINK_LIBRARIES "dep::crypto;pthread")
+
+# Platform layer.
+add_library(prospero_capture STATIC src/platform/ps5/capture.c)
+target_include_directories(prospero_capture PUBLIC src)
+target_compile_options(prospero_capture PRIVATE ${PROSPERO_WARNINGS})
+
+add_library(prospero_pad STATIC src/platform/ps5/pad.c)
+target_include_directories(prospero_pad PUBLIC src)
+target_compile_options(prospero_pad PRIVATE ${PROSPERO_WARNINGS})
+
+add_library(prospero_core STATIC src/capture/capture_session.cpp src/platform/ps5/capture_backend.cpp
+    src/platform/ps5/shared_capture.cpp)
+target_include_directories(prospero_core PUBLIC src)
+target_link_libraries(prospero_core PUBLIC prospero_capture)
+target_compile_options(prospero_core PRIVATE ${PROSPERO_WARNINGS})
+
+# Probes: each is a standalone payload that logs its result to klog.
+function(prospero_probe name)
+    add_executable(${name} src/${name}.cpp)
+    target_compile_options(${name} PRIVATE ${PROSPERO_WARNINGS})
+    target_link_libraries(${name} PRIVATE ${ARGN})
+endfunction()
+prospero_probe(runtime_probe)
+prospero_probe(jthread_probe)
+prospero_probe(capture_probe prospero_core)
+prospero_probe(capture_soak prospero_core)
+prospero_probe(pad_probe prospero_pad)
+prospero_probe(avcap_spike prospero_capture)
+prospero_probe(audio_spike prospero_capture prospero_pad)
+prospero_probe(bitrate_spike prospero_capture)
+prospero_probe(deps_probe dep::ssl dep::opus dep::enet dep::nanors)
+
+if(EXISTS "${PROSPERO_DEPS}/lib/libboost_log.a")
+    prospero_probe(boost_probe dep::ssl
+        "${PROSPERO_DEPS}/lib/libboost_log.a" "${PROSPERO_DEPS}/lib/libboost_filesystem.a"
+        "${PROSPERO_DEPS}/lib/libboost_thread.a" "${PROSPERO_DEPS}/lib/libboost_atomic.a")
+    prospero_probe(eh_probe "${PROSPERO_DEPS}/lib/libboost_filesystem.a" "${PROSPERO_DEPS}/lib/libboost_atomic.a")
+    target_include_directories(boost_probe SYSTEM PRIVATE "${PROSPERO_DEPS}/include")
+    target_include_directories(eh_probe SYSTEM PRIVATE "${PROSPERO_DEPS}/include")
+endif()
+
+# cbs_probe links Sunshine's own, unmodified cbs.cpp. It is copied next to the build so that its
+# quoted #include "logging.h" finds the probe stub instead of Sunshine's Boost.Log header.
+if(EXISTS "${PROSPERO_DEPS}/lib/libavcodec.a")
+    set(CBS_COPY "${CMAKE_BINARY_DIR}/cbs_probe/cbs.cpp")
+    configure_file("${CMAKE_SOURCE_DIR}/.cache/deps/src/sunshine/src/cbs.cpp" "${CBS_COPY}" COPYONLY)
+    set_source_files_properties("${CBS_COPY}" PROPERTIES COMPILE_OPTIONS "-w")
+    add_executable(cbs_probe src/cbs_probe.cpp "${CBS_COPY}")
+    target_include_directories(cbs_probe PRIVATE src/probe_stubs)
+    target_include_directories(cbs_probe SYSTEM PRIVATE "${PROSPERO_DEPS}/include")
+    target_compile_options(cbs_probe PRIVATE "SHELL:-idirafter ${CMAKE_SOURCE_DIR}/.cache/deps/src/sunshine/src")
+    set_source_files_properties(src/cbs_probe.cpp PROPERTIES COMPILE_OPTIONS "${PROSPERO_WARNINGS}")
+    target_link_libraries(cbs_probe PRIVATE "${PROSPERO_DEPS}/lib/libavcodec.a" "${PROSPERO_DEPS}/lib/libavutil.a" pthread)
+endif()
+
+# The host: Sunshine's protocol core (pinned, patched sources from .cache/deps/src) with the PS5
+# replacements in src/sunshine. Built once Boost and FFmpeg are present in out/deps.
+set(SUNSHINE_SRC "${CMAKE_SOURCE_DIR}/.cache/deps/src/sunshine" CACHE PATH "Extracted Sunshine tree")
+set(MOONLIGHT_SRC "${CMAKE_SOURCE_DIR}/.cache/deps/src/moonlight-common-c" CACHE PATH "moonlight-common-c tree")
+if(EXISTS "${PROSPERO_DEPS}/include/boost" AND EXISTS "${PROSPERO_DEPS}/lib/libavcodec.a")
+    file(GLOB BOOST_LIBS "${PROSPERO_DEPS}/lib/libboost_*.a")
+    set(SUNSHINE_KEPT
+        nvhttp.cpp httpcommon.cpp rtsp.cpp stream.cpp crypto.cpp network.cpp audio.cpp input.cpp config.cpp
+        logging.cpp cbs.cpp file_handler.cpp globals.cpp stat_trackers.cpp)
+    list(TRANSFORM SUNSHINE_KEPT PREPEND "${SUNSHINE_SRC}/src/")
+    add_executable(prospero_sunshine
+        ${SUNSHINE_KEPT}
+        "${MOONLIGHT_SRC}/src/RtspParser.c"
+        src/sunshine/main_ps5.cpp src/sunshine/video_ps5.cpp src/sunshine/process_ps5.cpp
+        src/sunshine/platform_ps5.cpp src/sunshine/stubs_ps5.cpp src/control/control_server.cpp)
+    # Sunshine includes its own headers as "src/..." and "..."; FFmpeg's internal headers include a
+    # "config.h" that must not resolve to Sunshine's, hence -idirafter for the Sunshine tree.
+    target_include_directories(prospero_sunshine PRIVATE src "${SUNSHINE_SRC}" "${CMAKE_BINARY_DIR}/third-party")
+    target_include_directories(prospero_sunshine SYSTEM PRIVATE "${PROSPERO_DEPS}/include" "${PROSPERO_DEPS}/include/nanors")
+    target_compile_options(prospero_sunshine PRIVATE "SHELL:-idirafter ${SUNSHINE_SRC}/src")
+    # Sunshine expects moonlight-common-c headers under <moonlight-common-c/src/...>.
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/third-party")
+    file(CREATE_LINK "${MOONLIGHT_SRC}" "${CMAKE_BINARY_DIR}/third-party/moonlight-common-c" SYMBOLIC)
+    target_compile_definitions(prospero_sunshine PRIVATE
+        PROJECT_NAME="ProsperoSunshine" PROJECT_VERSION="0.0.1" PROJECT_VERSION_MAJOR="0"
+        PROJECT_VERSION_MINOR="0" PROJECT_VERSION_PATCH="1" PROJECT_VERSION_COMMIT="dev"
+        PROJECT_FQDN="dev.prosperosunshine" SUNSHINE_ASSETS_DIR="/data/prosperosunshine/assets"
+        SUNSHINE_PUBLISHER_NAME="ProsperoSunshine" SUNSHINE_PUBLISHER_WEBSITE=""
+        SUNSHINE_PUBLISHER_ISSUE_URL="" SUNSHINE_TRAY=0 BOOST_ALL_NO_LIB)
+    target_link_libraries(prospero_sunshine PRIVATE prospero_core prospero_pad
+        "-Wl,--start-group" ${BOOST_LIBS} "${PROSPERO_DEPS}/lib/libdisplaydevice_common.a"
+        "${PROSPERO_DEPS}/lib/libavcodec.a" "${PROSPERO_DEPS}/lib/libswscale.a" "${PROSPERO_DEPS}/lib/libavutil.a"
+        dep::ssl dep::crypto dep::opus dep::enet dep::nanors "-Wl,--end-group" pthread)
+endif()
