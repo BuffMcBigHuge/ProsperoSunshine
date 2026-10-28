@@ -15,7 +15,7 @@ stream the PS5 screen.
   ENet (Moonlight fork) and nanors (Reed-Solomon FEC). Sources and hashes are pinned in `deps.lock`.
 - **Frame queue** with IDR resynchronisation and sanitizer-checked unit tests.
 
-The plan and the detailed working state are in `PLAN.md` and `STATUS.md` (German).
+The roadmap with work packages and acceptance criteria is in `ROADMAP.md`; goals and rules are in `PLAN.md`, the verified working state in `STATUS.md` (all German).
 
 ## Building
 

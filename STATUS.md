@@ -191,6 +191,8 @@ Upstream bietet bereits `video::packet_raw_generic` neben dem FFmpeg-Pakettyp in
 
 ## 4. Nächste Schritte in sinnvoller Reihenfolge
 
+Die ausführliche Roadmap mit Arbeitspaketen (P0.x bis P7.x), Risiko-Spikes (R1 bis R6) und Abnahmen steht in `ROADMAP.md`. Die folgende Liste ist der ursprüngliche Kurzplan.
+
 1. ~~Neue `out/capture.h264` mit ffprobe/FFmpeg vollständig prüfen~~ (erledigt, fehlerfrei). Offen: längeren Lauf und wiederholtes Open/Close testen; M1 ist mit einem einzelnen Zehn-Sekunden-Test noch nicht abgeschlossen.
 2. ~~`std::jthread` prüfen~~ und ~~OpenSSL, Opus, ENet, nanors bauen und live prüfen~~ (erledigt). Offen für M0: Boost (Asio, ggf. log/locale/filesystem/program_options) und Simple-Web-Server bauen oder ersetzen.
 3. ~~Upstream-Pins in eine Lockdatei~~ (`deps.lock`, Sunshine selbst noch ergänzen) und eine nachvollziehbare Architekturentscheidung überführen. Wiederverwendung von Pairing (`nvhttp.cpp`), RTSP und Streaming gegen die tatsächliche Abhängigkeitskette prüfen. Lizenztexte und Herkunft vor Übernahme erhalten.

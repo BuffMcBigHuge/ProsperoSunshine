@@ -1,6 +1,6 @@
 # ProsperoSunshine Umsetzungsplan
 
-Stand: 28. Oktober 2026. Dieses Dokument beschreibt die geplante Implementierung. Im Projektordner ist bislang kein Streaming-Host implementiert.
+Stand: 28. Oktober 2026. Dieses Dokument beschreibt Ziel, technischen Ansatz und verbindliche Regeln. Die konkreten Arbeitspakete, ihre Reihenfolge und Abnahmen stehen in `ROADMAP.md`. Im Projektordner ist bislang kein Streaming-Host implementiert.
 
 ## Ziel
 
