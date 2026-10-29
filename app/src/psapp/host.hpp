@@ -55,7 +55,7 @@ struct Snapshot
     Values config;            // the keys of option_specs()
     std::string config_error; // reading failed (a missing file is fine)
     bool autoload = false;           // local/prospero-sunshine is in autoload.txt
-    bool manager_autoload = false;   // AUTOLOAD_ENABLED=1 in pldmgr_config.txt
+    bool manager_autoload = false;   // AUTOLOAD_ENABLED=1 in pldmgr_config.txt (true when unreadable)
     bool manager_present = false;    // /data/pldmgr exists
     long long host_elf_size = -1;    // /data/prosperosunshine/prospero_sunshine.elf
     std::vector<std::string> paired; // named_devices in sunshine_state.json

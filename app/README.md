@@ -33,22 +33,33 @@ app.
 
 ## Using it
 
-The screen has two panels. Up and down move within a panel; L1 and R1, or left and right on a row
-where they change nothing, switch panels. Cross acts on the row.
+Everything works with the controller. L1 and R1 switch between the two pages in the tab bar; the
+D-pad moves the focus, which glides between the parts; Cross acts; Triangle reads the files again
+(for example after editing them over FTP). The bar above the button hints shows what is being done
+and how the last request went.
 
-| Row | What it does |
+**Home** shows the host:
+
+| Part | What it does |
 | --- | --- |
-| Status | Host stopped, running, or streaming (and which app). Polled every two seconds through the host's control socket. |
+| Hero | Host stopped, ready to stream, or streaming (which app, and which client when the host reports it), polled every two seconds through the host's control socket. The sun turns while the host runs and sends out rings while it streams. The chips under it: the port, LAN encryption, whether the host starts at boot, how many devices are paired. The console's IP address is in the top bar. |
 | Start host / Stop host | Start sends the host ELF to the ELF loader (`127.0.0.1:9021`) and waits until the host answers. Stop sends `QUIT` and waits until it is gone. |
 | Restart host | Stop, then start: the way new settings take effect. |
-| Start at boot | The switch for the Payload Manager's autoload (below). The line under it warns when the Payload Manager's own autoload is off. |
-| Pairing requests | One row per Moonlight client waiting to pair, with its name and address. Cross opens the PIN keyboard; type the four digits Moonlight shows and press Done (or Options). The app waits until Moonlight has finished pairing and says whether it worked. |
+| Start at boot | The switch for the Payload Manager's autoload (below). A line under it warns when the Payload Manager's own autoload is off (only when the app can read `pldmgr_config.txt`; on the test console a title may not). |
+| Pairing | A card per Moonlight client waiting to pair, with its name and address; a new request takes the focus and chimes. Cross opens the PIN keyboard: type the four digits Moonlight shows and press Done (or Options). The app waits until Moonlight has finished pairing and says whether it worked. Beside it, the paired devices (from `sunshine_state.json`). |
 
-**Settings** (right panel): left and right change a value, Square puts it back to the host's default
-(the key is then removed from the file), Cross edits the host name or types a number on the keyboard.
-A dot marks values that are not saved yet. **Save** writes the file; the host reads it only when it
-starts, so use **Save and restart** (or Restart host later) to apply it. Triangle reads the files
-again, for example after editing them over FTP.
+While a stream runs, Stop, Restart and Save and restart need a second Cross within four seconds: the
+player streaming the console may be the one pressing. Input is taken only after the app has been up
+for half a second and every button was let go once, so a press that started the app does not reach
+the focused Stop host.
+
+**Settings** shows one tile per option. Cross opens its editor in a sheet over the frosted page: a
+list for choices, a stepper for numbers (left and right one step, up and down ten, L1 and R1 a
+hundred; Square the default), the keyboard for the host name (empty: the default). Square on a tile
+puts it back to the host's default (the key is then removed from the file). A tile says DEFAULT or
+UNSAVED; the bar under the tiles explains the focused one. **Save** writes the file; the host reads
+it only when it starts, so use **Save and restart host** (or Restart host later) to apply it.
+**Revert changes** goes back to what the file holds.
 
 | Setting | `sunshine.conf` key | Values | Without the key |
 | --- | --- | --- | --- |
@@ -140,7 +151,8 @@ docker run --rm -v "${PWD}:/repo" prosperosunshine-app:1 bash app/tests/run.sh
 | File | What it is |
 | --- | --- |
 | `src/main.cpp` | The frame loop: display, fonts, pad, sound, the screen. Ends itself when `/data/prosperosunshine/app.quit` appears (for unattended tests). |
-| `src/psapp/screen.*` | The screen, its rows, the keyboard overlay. |
+| `src/psapp/screen.*` | The two pages, the sheets, the motion. Drawn in three layers: the light behind the page, the page (frosted cards over the first layer), the sheet (over the frosted page). |
+| `src/psapp/icons.*` | Line icons and the sun, from the kit's shapes. |
 | `src/psapp/host.*` | The worker thread: polls the control socket, starts and stops the host, saves the settings, switches autoload. The screen reads a snapshot of its state every frame and never waits. |
 | `src/psapp/conf.*` | `sunshine.conf`: the offered options, their checks, line-preserving edits. |
 | `src/psapp/autoload.*` | The Payload Manager's `autoload.txt` and slot. |

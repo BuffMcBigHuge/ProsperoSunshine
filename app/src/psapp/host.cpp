@@ -5,6 +5,7 @@
 #include "app/psapp/io.hpp"
 #include "platform/ps5/system.hpp"
 
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <ctime>
@@ -299,12 +300,16 @@ void Host::read_files()
     std::string list, manager;
     const bool have_list = io::read_text(autoload::kListPath, &list);
     const bool have_manager = io::read_text(autoload::kConfigPath, &manager);
+    if (!have_manager && io::exists(autoload::kConfigPath))
+        hui::sys::log("[PSAPP] cannot read %s (errno %d)", autoload::kConfigPath, errno);
     std::lock_guard<std::mutex> lock(mutex_);
     state_.files_read = true;
     state_.config = values;
     state_.config_error = error;
     state_.autoload = have_list && autoload::contains(list, autoload::kSlotKey);
-    state_.manager_autoload = have_manager && autoload::manager_autoload_enabled(manager);
+    // The manager may keep its config unreadable for a title; then nothing is known and no warning
+    // is shown.
+    state_.manager_autoload = !have_manager || autoload::manager_autoload_enabled(manager);
     state_.manager_present = io::exists("/data/pldmgr");
     state_.host_elf_size = io::file_size(kHostElf);
     state_.paired = paired;

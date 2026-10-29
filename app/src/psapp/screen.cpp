@@ -67,6 +67,7 @@ Screen::Screen(Host &host, const hui::ui::Fonts &fonts) : host_(host), fonts_(fo
     keyboard_.style.theme.primary = kAccent;
     keyboard_.style.theme.on_primary = Color::rgb(0x2a1604);
     keyboard_.style.panel = false;
+    keyboard_.style.surfaces = false; // flat caps: frosted keys pick up the sun behind the sheet
     keyboard_.style.bindings = hui::ui::KeyboardBindings::standard();
 }
 
@@ -129,7 +130,7 @@ Rect Screen::tile_rect(int index) const
 
 Rect Screen::settings_action_rect(int index) const
 {
-    static const float widths[3] = {250.0f, 400.0f, 300.0f};
+    static const float widths[3] = {250.0f, 400.0f, 340.0f};
     float x = 96.0f;
     for (int i = 0; i < index; ++i)
         x += widths[i] + 20.0f;
