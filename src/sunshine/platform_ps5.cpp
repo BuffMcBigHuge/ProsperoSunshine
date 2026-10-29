@@ -372,8 +372,10 @@ int rebind_gamepad(input_t &, const gamepad_id_t &, feedback_queue_t) { return 0
 void free_gamepad(input_t &input, int nr) {
     if (nr < 0 || nr >= MAX_GAMEPADS) return;
     std::lock_guard lock(input->mutex);
-    ps_pad_close(input->pads[nr]);  // sends a neutral state before removal
+    if (!input->pads[nr]) return;
+    const int rc = ps_pad_close(input->pads[nr]);  // sends a neutral state before removal
     input->pads[nr] = nullptr;
+    BOOST_LOG(info) << "PS5 virtual pad "sv << nr << " detached ("sv << rc << ')';
 }
 
 void gamepad_update(input_t &input, int nr, const gamepad_state_t &state) {
