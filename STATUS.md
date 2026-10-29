@@ -52,6 +52,23 @@ Echte Moonlight-Clients (Moonlight Web, Moonlight PC, Moonlight auf dem iPhone i
 
 ## Offen und bekannte Grenzen
 
+### Übergabe 29. Oktober 2026, nachts (alles lokal in `main`, nichts gepusht)
+
+Neu in `main` seit dem letzten Stand: App unter `app/` (Media-Tab, ohne `amm`), STATUS mit `address=`/`client=`, HEVC-Fehler am iPhone behoben, Steuer-Socket nur lokal (`control_lan` öffnet ihn), mDNS-Responder, ResourceArbitrator per NID statt fester Adressen, englische README, Lizenztabelle und `docs/THIRD_PARTY.md`, `docs/firmware-porting.md`, CLAUDE.md.
+
+Was noch fehlt oder zu prüfen ist:
+
+1. **Neuen Host live prüfen:** Der Stand aus `main` (mDNS und NID-Auflösung im Host, Log „virtual pad … detached“) ist gebaut und getestet, lief aber noch nicht als Host auf der Konsole. Auf der Konsole läuft bis zum Ausschalten `7d15ea5`. Nächster Start: ELF senden, `tools/mdns_query.py`, ein Stream mit `run_smoke.sh`, Klog nach `ra ... (nid)` durchsehen.
+2. **App mit neuem Host:** Die App bringt eine eigene Kopie des Host-ELF mit und kopiert sie beim Start nach `/data/prosperosunshine/`, wenn sie abweicht. Vor dem Release die eingebettete Kopie auf den aktuellen Host bringen, sonst spielt die App einen älteren Host auf.
+3. **Lizenzen (Release-Blocker):** Die Lizenztexte der statisch gelinkten SDK-Laufzeit (FreeBSD-libc, libc++/libc++abi/libunwind) werden nicht mitgeliefert; was ins Release-Archiv muss, steht in `docs/THIRD_PARTY.md`. Die Lizenz des SDK selbst ist noch zu bestätigen.
+4. **Pad nach Streamende (P9.8):** Die App bekam nach einem Handy-Stream ohne Host-Neustart keine Eingaben vom RemoteEye-Test-Pad. Ursache offen (Pad nicht freigegeben oder Konflikt mit RemoteEye); das neue Log zeigt es beim nächsten Test.
+5. **„PS5 Screen“ bleibt nach Client-Abbruch „running“:** Ein neuer Client muss dann „Resume“ statt „Start“ nehmen; `run_smoke.sh`/`av_sync.py` scheitern mit „An app is already running“, bis `/cancel` kommt. Erwägen: App nach einigen Minuten ohne Client beenden.
+6. **Auflösung/Bildrate (P9.3):** Der Host liefert immer 1080p60, auch wenn das Handy 720p30 will. Spike mit Avcap2 offen.
+7. **av_sync-Auffälligkeit (P9.4):** Klickton nicht erkannt und Bildreaktion 265 ms im 10-Minuten-Lauf; die Drift ist trotzdem sauber gemessen.
+8. **Eigene Werkzeuge vom PC:** `PIN`/`QUIT` über den Steuer-Socket gehen vom PC aus nur noch mit der leeren Datei `/data/prosperosunshine/control_lan` (danach Host neu starten).
+9. **Zeilenenden:** In neuen Worktrees checkt Git `deps.lock` und `patches/` mit CRLF aus, das bricht `deps.sh`. Eine `.gitattributes` mit `eol=lf` für diese Dateien würde das beheben.
+10. **Weiter offen wie bisher:** Ruhemodus (nur mit Rückfrage testen), Android/TV-Clients, andere Firmwares (Checkliste in `docs/firmware-porting.md`), MAC-Adresse 0 (kein Wake-on-LAN), CI noch nie auf GitHub gelaufen, Store-Release (P8.8/P8.9).
+
 - **MAC-Adresse** in `/serverinfo` ist 0: weder `getifaddrs` noch `sceNetGetMacAddress` liefern sie im Payload. Betrifft nur Wake-on-LAN.
 - **Boost.Filesystem `create_directories`** scheitert bei neuen verschachtelten Pfaden, wenn `errno` vorher belegt ist (ein Libc-Aufruf setzt kein `errno`). Der Host nutzt nur `std::filesystem` und ist nicht betroffen.
 - **Zweite RTSP-Verbindung** wird ohne erklärende Fehlermeldung geschlossen (Upstream-Verhalten).
