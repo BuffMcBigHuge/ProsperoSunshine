@@ -3,6 +3,7 @@
 #include "src/logging.h"
 #include "src/nvhttp.h"
 #include "src/process.h"
+#include "src/rtsp.h"
 #include <cerrno>
 #include <netinet/in.h>
 #include <poll.h>
@@ -21,8 +22,11 @@ std::string ControlServer::handle(const std::string &line) {
     in >> command;
     if (command == "STATUS") {
         const auto pending = nvhttp::get_pending_pairings().size();
-        return "OK running="s + (proc::proc.running() > 0 ? "1" : "0") + " app=" + proc::proc.get_last_run_app_name() +
-               " pending=" + std::to_string(pending);
+        std::string answer = "OK running="s + (proc::proc.running() > 0 ? "1" : "0") +
+                             " app=" + proc::proc.get_last_run_app_name() + " pending=" + std::to_string(pending);
+        // The client of the live stream; the name comes last because it may contain spaces.
+        const auto client = rtsp_stream::session_count() > 0 ? nvhttp::get_last_launch_client() : nvhttp::launch_client_t{};
+        return answer + " address=" + client.address + " client=" + client.name;
     }
     if (command == "PAIRINGS") {
         std::string out;

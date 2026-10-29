@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Development control socket (ROADMAP P2.3). One line per request, one line per answer:
-//   STATUS                      -> "OK running=<0|1> app=<name> pending=<n>"
+//   STATUS                      -> "OK running=<0|1> app=<name> pending=<n> address=<ip> client=<name>"
+//                                  (address and client empty while no stream runs; client is the rest
+//                                  of the line and may contain spaces)
 //   PAIRINGS                    -> "OK <id> <client name>" per pending request, then "END"
 //   PIN <pin> [name]            -> approves the only pending request ("OK paired" / "ERR ...")
 //   PIN <id> <pin> [name]       -> approves the given request

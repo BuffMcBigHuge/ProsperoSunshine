@@ -1,0 +1,68 @@
+ProsperoSunshine: remember the client of the last launch or resume
+
+The PS5 control socket reports which client is streaming (STATUS address=/client=).
+
+--- a/src/nvhttp.h
++++ b/src/nvhttp.h
+@@ -248,6 +248,21 @@
+   std::vector<pending_pairing_t> get_pending_pairings();
+ 
+   /**
++   * @brief Client behind the most recent launch or resume request.
++   */
++  struct launch_client_t {
++    std::string name;  ///< Friendly name from pairing.
++    std::string address;  ///< Address the request came from.
++  };
++
++  /**
++   * @brief Name and address of the client that last launched or resumed a stream.
++   *
++   * @return Empty strings until the first launch.
++   */
++  launch_client_t get_last_launch_client();
++
++  /**
+    * @brief Cancel a pairing request that is waiting for operator approval.
+    *
+    * @param pairing_id Unguessable approval identifier returned by @ref get_pending_pairings.
+--- a/src/nvhttp.cpp
++++ b/src/nvhttp.cpp
+@@ -694,6 +694,21 @@
+     return result;
+   }
+ 
++  namespace {
++    std::mutex launch_client_mutex;
++    launch_client_t last_launch_client;
++
++    void remember_launch_client(const std::string &name, const std::string &address) {
++      std::scoped_lock lock {launch_client_mutex};
++      last_launch_client = {name, address};
++    }
++  }  // namespace
++
++  launch_client_t get_last_launch_client() {
++    std::scoped_lock lock {launch_client_mutex};
++    return last_launch_client;
++  }
++
+   bool cancel_pairing(const std::string_view pairing_id) {
+     if (!is_valid_pairing_id(pairing_id)) {
+       return false;
+@@ -1413,6 +1428,7 @@
+ 
+     host_audio = util::from_view(get_arg(args, "localAudioPlayMode"));
+     auto launch_session = make_launch_session(host_audio, args);
++    remember_launch_client(launch_session->client_name, net::addr_to_normalized_string(request->remote_endpoint().address()));
+ 
+     if (rtsp_stream::session_count() == 0) {
+       // The display should be restored in case something fails as there are no other sessions.
+@@ -1528,6 +1544,7 @@
+       host_audio = util::from_view(get_arg(args, "localAudioPlayMode"));
+     }
+     const auto launch_session = make_launch_session(host_audio, args);
++    remember_launch_client(launch_session->client_name, net::addr_to_normalized_string(request->remote_endpoint().address()));
+ 
+     if (no_active_sessions) {
+       // We want to prepare display only if there are no active sessions at
