@@ -51,6 +51,11 @@ target_include_directories(prospero_core PUBLIC src)
 target_link_libraries(prospero_core PUBLIC prospero_capture)
 target_compile_options(prospero_core PRIVATE ${PROSPERO_WARNINGS})
 
+# mDNS responder (P9.2): portable packet code plus the socket loop.
+add_library(prospero_mdns STATIC src/net/mdns.cpp src/platform/ps5/mdns_responder.cpp)
+target_include_directories(prospero_mdns PUBLIC src)
+target_compile_options(prospero_mdns PRIVATE ${PROSPERO_WARNINGS})
+
 # Probes: each is a standalone payload that logs its result to klog.
 function(prospero_probe name)
     add_executable(${name} src/${name}.cpp)
@@ -62,6 +67,7 @@ prospero_probe(jthread_probe)
 prospero_probe(capture_probe prospero_core)
 prospero_probe(capture_soak prospero_core)
 prospero_probe(pad_probe prospero_pad)
+prospero_probe(mdns_probe prospero_mdns)
 prospero_probe(avcap_spike prospero_capture)
 prospero_probe(audio_spike prospero_capture prospero_pad)
 prospero_probe(bitrate_spike prospero_capture)
@@ -126,7 +132,7 @@ if(EXISTS "${PROSPERO_DEPS}/include/boost" AND EXISTS "${PROSPERO_DEPS}/lib/liba
         PROJECT_FQDN="dev.prosperosunshine" SUNSHINE_ASSETS_DIR="/data/prosperosunshine/assets"
         SUNSHINE_PUBLISHER_NAME="ProsperoSunshine" SUNSHINE_PUBLISHER_WEBSITE=""
         SUNSHINE_PUBLISHER_ISSUE_URL="" SUNSHINE_TRAY=0 BOOST_ALL_NO_LIB)
-    target_link_libraries(prospero_sunshine PRIVATE prospero_core prospero_pad
+    target_link_libraries(prospero_sunshine PRIVATE prospero_core prospero_pad prospero_mdns
         "-Wl,--start-group" ${BOOST_LIBS} "${PROSPERO_DEPS}/lib/libdisplaydevice_common.a"
         "${PROSPERO_DEPS}/lib/libavcodec.a" "${PROSPERO_DEPS}/lib/libswscale.a" "${PROSPERO_DEPS}/lib/libavutil.a"
         dep::ssl dep::crypto dep::opus dep::enet dep::nanors "-Wl,--end-group" pthread)
