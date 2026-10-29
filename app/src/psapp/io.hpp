@@ -37,6 +37,9 @@ Exchange exchange(std::uint16_t port, const std::string &request, bool (*last_li
                   int timeout_ms);
 // True when something accepts a connection on 127.0.0.1:port.
 bool port_open(std::uint16_t port, int timeout_ms = 500);
+// The address of the interface that routes to the LAN (a UDP socket "connected" to a private
+// address, which sends nothing), as dotted IPv4; empty when there is none.
+std::string local_ipv4();
 // Sends a file's bytes to 127.0.0.1:port and closes (the ELF loader's protocol). Error text or empty.
 std::string send_file(std::uint16_t port, const std::string &path);
 

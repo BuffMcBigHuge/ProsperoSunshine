@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "app/psapp/screen.hpp"
 
+#include "app/psapp/icons.hpp"
 #include "ui/glyphs.hpp"
 
 #include <algorithm>
@@ -10,31 +11,41 @@
 namespace psapp
 {
 
-using hui::Action;
 using hui::Direction;
 using hui::gfx::Align;
 using hui::gfx::Color;
 using hui::gfx::Rect;
+using icons::Icon;
+using InputAction = hui::Action;
 
 namespace
 {
 
-// A dark night sky with a warm sun: the palette of the whole screen.
-const Color kInk = Color::rgb(0xf4f1ea);
-const Color kMuted = Color::rgb(0xa9b0c7);
-const Color kFaint = Color::rgb(0x6c7391);
-const Color kPanel = Color::rgb(0x121a33, 0.82f);
-const Color kRow = Color::rgb(0x1b2546, 0.9f);
-const Color kSun = Color::rgb(0xf5a524);
-const Color kGood = Color::rgb(0x3ecf8e);
+// Night blue with one strong colour: the sun's amber.
+const Color kInk = Color::rgb(0xf6f3ee);
+const Color kMuted = Color::rgb(0xaab1c8);
+const Color kFaint = Color::rgb(0x6f7694);
+const Color kAccent = Color::rgb(0xffa62b);
+const Color kAccentDeep = Color::rgb(0xff6a1a);
+const Color kGood = Color::rgb(0x45d39a);
 const Color kBad = Color::rgb(0xff6b6b);
-const Color kIdle = Color::rgb(0x8a91a8);
+const Color kClear = Color::rgb(0x000000, 0.0f);
 
-constexpr float kRowHeight = 72.0f;
-constexpr float kRowGap = 8.0f;
 constexpr float kMessageSeconds = 7.0f;
-constexpr std::size_t kMaxPairingRows = 3;
 constexpr float kArmSeconds = 4.0f;
+
+const Icon kOptionIcons[] = {Icon::tag, Icon::log, Icon::timer, Icon::lock, Icon::globe, Icon::plug};
+
+float approach(float value, float target, float dt, float speed)
+{
+    return value + (target - value) * (1.0f - std::exp(-speed * dt));
+}
+
+float ease_out(float t)
+{
+    t = std::clamp(t, 0.0f, 1.0f);
+    return 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
+}
 
 std::string shorten(const hui::ui::FontRef &font, const std::string &text, float size, float width)
 {
@@ -47,25 +58,31 @@ std::string shorten(const hui::ui::FontRef &font, const std::string &text, float
 
 Screen::Screen(Host &host, const hui::ui::Fonts &fonts) : host_(host), fonts_(fonts)
 {
-    style_.theme.focus = kSun.with_alpha(0.35f);
-    style_.theme.primary = kSun;
+    style_.theme.focus = kAccent.with_alpha(0.3f);
+    style_.theme.primary = kAccent;
     keyboard_.style.theme = style_.theme;
-    keyboard_.style.theme.primary = kSun;
-    keyboard_.style.theme.on_primary = Color::rgb(0x1a1205);
+    keyboard_.style.theme.surface = Color::rgb(0x1a2244, 0.9f);
+    keyboard_.style.theme.surface_high = Color::rgb(0x232d55);
+    keyboard_.style.theme.text = kInk;
+    keyboard_.style.theme.primary = kAccent;
+    keyboard_.style.theme.on_primary = Color::rgb(0x2a1604);
+    keyboard_.style.panel = false;
     keyboard_.style.bindings = hui::ui::KeyboardBindings::standard();
 }
+
+// ---- state helpers ----------------------------------------------------------------------------
 
 bool Screen::dirty() const
 {
     return edits_loaded_ && edits_ != snap_.config;
 }
 
-std::string Screen::option_text(int index) const
+std::string Screen::value_text(int index) const
 {
     const OptionSpec &spec = option_specs()[static_cast<std::size_t>(index)];
     const auto it = edits_.find(spec.key);
     if (it == edits_.end() || !it->second)
-        return std::string("Default (") + spec.default_label + ")";
+        return spec.default_label;
     const std::string &value = *it->second;
     if (spec.kind == OptionKind::choice)
     {
@@ -75,70 +92,72 @@ std::string Screen::option_text(int index) const
                 return choice.label;
         }
     }
+    if (spec.kind == OptionKind::number && std::string(spec.key) == "ping_timeout")
+        return value + " ms";
     return value;
 }
 
-// ---- layout -----------------------------------------------------------------------------------
-
-void Screen::layout()
+int Screen::visible_pairings() const
 {
-    left_panel_ = {96.0f, 172.0f, 760.0f, 728.0f};
-    right_panel_ = {904.0f, 172.0f, 920.0f, 728.0f};
-    left_.clear();
-    right_.clear();
-
-    const float lx = left_panel_.x + 24.0f;
-    const float lw = left_panel_.w - 48.0f;
-    float y = left_panel_.y + 64.0f + 150.0f; // title, then the status block
-    for (RowKind kind : {RowKind::start_stop, RowKind::restart, RowKind::autoload})
-    {
-        left_.push_back({kind, 0, {lx, y, lw, kRowHeight}});
-        y += kRowHeight + kRowGap;
-    }
-    pairing_header_y_ = y + 34.0f;
-    y += 52.0f;
-    const std::size_t shown = std::min(snap_.pairings.size(), kMaxPairingRows);
-    hidden_pairings_ = snap_.pairings.size() - shown;
-    for (std::size_t i = 0; i < shown; ++i)
-    {
-        left_.push_back({RowKind::pairing, static_cast<int>(i), {lx, y, lw, kRowHeight}});
-        y += kRowHeight + kRowGap;
-    }
-
-    const float rx = right_panel_.x + 24.0f;
-    const float rw = right_panel_.w - 48.0f;
-    y = right_panel_.y + 64.0f;
-    for (std::size_t i = 0; i < option_specs().size(); ++i)
-    {
-        right_.push_back({RowKind::option, static_cast<int>(i), {rx, y, rw, kRowHeight}});
-        y += kRowHeight + kRowGap;
-    }
-    y += 8.0f;
-    const float half = (rw - 16.0f) / 2.0f;
-    right_.push_back({RowKind::save, 0, {rx, y, half, kRowHeight}});
-    right_.push_back({RowKind::save_restart, 0, {rx + half + 16.0f, y, half, kRowHeight}});
-
-    for (int c = 0; c < 2; ++c)
-    {
-        const int count = static_cast<int>(c == 0 ? left_.size() : right_.size());
-        focus_[c] = std::clamp(focus_[c], 0, count - 1);
-    }
+    return static_cast<int>(std::min<std::size_t>(snap_.pairings.size(), 2));
 }
 
-// ---- input ------------------------------------------------------------------------------------
+float Screen::appear(int order) const
+{
+    return ease_out((page_age_ - 0.045f * static_cast<float>(order)) / 0.42f);
+}
+
+Rect Screen::action_rect(int index) const
+{
+    static const float widths[3] = {318.0f, 318.0f, 400.0f};
+    float x = 96.0f;
+    for (int i = 0; i < index; ++i)
+        x += widths[i] + 20.0f;
+    return {x, 532.0f, widths[index], 88.0f};
+}
+
+Rect Screen::pairing_rect(int index) const
+{
+    return {96.0f + static_cast<float>(index) * 562.0f, 740.0f, 538.0f, 196.0f};
+}
+
+Rect Screen::tile_rect(int index) const
+{
+    const int col = index % 3, row = index / 3;
+    return {96.0f + static_cast<float>(col) * 584.0f, 296.0f + static_cast<float>(row) * 204.0f, 560.0f, 180.0f};
+}
+
+Rect Screen::settings_action_rect(int index) const
+{
+    static const float widths[3] = {250.0f, 400.0f, 300.0f};
+    float x = 96.0f;
+    for (int i = 0; i < index; ++i)
+        x += widths[i] + 20.0f;
+    return {x, 728.0f, widths[index], 84.0f};
+}
+
+Rect Screen::focus_rect() const
+{
+    if (page_ == Page::home)
+        return home_row_ == 0 ? action_rect(home_action_) : pairing_rect(home_card_);
+    return tile_ < 6 ? tile_rect(tile_) : settings_action_rect(tile_ - 6);
+}
+
+// ---- update and input -------------------------------------------------------------------------
 
 void Screen::update(const hui::InputFrame &input, float dt, hui::ui::Feedback &feedback)
 {
     time_ += dt;
     message_age_ += dt;
     armed_age_ += dt;
+    page_age_ += dt;
     snap_ = host_.snapshot();
     if (snap_.message_serial != seen_message_)
     {
         seen_message_ = snap_.message_serial;
         message_age_ = 0.0f;
         feedback.play(snap_.message_ok ? hui::audio::Cue::complete : hui::audio::Cue::error);
-        // After a save or a reload the screen shows the files again; other outcomes keep unsaved edits.
+        // After a save or a reload the page shows the files again; other outcomes keep unsaved edits.
         if (reload_edits_)
             edits_loaded_ = false;
         reload_edits_ = false;
@@ -148,111 +167,140 @@ void Screen::update(const hui::InputFrame &input, float dt, hui::ui::Feedback &f
         edits_ = snap_.config;
         edits_loaded_ = true;
     }
-    layout();
+    // A new pairing request: a chime, and on the home page the focus goes to its card.
+    if (snap_.pairings.size() > seen_pairings_)
+    {
+        feedback.play(hui::audio::Cue::notify);
+        if (page_ == Page::home && sheet_ == Sheet::none)
+        {
+            home_row_ = 1;
+            home_card_ = 0;
+        }
+    }
+    seen_pairings_ = snap_.pairings.size();
+    if (visible_pairings() == 0)
+        home_row_ = 0;
+    home_card_ = std::clamp(home_card_, 0, std::max(0, visible_pairings() - 1));
 
-    if (overlay_ != Overlay::none)
-        handle_overlay(input, feedback);
-    else
-        handle_main(input, feedback);
+    // Input counts only once the app has been up for a moment and every button was let go once: a
+    // press that started the app (or a held button) must not act on the focused Stop host.
+    if (!input_ready_ && time_ > 0.5f && input.held == 0)
+        input_ready_ = true;
+    if (input_ready_)
+    {
+        if (sheet_ != Sheet::none)
+            handle_sheet(input, feedback);
+        else if (input.is_pressed(InputAction::page_prev) || input.is_pressed(InputAction::page_next))
+            switch_page(input.is_pressed(InputAction::page_prev) ? Page::home : Page::settings, feedback);
+        else if (page_ == Page::home)
+            handle_home(input, feedback);
+        else
+            handle_settings(input, feedback);
+    }
 
-    const std::vector<Row> &rows = column_ == 0 ? left_ : right_;
-    const Rect target = rows[static_cast<std::size_t>(focus_[column_])].rect;
-    if (!highlight_placed_)
+    // Motion.
+    const Rect target = focus_rect();
+    if (snap_highlight_)
     {
         highlight_.snap(target);
-        highlight_placed_ = true;
+        snap_highlight_ = false;
     }
     highlight_.target(target);
     highlight_.update(dt, style_);
+    for (int i = 0; i < 3; ++i)
+        action_amount_[i] = approach(action_amount_[i], page_ == Page::home && home_row_ == 0 && home_action_ == i ? 1.0f : 0.0f, dt, 14.0f);
+    for (int i = 0; i < 2; ++i)
+        card_amount_[i] = approach(card_amount_[i], page_ == Page::home && home_row_ == 1 && home_card_ == i ? 1.0f : 0.0f, dt, 14.0f);
+    for (int i = 0; i < 9; ++i)
+        tile_amount_[i] = approach(tile_amount_[i], page_ == Page::settings && tile_ == i ? 1.0f : 0.0f, dt, 14.0f);
+    const float tab_target = page_ == Page::home ? 0.0f : 1.0f;
+    tab_x_ = tab_x_ < 0.0f ? tab_target : approach(tab_x_, tab_target, dt, 16.0f);
+    sheet_amount_ = approach(sheet_amount_, sheet_ == Sheet::none ? 0.0f : 1.0f, dt, 16.0f);
+    if (sheet_ == Sheet::none && sheet_amount_ < 0.01f)
+        sheet_drawn_ = Sheet::none;
+
+    const bool running = snap_.polled && snap_.running;
+    const float spin_speed = snap_.streaming ? 0.55f : running ? 0.12f : 0.0f;
+    sun_spin_ += spin_speed * dt;
+    sun_glow_ = approach(sun_glow_, snap_.streaming ? 1.0f : running ? 0.7f : 0.15f, dt, 3.0f);
+    sun_dim_ = approach(sun_dim_, running ? 0.0f : 0.85f, dt, 3.0f);
+    if (snap_.streaming)
+        pulse_ += dt;
     keyboard_.update(dt);
+    if (sheet_ == Sheet::choice)
+    {
+        sheet_highlight_.update(dt, style_);
+    }
 }
 
-void Screen::handle_main(const hui::InputFrame &input, hui::ui::Feedback &feedback)
+void Screen::switch_page(Page page, hui::ui::Feedback &feedback)
 {
-    std::vector<Row> &rows = column_ == 0 ? left_ : right_;
-    Row &row = rows[static_cast<std::size_t>(focus_[column_])];
-    const bool value_row = row.kind == RowKind::option &&
-                           option_specs()[static_cast<std::size_t>(row.index)].kind != OptionKind::text;
+    if (page == page_)
+    {
+        feedback.play(hui::audio::Cue::error, 1.0f, 0.0f, 0.4f);
+        return;
+    }
+    page_direction_ = page == Page::settings ? 1 : -1;
+    page_ = page;
+    page_age_ = 0.0f;
+    snap_highlight_ = true;
+    armed_ = -1;
+    feedback.play(hui::audio::Cue::tab);
+}
 
-    auto switch_column = [&](int to) {
-        if (to == column_)
-            return;
-        // Land on the row nearest in height.
-        const float y = row.rect.cy();
-        const std::vector<Row> &other = to == 0 ? left_ : right_;
-        int best = 0;
-        for (std::size_t i = 0; i < other.size(); ++i)
-        {
-            if (std::fabs(other[i].rect.cy() - y) < std::fabs(other[static_cast<std::size_t>(best)].rect.cy() - y))
-                best = static_cast<int>(i);
-        }
-        column_ = to;
-        focus_[to] = best;
-        feedback.play(hui::audio::Cue::tab);
-    };
-
-    if (input.is_pressed(Action::page_prev))
-        switch_column(0);
-    else if (input.is_pressed(Action::page_next))
-        switch_column(1);
-
+void Screen::handle_home(const hui::InputFrame &input, hui::ui::Feedback &feedback)
+{
+    const int cards = visible_pairings();
     switch (input.nav)
     {
     case Direction::up:
     case Direction::down: {
-        const int step = input.nav == Direction::up ? -1 : 1;
-        int next = focus_[column_] + step;
-        // Save and "Save and restart" sit side by side: up from either goes to the last option.
-        if (column_ == 1 && step < 0 && row.kind == RowKind::save_restart)
-            next = focus_[column_] - 2;
-        if (column_ == 1 && step > 0 && row.kind == RowKind::save)
-            next = -1;
-        if (next < 0 || next >= static_cast<int>(rows.size()))
+        const int row = input.nav == Direction::up ? 0 : 1;
+        if (row == home_row_ || (row == 1 && cards == 0))
         {
             if (!input.nav_repeat)
                 feedback.play(hui::audio::Cue::error, 1.0f, 0.0f, 0.4f);
             break;
         }
-        focus_[column_] = next;
+        home_row_ = row;
         feedback.play(hui::audio::Cue::focus);
         break;
     }
     case Direction::left:
     case Direction::right: {
-        const int direction = input.nav == Direction::left ? -1 : 1;
-        if (value_row)
-            step_option(row.index, direction, feedback);
-        else if (column_ == 1 && row.kind == RowKind::save && direction > 0)
+        const int step = input.nav == Direction::left ? -1 : 1;
+        int &index = home_row_ == 0 ? home_action_ : home_card_;
+        const int count = home_row_ == 0 ? 3 : cards;
+        if (index + step < 0 || index + step >= count)
         {
-            ++focus_[1];
-            feedback.play(hui::audio::Cue::focus);
+            if (!input.nav_repeat)
+                feedback.play(hui::audio::Cue::error, 1.0f, 0.0f, 0.4f);
+            break;
         }
-        else if (column_ == 1 && row.kind == RowKind::save_restart && direction < 0)
-        {
-            --focus_[1];
-            feedback.play(hui::audio::Cue::focus);
-        }
-        else
-            switch_column(direction < 0 ? 0 : 1);
+        index += step;
+        feedback.play(hui::audio::Cue::focus);
         break;
     }
     default:
         break;
     }
-
-    Row &current = (column_ == 0 ? left_ : right_)[static_cast<std::size_t>(focus_[column_])];
-    if (input.is_pressed(Action::confirm))
-        activate(current, feedback);
-    if (input.is_pressed(Action::west) && current.kind == RowKind::option)
+    if (input.is_pressed(InputAction::confirm))
     {
-        const OptionSpec &spec = option_specs()[static_cast<std::size_t>(current.index)];
-        if (edits_[spec.key])
+        if (home_row_ == 0)
         {
-            edits_[spec.key] = std::nullopt;
-            feedback.play(hui::audio::Cue::toggle);
+            run(static_cast<Action>(home_action_), feedback);
+        }
+        else if (home_card_ < cards)
+        {
+            const Pairing &p = snap_.pairings[static_cast<std::size_t>(home_card_)];
+            target_ = p.id;
+            target_name_ = p.name;
+            open_sheet(Sheet::pin, "Pair " + (p.name.empty() ? std::string("Moonlight") : p.name),
+                       "Type the four digits Moonlight shows.", "");
+            feedback.play(hui::audio::Cue::modal_open);
         }
     }
-    if (input.is_pressed(Action::north))
+    if (input.is_pressed(InputAction::north))
     {
         host_.refresh();
         reload_edits_ = true;
@@ -260,490 +308,952 @@ void Screen::handle_main(const hui::InputFrame &input, hui::ui::Feedback &feedba
     }
 }
 
-void Screen::step_option(int index, int direction, hui::ui::Feedback &feedback)
+void Screen::handle_settings(const hui::InputFrame &input, hui::ui::Feedback &feedback)
 {
-    const OptionSpec &spec = option_specs()[static_cast<std::size_t>(index)];
-    std::optional<std::string> &value = edits_[spec.key];
-    if (spec.kind == OptionKind::choice)
+    switch (input.nav)
     {
-        // Default, then each choice in order.
-        int position = 0;
-        for (std::size_t i = 0; value && i < spec.choices.size(); ++i)
+    case Direction::up:
+    case Direction::down:
+    case Direction::left:
+    case Direction::right: {
+        int next = tile_;
+        if (tile_ < 6)
         {
-            if (*value == spec.choices[i].value)
-                position = static_cast<int>(i) + 1;
+            const int col = tile_ % 3, row = tile_ / 3;
+            if (input.nav == Direction::left)
+                next = col > 0 ? tile_ - 1 : -1;
+            else if (input.nav == Direction::right)
+                next = col < 2 ? tile_ + 1 : -1;
+            else if (input.nav == Direction::up)
+                next = row > 0 ? tile_ - 3 : -1;
+            else
+                next = row < 1 ? tile_ + 3 : 6 + col;
         }
-        const int count = static_cast<int>(spec.choices.size()) + 1;
-        position = (position + direction + count) % count;
-        value = position == 0 ? std::nullopt
-                              : std::optional<std::string>(spec.choices[static_cast<std::size_t>(position - 1)].value);
-        feedback.play(hui::audio::Cue::slider);
-        return;
+        else
+        {
+            const int index = tile_ - 6;
+            if (input.nav == Direction::left)
+                next = index > 0 ? tile_ - 1 : -1;
+            else if (input.nav == Direction::right)
+                next = index < 2 ? tile_ + 1 : -1;
+            else if (input.nav == Direction::up)
+                next = 3 + index;
+            else
+                next = -1;
+        }
+        if (next < 0)
+        {
+            if (!input.nav_repeat)
+                feedback.play(hui::audio::Cue::error, 1.0f, 0.0f, 0.4f);
+            break;
+        }
+        tile_ = next;
+        feedback.play(hui::audio::Cue::focus);
+        break;
     }
-    long number = spec.fallback;
-    if (value)
-        number = std::strtol(value->c_str(), nullptr, 10);
-    else
-        direction = 0; // the first step shows the default as a number
-    number = std::clamp(number + direction * spec.step, spec.min, spec.max);
-    value = std::to_string(number);
-    feedback.play(hui::audio::Cue::slider);
+    default:
+        break;
+    }
+    if (input.is_pressed(InputAction::confirm))
+    {
+        if (tile_ < 6)
+        {
+            open_tile(tile_);
+            feedback.play(hui::audio::Cue::modal_open);
+        }
+        else
+        {
+            run(static_cast<Action>(static_cast<int>(Action::save) + tile_ - 6), feedback);
+        }
+    }
+    if (input.is_pressed(InputAction::west) && tile_ < 6)
+    {
+        const OptionSpec &spec = option_specs()[static_cast<std::size_t>(tile_)];
+        if (edits_[spec.key])
+        {
+            edits_[spec.key] = std::nullopt;
+            feedback.play(hui::audio::Cue::toggle);
+        }
+    }
+    if (input.is_pressed(InputAction::north))
+    {
+        host_.refresh();
+        reload_edits_ = true;
+        feedback.play(hui::audio::Cue::select);
+    }
 }
 
-void Screen::activate(const Row &row, hui::ui::Feedback &feedback)
+void Screen::run(Action action, hui::ui::Feedback &feedback)
 {
-    const bool needs_worker = row.kind != RowKind::option && row.kind != RowKind::pairing;
-    if (needs_worker && busy())
+    if (action == Action::revert)
+    {
+        edits_ = snap_.config;
+        feedback.play(hui::audio::Cue::back);
+        return;
+    }
+    if (busy())
     {
         feedback.play(hui::audio::Cue::error);
         return;
     }
     // Stopping the host ends a running stream, and a player streaming this screen may be the one
     // pressing: such a press has to come twice.
-    const bool ends_stream = snap_.streaming && ((row.kind == RowKind::start_stop && snap_.running) ||
-                                                 row.kind == RowKind::restart || row.kind == RowKind::save_restart);
-    if (ends_stream && (armed_ != static_cast<int>(row.kind) || armed_age_ > kArmSeconds))
+    const bool ends_stream = snap_.streaming && ((action == Action::start_stop && snap_.running) ||
+                                                 action == Action::restart || action == Action::save_restart);
+    if (ends_stream && (armed_ != static_cast<int>(action) || armed_age_ > kArmSeconds))
     {
-        armed_ = static_cast<int>(row.kind);
+        armed_ = static_cast<int>(action);
         armed_age_ = 0.0f;
         feedback.play(hui::audio::Cue::notify);
         return;
     }
     armed_ = -1;
-    switch (row.kind)
+    switch (action)
     {
-    case RowKind::start_stop:
+    case Action::start_stop:
         if (snap_.running)
             host_.stop_host();
         else
             host_.start_host();
         break;
-    case RowKind::restart:
+    case Action::restart:
         host_.restart_host();
         break;
-    case RowKind::autoload:
+    case Action::autoload:
         host_.set_autoload(!snap_.autoload);
         break;
-    case RowKind::pairing: {
-        const Pairing &p = snap_.pairings[static_cast<std::size_t>(row.index)];
-        target_ = p.id;
-        target_name_ = p.name;
-        open_overlay(Overlay::pin, "Pair " + (p.name.empty() ? std::string("Moonlight") : p.name), "");
-        break;
-    }
-    case RowKind::option: {
-        const OptionSpec &spec = option_specs()[static_cast<std::size_t>(row.index)];
-        if (spec.kind == OptionKind::choice)
-        {
-            step_option(row.index, 1, feedback);
-            return;
-        }
-        target_ = spec.key;
-        const auto &value = edits_[spec.key];
-        open_overlay(spec.kind == OptionKind::text ? Overlay::text : Overlay::number, spec.label,
-                     value ? *value : std::string());
-        break;
-    }
-    case RowKind::save:
-    case RowKind::save_restart:
-        host_.save_config(edits_, row.kind == RowKind::save_restart);
+    case Action::save:
+    case Action::save_restart:
+        host_.save_config(edits_, action == Action::save_restart);
         reload_edits_ = true;
+        break;
+    case Action::revert:
         break;
     }
     feedback.play(hui::audio::Cue::select);
 }
 
-void Screen::open_overlay(Overlay kind, const std::string &title, const std::string &initial)
+void Screen::open_tile(int index)
 {
-    overlay_ = kind;
-    overlay_title_ = title;
+    const OptionSpec &spec = option_specs()[static_cast<std::size_t>(index)];
+    target_ = spec.key;
+    const std::optional<std::string> &value = edits_[spec.key];
+    switch (spec.kind)
+    {
+    case OptionKind::text:
+        open_sheet(Sheet::text, spec.label, std::string(spec.help) + " Leave it empty for the default.",
+                   value ? *value : std::string());
+        break;
+    case OptionKind::choice:
+        choice_ = 0;
+        for (std::size_t i = 0; value && i < spec.choices.size(); ++i)
+        {
+            if (*value == spec.choices[i].value)
+                choice_ = static_cast<int>(i) + 1;
+        }
+        open_sheet(Sheet::choice, spec.label, spec.help, "");
+        break;
+    case OptionKind::number:
+        number_default_ = !value;
+        number_ = value ? std::strtol(value->c_str(), nullptr, 10) : spec.fallback;
+        open_sheet(Sheet::number, spec.label, spec.help, "");
+        break;
+    }
+}
+
+void Screen::open_sheet(Sheet kind, const std::string &title, const std::string &help, const std::string &initial)
+{
+    sheet_ = kind;
+    sheet_drawn_ = kind;
+    sheet_title_ = title;
+    sheet_help_ = help;
     buffer_ = initial;
-    overlay_error_.clear();
-    if (kind == Overlay::text)
+    sheet_error_.clear();
+    if (kind == Sheet::text || kind == Sheet::pin)
     {
-        keyboard_.set_layouts({hui::ui::KeyboardLayout::letters(), hui::ui::KeyboardLayout::symbols()});
-        keyboard_.style.max_length = 63;
-        keyboard_.set_bounds({480.0f, 470.0f, 960.0f, 400.0f});
+        if (kind == Sheet::text)
+        {
+            keyboard_.set_layouts({hui::ui::KeyboardLayout::letters(), hui::ui::KeyboardLayout::symbols()});
+            keyboard_.style.max_length = 63;
+            keyboard_.set_bounds({460.0f, 520.0f, 1000.0f, 380.0f});
+        }
+        else
+        {
+            keyboard_.set_layouts({hui::ui::KeyboardLayout::numeric()});
+            keyboard_.style.max_length = 4;
+            keyboard_.set_bounds({735.0f, 520.0f, 450.0f, 380.0f});
+        }
+        keyboard_.set_length(static_cast<int>(buffer_.size()));
+        keyboard_.set_focus(0, 0);
+        keyboard_.enter();
     }
-    else
+    if (kind == Sheet::choice)
     {
-        keyboard_.set_layouts({hui::ui::KeyboardLayout::numeric()});
-        keyboard_.style.max_length = kind == Overlay::pin ? 4 : 5;
-        keyboard_.set_bounds({710.0f, 470.0f, 500.0f, 400.0f});
+        const Rect row{660.0f, 400.0f + static_cast<float>(choice_) * 76.0f, 600.0f, 64.0f};
+        sheet_highlight_.snap(row);
     }
-    keyboard_.set_length(static_cast<int>(buffer_.size()));
-    keyboard_.set_focus(0, 0);
-    keyboard_.enter();
 }
 
-void Screen::close_overlay()
+void Screen::close_sheet()
 {
-    overlay_ = Overlay::none;
+    sheet_ = Sheet::none;
 }
 
-void Screen::handle_overlay(const hui::InputFrame &input, hui::ui::Feedback &feedback)
+void Screen::handle_sheet(const hui::InputFrame &input, hui::ui::Feedback &feedback)
 {
+    const OptionSpec *spec = find_option(target_);
+    if (sheet_ == Sheet::choice && spec != nullptr)
+    {
+        const int count = static_cast<int>(spec->choices.size()) + 1;
+        if (input.nav == Direction::up || input.nav == Direction::down)
+        {
+            const int next = choice_ + (input.nav == Direction::up ? -1 : 1);
+            if (next >= 0 && next < count)
+            {
+                choice_ = next;
+                feedback.play(hui::audio::Cue::focus);
+            }
+            else if (!input.nav_repeat)
+            {
+                feedback.play(hui::audio::Cue::error, 1.0f, 0.0f, 0.4f);
+            }
+        }
+        sheet_highlight_.target({660.0f, 400.0f + static_cast<float>(choice_) * 76.0f, 600.0f, 64.0f});
+        if (input.is_pressed(InputAction::confirm))
+        {
+            edits_[spec->key] = choice_ == 0 ? std::nullopt
+                                             : std::optional<std::string>(
+                                                   spec->choices[static_cast<std::size_t>(choice_ - 1)].value);
+            feedback.play(hui::audio::Cue::select);
+            close_sheet();
+        }
+        else if (input.is_pressed(InputAction::back))
+        {
+            feedback.play(hui::audio::Cue::modal_close);
+            close_sheet();
+        }
+        return;
+    }
+    if (sheet_ == Sheet::number && spec != nullptr)
+    {
+        long step = 0;
+        if (input.nav == Direction::left || input.nav == Direction::right)
+            step = spec->step * (input.nav == Direction::left ? -1 : 1);
+        if (input.nav == Direction::up || input.nav == Direction::down)
+            step = spec->step * 10 * (input.nav == Direction::down ? -1 : 1);
+        if (input.is_pressed(InputAction::page_prev) || input.is_pressed(InputAction::page_next))
+            step = spec->step * 100 * (input.is_pressed(InputAction::page_prev) ? -1 : 1);
+        if (step != 0)
+        {
+            const long next = std::clamp(number_default_ ? spec->fallback + step : number_ + step, spec->min, spec->max);
+            number_default_ = false;
+            if (next == number_ && !input.nav_repeat)
+                feedback.play(hui::audio::Cue::error, 1.0f, 0.0f, 0.4f);
+            else if (next != number_)
+                feedback.play(hui::audio::Cue::slider);
+            number_ = next;
+        }
+        if (input.is_pressed(InputAction::west))
+        {
+            number_default_ = true;
+            number_ = spec->fallback;
+            feedback.play(hui::audio::Cue::toggle);
+        }
+        if (input.is_pressed(InputAction::confirm))
+        {
+            edits_[spec->key] = number_default_ ? std::nullopt : std::optional<std::string>(std::to_string(number_));
+            feedback.play(hui::audio::Cue::select);
+            close_sheet();
+        }
+        else if (input.is_pressed(InputAction::back))
+        {
+            feedback.play(hui::audio::Cue::modal_close);
+            close_sheet();
+        }
+        return;
+    }
+
+    // The keyboard: the PIN and the host name.
     const hui::ui::Event event = keyboard_.handle(input, feedback);
     for (int i = 0; i < keyboard_.erased() && !buffer_.empty(); ++i)
         buffer_.pop_back();
     buffer_ += keyboard_.typed();
     keyboard_.set_length(static_cast<int>(buffer_.size()));
     if (!keyboard_.typed().empty() || keyboard_.erased() > 0)
-        overlay_error_.clear();
-
+        sheet_error_.clear();
     if (event == hui::ui::Event::cancelled)
     {
-        close_overlay();
+        feedback.play(hui::audio::Cue::modal_close);
+        close_sheet();
         return;
     }
-    if (event != hui::ui::Event::activated && !input.is_pressed(Action::menu))
+    if (event != hui::ui::Event::activated && !input.is_pressed(InputAction::menu))
         return;
-
-    if (overlay_ == Overlay::pin)
+    if (sheet_ == Sheet::pin)
     {
         if (buffer_.size() != 4)
         {
-            overlay_error_ = "The PIN has four digits";
+            sheet_error_ = "The PIN has four digits";
             feedback.play(hui::audio::Cue::error);
             return;
         }
         host_.submit_pin(target_, buffer_, target_name_);
-        close_overlay();
+        close_sheet();
         return;
     }
-    const OptionSpec *spec = find_option(target_);
     if (spec == nullptr)
     {
-        close_overlay();
+        close_sheet();
         return;
     }
     if (buffer_.empty())
     {
         edits_[spec->key] = std::nullopt; // empty: the host's default
-        close_overlay();
+        close_sheet();
         return;
     }
     if (const auto problem = validate(*spec, buffer_))
     {
-        overlay_error_ = std::string(spec->label) + " " + *problem;
+        sheet_error_ = std::string(spec->label) + " " + *problem;
         feedback.play(hui::audio::Cue::error);
         return;
     }
     edits_[spec->key] = buffer_;
-    close_overlay();
+    close_sheet();
 }
 
-// ---- drawing ----------------------------------------------------------------------------------
+// ---- drawing: shared parts --------------------------------------------------------------------
 
-void Screen::draw_status(hui::gfx::DrawList &list, const Rect &panel) const
+void Screen::glass_card(hui::gfx::DrawList &list, std::uint32_t glass, const Rect &r, float radius, float focus) const
 {
-    const float x = panel.x + 24.0f;
-    float y = panel.y + 64.0f;
-    const Rect box{x, y, panel.w - 48.0f, 136.0f};
-    list.rounded_rect(box, 16.0f, Color::rgb(0x0d1428, 0.9f));
-
-    Color dot = kIdle;
-    std::string state = "Checking...";
-    std::string detail;
-    if (snap_.polled)
-    {
-        if (!snap_.running)
-        {
-            dot = kBad;
-            state = "Host stopped";
-            detail = "Start it here, or let the Payload Manager start it at boot.";
-        }
-        else if (!snap_.poll_error.empty())
-        {
-            dot = kSun;
-            state = "Host busy";
-            detail = "The control socket did not answer: " + snap_.poll_error;
-        }
-        else if (snap_.streaming)
-        {
-            dot = kGood;
-            state = "Streaming";
-            detail = "Moonlight is playing \"" + snap_.app + "\".";
-        }
-        else
-        {
-            dot = kGood;
-            state = "Host running";
-            detail = "Waiting for Moonlight. Add this console by its IP address.";
-        }
-    }
-    const float pulse = 0.75f + 0.25f * std::sin(time_ * 3.0f);
-    list.glow({box.x + 24.0f, box.y + 30.0f, 20.0f, 20.0f}, 10.0f, 22.0f, dot.with_alpha(0.35f * pulse));
-    list.circle(box.x + 34.0f, box.y + 40.0f, 10.0f, dot);
-    hui::ui::text(list, fonts_.display, state, box.x + 60.0f, box.y + 52.0f, 34.0f, kInk);
-    hui::ui::text(list, fonts_.regular, shorten(fonts_.regular, detail, 22.0f, box.w - 48.0f), box.x + 24.0f,
-                  box.y + 90.0f, 22.0f, kMuted);
-    std::string files;
-    if (snap_.host_elf_size >= 0)
-        files = "Host ELF " + std::to_string((snap_.host_elf_size + 512 * 1024) / (1024 * 1024)) +
-                " MB in /data/prosperosunshine";
-    else
-        files = snap_.bundled_elf ? "Installing the host ELF..." : "No host ELF in /data/prosperosunshine";
-    hui::ui::text(list, fonts_.regular, files, box.x + 24.0f, box.y + 120.0f, 19.0f, kFaint);
+    list.shadow({r.x, r.y + 10.0f, r.w, r.h}, radius, 30.0f, Color::rgb(0x000000, 0.35f));
+    list.glass(glass, r, radius, Color::rgb(0xffffff));
+    list.rounded_rect(r, radius, mix(Color::rgb(0x18203f, 0.55f), Color::rgb(0x4a3215, 0.55f), focus));
+    list.bordered_rect(r, radius, kClear, 1.5f, mix(Color::rgb(0xffffff, 0.10f), kAccent.with_alpha(0.9f), focus));
+    // A thin light along the top edge, as on glass.
+    list.gradient_rect({r.x + radius, r.y + 1.0f, r.w - 2.0f * radius, 2.0f}, 1.0f, Color::rgb(0xffffff, 0.16f),
+                       Color::rgb(0xffffff, 0.0f));
 }
 
-void Screen::draw_row(hui::ui::Canvas &canvas, const Row &row, bool focused) const
+void Screen::draw_button(hui::gfx::DrawList &list, std::uint32_t glass, const Rect &r, int icon,
+                         const std::string &label, bool primary, float focus, bool enabled) const
 {
-    hui::gfx::DrawList &list = canvas.list;
-    const Rect &r = row.rect;
-    const Color label = focused ? kInk : kInk.with_alpha(0.92f);
-    list.rounded_rect(r, 14.0f, kRow);
-
-    auto button_row = [&](const std::string &title, const std::string &sub, Color accent, bool enabled) {
-        const Color ink = enabled ? label : kFaint;
-        list.rounded_rect({r.x, r.y + 14.0f, 6.0f, r.h - 28.0f}, 3.0f, accent.with_alpha(enabled ? 1.0f : 0.4f));
-        hui::ui::text(list, fonts_.semibold, title, r.x + 28.0f, r.y + (sub.empty() ? 46.0f : 34.0f), 27.0f, ink);
-        if (!sub.empty())
-            hui::ui::text(list, fonts_.regular, shorten(fonts_.regular, sub, 19.0f, r.w - 56.0f), r.x + 28.0f,
-                          r.y + 60.0f, 19.0f, kMuted);
-    };
-
-    switch (row.kind)
+    const float radius = r.h / 2.0f;
+    const float grow = 4.0f * focus;
+    const Rect b{r.x - grow, r.y - grow, r.w + 2 * grow, r.h + 2 * grow};
+    Color ink = enabled ? kInk : kFaint;
+    if (primary && enabled)
     {
-    case RowKind::start_stop:
-        if (snap_.running)
-            button_row("Stop host", "Ends streaming and closes the host.", kBad, !busy());
-        else
-            button_row("Start host", "Sends the host ELF to the ELF loader on port 9021.", kGood, !busy());
-        break;
-    case RowKind::restart:
-        button_row("Restart host", "Stops the host and starts it again with the saved settings.", kSun, !busy());
-        break;
-    case RowKind::autoload: {
-        std::string sub;
-        if (!snap_.manager_present)
-            sub = "Needs the Payload Manager (PLDM00001).";
-        else if (snap_.autoload && !snap_.manager_autoload)
-            sub = "On, but the Payload Manager's own autoload is off.";
-        else
-            sub = "The Payload Manager loads the host at boot.";
-        button_row("Start at boot", sub, kSun, !busy());
-        // A switch.
-        const Rect track{r.x + r.w - 104.0f, r.cy() - 18.0f, 76.0f, 36.0f};
-        list.rounded_rect(track, 18.0f, snap_.autoload ? kSun : Color::rgb(0x3a4363));
-        const float knob = snap_.autoload ? track.x + track.w - 18.0f : track.x + 18.0f;
-        list.circle(knob, track.cy(), 14.0f, Color::rgb(0xffffff));
-        break;
-    }
-    case RowKind::pairing: {
-        const Pairing &p = snap_.pairings[static_cast<std::size_t>(row.index)];
-        const float pulse = 0.6f + 0.4f * std::sin(time_ * 4.0f);
-        list.rounded_rect({r.x, r.y + 14.0f, 6.0f, r.h - 28.0f}, 3.0f, kSun.with_alpha(pulse));
-        hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, p.name.empty() ? "Moonlight" : p.name, 27.0f, r.w - 260.0f),
-                      r.x + 28.0f, r.y + 34.0f, 27.0f, label);
-        hui::ui::text(list, fonts_.regular, p.address.empty() ? "wants to pair" : "from " + p.address + " wants to pair",
-                      r.x + 28.0f, r.y + 60.0f, 19.0f, kMuted);
-        hui::ui::text(list, fonts_.semibold, "Enter PIN", r.x + r.w - 28.0f, r.y + 46.0f, 24.0f, kSun, Align::right);
-        break;
-    }
-    case RowKind::option: {
-        const OptionSpec &spec = option_specs()[static_cast<std::size_t>(row.index)];
-        const auto edited = edits_.find(spec.key);
-        const auto saved = snap_.config.find(spec.key);
-        const bool changed = edits_loaded_ && edited != edits_.end() && saved != snap_.config.end() &&
-                             edited->second != saved->second;
-        hui::ui::text(list, fonts_.semibold, spec.label, r.x + 24.0f, r.y + 32.0f, 25.0f, label);
-        hui::ui::text(list, fonts_.regular, shorten(fonts_.regular, spec.help, 18.0f, 430.0f), r.x + 24.0f,
-                      r.y + 58.0f, 18.0f, kMuted);
-        const bool is_default = edited == edits_.end() || !edited->second;
-        const std::string value = option_text(row.index);
-        const float right = r.x + r.w - 24.0f;
-        const float value_right = spec.kind == OptionKind::text ? right : right - 34.0f;
-        const float width = 330.0f;
-        hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, value, 24.0f, width), value_right, r.y + 45.0f,
-                      24.0f, is_default ? kMuted : kInk, Align::right);
-        if (spec.kind != OptionKind::text)
-        {
-            const Color arrows = focused ? kSun : kFaint;
-            const float vw = std::min(fonts_.semibold.measure(value, 24.0f), width);
-            hui::ui::text(list, fonts_.semibold, "<", value_right - vw - 22.0f, r.y + 45.0f, 24.0f, arrows,
-                          Align::right);
-            hui::ui::text(list, fonts_.semibold, ">", right, r.y + 45.0f, 24.0f, arrows, Align::right);
-        }
-        else if (focused)
-        {
-            hui::ui::text(list, fonts_.regular, "Cross to edit", right, r.y + 66.0f, 16.0f, kFaint, Align::right);
-        }
-        if (changed)
-            list.circle(r.x + 10.0f, r.y + 23.0f, 5.0f, kSun);
-        break;
-    }
-    case RowKind::save:
-        button_row(dirty() ? "Save" : "Saved", dirty() ? "Writes sunshine.conf." : "No unsaved changes.", kGood,
-                   !busy());
-        break;
-    case RowKind::save_restart:
-        button_row("Save and restart", "Applies the settings now.", kSun, !busy());
-        break;
-    }
-}
-
-void Screen::draw_overlay(hui::ui::Canvas &canvas) const
-{
-    hui::gfx::DrawList &list = canvas.list;
-    list.rounded_rect({0.0f, 0.0f, 1920.0f, 1080.0f}, 0.0f, Color::rgb(0x05070f, 0.72f));
-    const Rect card{440.0f, 180.0f, 1040.0f, 730.0f};
-    list.shadow(card, 28.0f, 40.0f, Color::rgb(0x000000, 0.5f));
-    list.rounded_rect(card, 28.0f, Color::rgb(0x151d3a));
-    hui::ui::text(list, fonts_.display, overlay_title_, card.cx(), card.y + 76.0f, 40.0f, kInk, Align::center);
-    std::string hint;
-    if (overlay_ == Overlay::pin)
-        hint = "Type the four digits Moonlight shows, then Done.";
-    else if (overlay_ == Overlay::number)
-        hint = "Done keeps the number; leave it empty for the default.";
-    else
-        hint = "Done keeps the name; leave it empty for the default.";
-    hui::ui::text(list, fonts_.regular, hint, card.cx(), card.y + 118.0f, 22.0f, kMuted, Align::center);
-
-    if (overlay_ == Overlay::pin)
-    {
-        const float size = 96.0f, gap = 24.0f;
-        const float x0 = card.cx() - (4 * size + 3 * gap) / 2.0f;
-        for (int i = 0; i < 4; ++i)
-        {
-            const Rect cell{x0 + i * (size + gap), card.y + 150.0f, size, 112.0f};
-            const bool current = static_cast<int>(buffer_.size()) == i;
-            list.bordered_rect(cell, 18.0f, Color::rgb(0x0d1428), current ? 3.0f : 2.0f,
-                               current ? kSun : Color::rgb(0x2f3a60));
-            if (i < static_cast<int>(buffer_.size()))
-                hui::ui::text(list, fonts_.mono, std::string(1, buffer_[static_cast<std::size_t>(i)]), cell.cx(),
-                              cell.y + 78.0f, 56.0f, kInk, Align::center);
-        }
+        list.glow(b, radius, 26.0f, kAccent.with_alpha(0.25f + 0.3f * focus));
+        list.gradient_rect_h(b, radius, kAccent, kAccentDeep);
+        list.gradient_rect({b.x, b.y, b.w, b.h / 2.0f}, radius, Color::rgb(0xffffff, 0.22f), Color::rgb(0xffffff, 0.0f));
+        ink = Color::rgb(0x2a1604);
     }
     else
     {
-        const Rect field{card.x + 80.0f, card.y + 160.0f, card.w - 160.0f, 92.0f};
-        list.bordered_rect(field, 18.0f, Color::rgb(0x0d1428), 3.0f, kSun);
-        const std::string shown = buffer_.empty() ? std::string() : buffer_;
-        const float w = hui::ui::text(list, fonts_.semibold, shown, field.x + 28.0f, field.y + 60.0f, 36.0f, kInk);
-        if (std::fmod(time_, 1.0f) < 0.6f)
-            list.rounded_rect({field.x + 32.0f + w, field.y + 24.0f, 3.0f, 46.0f}, 1.5f, kSun);
-        if (buffer_.empty())
-            hui::ui::text(list, fonts_.regular, "Default", field.x + 44.0f, field.y + 60.0f, 30.0f, kFaint);
+        glass_card(list, glass, b, radius, focus);
     }
-    if (!overlay_error_.empty())
-        hui::ui::text(list, fonts_.semibold, overlay_error_, card.cx(), card.y + 300.0f, 22.0f, kBad, Align::center);
-    keyboard_.draw(canvas);
+    float x = b.x + 34.0f;
+    if (focus > 0.5f && enabled)
+    {
+        // The Cross glyph on the focused button, as on the console's own buttons.
+        hui::ui::draw_button(list, fonts_, primary ? hui::ui::GlyphStyle::mono(ink, Color::rgb(0xffffff, 0.0f))
+                                                   : hui::ui::GlyphStyle::dark(),
+                             hui::ui::Button::cross, x, b.cy(), 34.0f);
+        x += 48.0f;
+    }
+    else if (icon >= 0)
+    {
+        icons::draw(list, static_cast<Icon>(icon), x + 14.0f, b.cy(), 30.0f, primary ? ink : kAccent);
+        x += 48.0f;
+    }
+    hui::ui::text(list, fonts_.semibold, label, x, b.cy() + 10.0f, 29.0f, ink);
 }
 
-void Screen::draw(hui::gfx::DrawList &list, std::uint32_t glass) const
+void Screen::draw_background(hui::gfx::DrawList &list) const
 {
-    hui::ui::Canvas canvas{list, fonts_, glass, time_};
+    // Warm light behind the emblem (home) or the tiles (settings), stronger while the host runs.
+    const float home = 1.0f - tab_x_;
+    const float strength = 0.25f + 0.45f * sun_glow_;
+    list.glow({1320.0f, 200.0f, 360.0f, 360.0f}, 180.0f, 520.0f, kAccentDeep.with_alpha(0.16f * strength * home));
+    list.glow({1380.0f, 260.0f, 240.0f, 240.0f}, 120.0f, 260.0f, kAccent.with_alpha(0.22f * strength * home));
+    list.glow({200.0f, 640.0f, 600.0f, 300.0f}, 150.0f, 420.0f, Color::rgb(0x5b3cc4, 0.14f));
+    list.glow({900.0f, 300.0f, 600.0f, 300.0f}, 150.0f, 520.0f, kAccentDeep.with_alpha(0.10f * tab_x_));
+    // Faint drifting embers.
+    for (int i = 0; i < 18; ++i)
+    {
+        const float seed = static_cast<float>(i) * 12.9898f;
+        const float x = std::fmod(std::fabs(std::sin(seed) * 43758.5f), 1.0f) * 1920.0f;
+        const float speed = 8.0f + std::fmod(static_cast<float>(i) * 7.3f, 14.0f);
+        const float y = 1080.0f - std::fmod(time_ * speed + static_cast<float>(i) * 97.0f, 1180.0f);
+        const float alpha = 0.10f + 0.12f * (0.5f + 0.5f * std::sin(time_ * 1.3f + seed));
+        list.circle(x + 18.0f * std::sin(time_ * 0.4f + seed), y, 2.0f + static_cast<float>(i % 3), kAccent.with_alpha(alpha));
+    }
+}
 
-    // Header.
-    list.circle(122.0f, 96.0f, 22.0f, kSun);
-    list.glow({100.0f, 74.0f, 44.0f, 44.0f}, 22.0f, 30.0f, kSun.with_alpha(0.35f));
-    hui::ui::text(list, fonts_.display, "ProsperoSunshine", 164.0f, 112.0f, 50.0f, kInk);
-    hui::ui::text(list, fonts_.regular, "Moonlight game-stream host for the PS5", 164.0f, 146.0f, 22.0f, kMuted);
+void Screen::draw_top_bar(hui::gfx::DrawList &list, std::uint32_t glass) const
+{
+    icons::sun(list, 112.0f, 78.0f, 15.0f, sun_spin_, 0.6f, sun_dim_ * 0.6f);
+    hui::ui::text(list, fonts_.semibold, "PROSPEROSUNSHINE", 150.0f, 87.0f, 24.0f, kInk, Align::left, 6.0f);
+
+    // Tabs between their L1 and R1 glyphs; the selected plate glides.
+    const hui::ui::GlyphStyle glyphs = hui::ui::GlyphStyle::dark();
+    const float tabs_x = 640.0f;
+    hui::ui::draw_button(list, fonts_, glyphs, hui::ui::Button::l1, tabs_x, 78.0f, 30.0f);
+    const float t0 = tabs_x + 64.0f, tw = 210.0f;
+    const Rect plate{t0 + tab_x_ * (tw + 12.0f), 50.0f, tw, 56.0f};
+    list.glass(glass, plate, 28.0f, Color::rgb(0xffffff));
+    list.rounded_rect(plate, 28.0f, Color::rgb(0xffffff, 0.10f));
+    list.bordered_rect(plate, 28.0f, kClear, 1.5f, kAccent.with_alpha(0.65f));
+    const char *names[2] = {"Home", "Settings"};
+    const Icon tab_icons[2] = {Icon::home, Icon::sliders};
+    for (int i = 0; i < 2; ++i)
+    {
+        const float x = t0 + static_cast<float>(i) * (tw + 12.0f);
+        const float selected = 1.0f - std::min(1.0f, std::fabs(tab_x_ - static_cast<float>(i)));
+        const Color ink = mix(kMuted, kInk, selected);
+        const float label_w = fonts_.semibold.measure(names[i], 26.0f);
+        const float start = x + (tw - label_w - 40.0f) / 2.0f;
+        icons::draw(list, tab_icons[i], start + 13.0f, 78.0f, 26.0f, mix(kMuted, kAccent, selected));
+        hui::ui::text(list, fonts_.semibold, names[i], start + 40.0f, 87.0f, 26.0f, ink);
+    }
+    // A pairing request waits while the settings are shown.
+    if (page_ == Page::settings && !snap_.pairings.empty())
+    {
+        const float pulse = 0.6f + 0.4f * std::sin(time_ * 5.0f);
+        list.glow({t0 + tw - 30.0f, 56.0f, 12.0f, 12.0f}, 6.0f, 10.0f, kAccent.with_alpha(0.5f * pulse));
+        list.circle(t0 + tw - 24.0f, 62.0f, 7.0f, kAccent);
+    }
+    hui::ui::draw_button(list, fonts_, glyphs, hui::ui::Button::r1, t0 + 2.0f * tw + 12.0f + 18.0f, 78.0f, 30.0f);
+
+    // The console's address (what Moonlight needs), and the version.
+    float right = 1824.0f;
     if (!version_.empty())
-        hui::ui::text(list, fonts_.regular, "App " + version_, 1824.0f, 112.0f, 20.0f, kFaint, Align::right);
+    {
+        right -= hui::ui::text(list, fonts_.regular, "v" + version_, right, 87.0f, 20.0f, kFaint, Align::right);
+        right -= 28.0f;
+    }
+    if (!snap_.address.empty())
+    {
+        right -= hui::ui::text(list, fonts_.semibold, snap_.address, right, 87.0f, 24.0f, kInk, Align::right);
+        icons::draw(list, Icon::wifi, right - 22.0f, 76.0f, 26.0f, kAccent);
+    }
+}
 
-    // Panels.
-    for (const Rect *panel : {&left_panel_, &right_panel_})
-    {
-        list.shadow(*panel, 24.0f, 30.0f, Color::rgb(0x000000, 0.35f));
-        list.rounded_rect(*panel, 24.0f, kPanel);
-    }
-    hui::ui::text(list, fonts_.semibold, "HOST", left_panel_.x + 28.0f, left_panel_.y + 44.0f, 22.0f,
-                  column_ == 0 ? kSun : kMuted, Align::left, 2.0f);
-    hui::ui::text(list, fonts_.semibold, "SETTINGS", right_panel_.x + 28.0f, right_panel_.y + 44.0f, 22.0f,
-                  column_ == 1 ? kSun : kMuted, Align::left, 2.0f);
-    hui::ui::text(list, fonts_.regular, "/data/prosperosunshine/sunshine.conf", right_panel_.x + right_panel_.w - 28.0f,
-                  right_panel_.y + 44.0f, 19.0f, kFaint, Align::right);
-    draw_status(list, left_panel_);
-
-    hui::ui::text(list, fonts_.semibold, "PAIRING", left_panel_.x + 28.0f, pairing_header_y_, 22.0f, kMuted,
-                  Align::left, 2.0f);
-    if (snap_.pairings.empty())
-    {
-        const float y = pairing_header_y_ + 44.0f;
-        hui::ui::paragraph(list, fonts_.regular,
-                           snap_.running ? "No pairing requests. Start pairing in Moonlight; its PIN goes in here."
-                                         : "Pairing requests appear here while the host runs.",
-                           left_panel_.x + 28.0f, y, 22.0f, left_panel_.w - 56.0f, 30.0f, kMuted, 3);
-    }
-    else if (hidden_pairings_ > 0)
-    {
-        hui::ui::text(list, fonts_.regular, "and " + std::to_string(hidden_pairings_) + " more",
-                      left_panel_.x + 28.0f, left_panel_.y + left_panel_.h - 16.0f, 19.0f, kFaint);
-    }
-
-    if (overlay_ == Overlay::none)
-        highlight_.draw(canvas, style_, {hui::ui::HighlightKind::tint});
-    for (int c = 0; c < 2; ++c)
-    {
-        const std::vector<Row> &rows = c == 0 ? left_ : right_;
-        for (std::size_t i = 0; i < rows.size(); ++i)
-            draw_row(canvas, rows[i], overlay_ == Overlay::none && c == column_ && static_cast<int>(i) == focus_[c]);
-    }
-    if (overlay_ == Overlay::none)
-    {
-        // The focus ring over the rows.
-        const Rect h = highlight_.rect(time_);
-        list.bordered_rect(h.inset(-3.0f), 17.0f, Color::rgb(0, 0.0f), 3.0f, kSun.with_alpha(0.9f));
-    }
-
-    // Busy line, a press waiting for its second one, and the last outcome.
+void Screen::draw_footer(hui::gfx::DrawList &list, std::uint32_t glass) const
+{
+    // The bar over the hints: an armed press, the request being worked on, or the last outcome.
+    std::string text;
+    Color dot = kAccent;
+    float alpha = 0.0f;
+    bool spinner = false;
     if (armed_ >= 0 && armed_age_ <= kArmSeconds && !busy())
     {
-        const std::string text = "This ends the running stream. Press Cross again to go on.";
-        const float w = fonts_.semibold.measure(text, 24.0f) + 120.0f;
-        const Rect bar{960.0f - w / 2.0f, 918.0f, w, 56.0f};
-        list.rounded_rect(bar, 28.0f, Color::rgb(0x3a2a10, 0.95f));
-        list.circle(bar.x + 36.0f, bar.cy(), 9.0f, kSun);
-        hui::ui::text(list, fonts_.semibold, text, bar.x + 60.0f, bar.cy() + 9.0f, 24.0f, kInk);
+        text = "This ends the running stream. Press Cross again to go on.";
+        alpha = 1.0f;
     }
     else if (busy())
     {
-        const Rect bar{560.0f, 918.0f, 800.0f, 56.0f};
-        list.rounded_rect(bar, 28.0f, Color::rgb(0x1b2546, 0.95f));
-        list.arc(bar.x + 36.0f, bar.cy(), 12.0f, 4.0f, time_ * 6.0f, 4.2f, kSun);
-        hui::ui::text(list, fonts_.semibold, snap_.busy, bar.x + 64.0f, bar.cy() + 9.0f, 24.0f, kInk);
+        text = snap_.busy;
+        alpha = 1.0f;
+        spinner = true;
     }
     else if (message_age_ < kMessageSeconds && !snap_.message.empty())
     {
-        const float fade = std::min(1.0f, (kMessageSeconds - message_age_) / 0.6f);
-        list.push_opacity(fade);
-        const float w = std::min(1400.0f, fonts_.semibold.measure(snap_.message, 24.0f) + 120.0f);
-        const Rect bar{960.0f - w / 2.0f, 918.0f, w, 56.0f};
-        list.rounded_rect(bar, 28.0f, Color::rgb(0x1b2546, 0.95f));
-        list.circle(bar.x + 36.0f, bar.cy(), 9.0f, snap_.message_ok ? kGood : kBad);
-        hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, snap_.message, 24.0f, w - 90.0f), bar.x + 60.0f,
-                      bar.cy() + 9.0f, 24.0f, kInk);
+        text = snap_.message;
+        dot = snap_.message_ok ? kGood : kBad;
+        alpha = std::min({1.0f, message_age_ / 0.25f, (kMessageSeconds - message_age_) / 0.6f});
+    }
+    if (alpha > 0.0f)
+    {
+        const float rise = (1.0f - ease_out(std::min(1.0f, message_age_ / 0.35f))) * (spinner ? 0.0f : 24.0f);
+        const float w = std::min(1500.0f, fonts_.semibold.measure(text, 25.0f) + 130.0f);
+        const Rect bar{960.0f - w / 2.0f, 940.0f + rise, w, 60.0f};
+        list.push_opacity(alpha);
+        glass_card(list, glass, bar, 30.0f, 0.0f);
+        if (spinner)
+        {
+            list.arc(bar.x + 38.0f, bar.cy(), 13.0f, 4.0f, time_ * 6.0f, 4.2f, kAccent);
+        }
+        else
+        {
+            list.glow({bar.x + 30.0f, bar.cy() - 8.0f, 16.0f, 16.0f}, 8.0f, 10.0f, dot.with_alpha(0.5f));
+            list.circle(bar.x + 38.0f, bar.cy(), 8.0f, dot);
+        }
+        hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, text, 25.0f, w - 100.0f), bar.x + 68.0f,
+                      bar.cy() + 9.0f, 25.0f, kInk);
         list.pop_opacity();
     }
 
-    // Button hints.
     const hui::ui::GlyphStyle glyphs = hui::ui::GlyphStyle::dark();
-    hui::ui::HintLayout hints_layout;
-    hints_layout.cy = 1030.0f;
-    hints_layout.size = 36.0f;
-    hints_layout.text_size = 22.0f;
-    if (overlay_ != Overlay::none)
+    hui::ui::HintLayout layout;
+    layout.cy = 1036.0f;
+    layout.size = 34.0f;
+    layout.text_size = 22.0f;
+    if (sheet_ == Sheet::pin || sheet_ == Sheet::text)
     {
         const hui::ui::Hint hints[] = {{hui::ui::Button::cross, "Type"},
                                        {hui::ui::Button::square, "Delete"},
                                        {hui::ui::Button::options, "Done"},
                                        {hui::ui::Button::circle, "Cancel"}};
-        hui::ui::draw_hints(list, fonts_, glyphs, hints, 4, 1824.0f, true, hints_layout);
+        hui::ui::draw_hints(list, fonts_, glyphs, hints, 4, 1824.0f, true, layout);
+    }
+    else if (sheet_ == Sheet::number)
+    {
+        const hui::ui::Hint hints[] = {{hui::ui::Button::dpad, "Change"},
+                                       {hui::ui::Button::l1, "Big steps", hui::ui::Button::r1},
+                                       {hui::ui::Button::square, "Default"},
+                                       {hui::ui::Button::cross, "OK"},
+                                       {hui::ui::Button::circle, "Cancel"}};
+        hui::ui::draw_hints(list, fonts_, glyphs, hints, 5, 1824.0f, true, layout);
+    }
+    else if (sheet_ == Sheet::choice)
+    {
+        const hui::ui::Hint hints[] = {{hui::ui::Button::cross, "Choose"}, {hui::ui::Button::circle, "Cancel"}};
+        hui::ui::draw_hints(list, fonts_, glyphs, hints, 2, 1824.0f, true, layout);
+    }
+    else if (page_ == Page::home)
+    {
+        const hui::ui::Hint hints[] = {{hui::ui::Button::cross, "Select"},
+                                       {hui::ui::Button::triangle, "Reload"},
+                                       {hui::ui::Button::l1, "Pages", hui::ui::Button::r1}};
+        hui::ui::draw_hints(list, fonts_, glyphs, hints, 3, 1824.0f, true, layout);
     }
     else
     {
-        const hui::ui::Hint hints[] = {{hui::ui::Button::cross, "Select"},
-                                       {hui::ui::Button::dpad, "Move / change"},
+        const hui::ui::Hint hints[] = {{hui::ui::Button::cross, "Change"},
                                        {hui::ui::Button::square, "Default"},
-                                       {hui::ui::Button::triangle, "Reload files"},
-                                       {hui::ui::Button::l1, "Panel", hui::ui::Button::r1}};
-        hui::ui::draw_hints(list, fonts_, glyphs, hints, 5, 1824.0f, true, hints_layout);
+                                       {hui::ui::Button::triangle, "Reload"},
+                                       {hui::ui::Button::l1, "Pages", hui::ui::Button::r1}};
+        hui::ui::draw_hints(list, fonts_, glyphs, hints, 4, 1824.0f, true, layout);
+    }
+}
+
+// ---- drawing: the home page -------------------------------------------------------------------
+
+void Screen::draw_home(hui::gfx::DrawList &list, std::uint32_t glass) const
+{
+    const bool running = snap_.polled && snap_.running;
+    std::string state = "Checking the host";
+    std::string detail = "One moment.";
+    if (snap_.polled && !snap_.running)
+    {
+        state = "Host stopped";
+        detail = "Start it to stream this console to Moonlight.";
+    }
+    else if (running && !snap_.poll_error.empty())
+    {
+        state = "Host busy";
+        detail = "It did not answer: " + snap_.poll_error;
+    }
+    else if (snap_.streaming)
+    {
+        state = "Streaming";
+        detail = snap_.client.empty() ? "Moonlight is playing \"" + snap_.app + "\"."
+                                      : snap_.client + (snap_.client_address.empty() ? "" : " (" + snap_.client_address + ")") +
+                                            " is playing \"" + snap_.app + "\".";
+    }
+    else if (running)
+    {
+        state = "Ready to stream";
+        detail = snap_.address.empty() ? "Add this console in Moonlight by its IP address."
+                                       : "In Moonlight, add " + snap_.address + " and start \"PS5 Screen\".";
     }
 
-    if (overlay_ != Overlay::none)
-        draw_overlay(canvas);
+    // The hero: caption, title, detail, chips.
+    float a = appear(0);
+    list.push_opacity(a);
+    list.push_transform(1.0f, 0.0f, 0.0f, static_cast<float>(page_direction_) * 40.0f * (1.0f - a), 0.0f);
+    list.rounded_rect({96.0f, 222.0f, 40.0f, 3.0f}, 1.5f, kAccent);
+    hui::ui::text(list, fonts_.semibold, "HOST STATUS", 152.0f, 232.0f, 22.0f, kAccent, Align::left, 4.0f);
+    hui::ui::text(list, fonts_.display, state, 90.0f, 350.0f, 104.0f, kInk);
+    hui::ui::text(list, fonts_.regular, shorten(fonts_.regular, detail, 30.0f, 1120.0f), 96.0f, 408.0f, 30.0f, kMuted);
+    list.pop_transform();
+    list.pop_opacity();
+
+    a = appear(1);
+    list.push_opacity(a);
+    list.push_transform(1.0f, 0.0f, 0.0f, static_cast<float>(page_direction_) * 40.0f * (1.0f - a), 0.0f);
+    float x = 96.0f;
+    auto chip = [&](Icon icon, const std::string &text, bool on) {
+        const float w = fonts_.semibold.measure(text, 22.0f) + 74.0f;
+        const Rect r{x, 444.0f, w, 50.0f};
+        list.glass(glass, r, 25.0f, Color::rgb(0xffffff));
+        list.rounded_rect(r, 25.0f, on ? kAccent.with_alpha(0.16f) : Color::rgb(0xffffff, 0.06f));
+        list.bordered_rect(r, 25.0f, kClear, 1.5f, on ? kAccent.with_alpha(0.55f) : Color::rgb(0xffffff, 0.12f));
+        icons::draw(list, icon, x + 30.0f, r.cy(), 22.0f, on ? kAccent : kMuted);
+        hui::ui::text(list, fonts_.semibold, text, x + 52.0f, r.cy() + 8.0f, 22.0f, kInk);
+        x += w + 14.0f;
+    };
+    const auto saved = [&](const char *key, const std::string &fallback) {
+        const auto it = snap_.config.find(key);
+        return it != snap_.config.end() && it->second ? *it->second : fallback;
+    };
+    chip(Icon::plug, "Port " + saved("port", "47989"), false);
+    const std::string lan = saved("lan_encryption_mode", "0");
+    chip(Icon::lock, lan == "0" ? "LAN unencrypted" : lan == "1" ? "LAN encrypted when supported" : "LAN encrypted", lan != "0");
+    chip(Icon::boot, snap_.autoload ? "Starts at boot" : "Manual start", snap_.autoload);
+    chip(Icon::monitor, std::to_string(snap_.paired.size()) + (snap_.paired.size() == 1 ? " paired device" : " paired devices"), false);
+    list.pop_transform();
+    list.pop_opacity();
+
+    // The actions.
+    a = appear(2);
+    list.push_opacity(a);
+    list.push_transform(1.0f, 0.0f, 0.0f, 0.0f, 30.0f * (1.0f - a));
+    const bool enabled = !busy();
+    draw_button(list, glass, action_rect(0), static_cast<int>(Icon::power), running ? "Stop host" : "Start host",
+                !running, action_amount_[0], enabled);
+    draw_button(list, glass, action_rect(1), static_cast<int>(Icon::restart), "Restart host", false, action_amount_[1],
+                enabled);
+    {
+        const Rect r = action_rect(2);
+        draw_button(list, glass, r, static_cast<int>(Icon::boot), "Start at boot", false, action_amount_[2], enabled);
+        const Rect track{r.x + r.w - 104.0f, r.cy() - 19.0f, 76.0f, 38.0f};
+        list.rounded_rect(track, 19.0f, snap_.autoload ? kAccent : Color::rgb(0x3a4363));
+        if (snap_.autoload)
+            list.glow(track, 19.0f, 12.0f, kAccent.with_alpha(0.35f));
+        const float knob = snap_.autoload ? track.x + track.w - 19.0f : track.x + 19.0f;
+        list.circle(knob, track.cy(), 15.0f, Color::rgb(0xffffff));
+    }
+    if (snap_.autoload && snap_.manager_present && !snap_.manager_autoload)
+        hui::ui::text(list, fonts_.regular, "The Payload Manager's own autoload is off, so nothing starts at boot.",
+                      action_rect(2).x, 660.0f, 20.0f, kAccent);
+    else if (!snap_.manager_present)
+        hui::ui::text(list, fonts_.regular, "Start at boot needs the Payload Manager (PLDM00001).", action_rect(2).x,
+                      660.0f, 20.0f, kFaint);
+    list.pop_transform();
+    list.pop_opacity();
+
+    // The emblem: the sun turns while the host runs and sends rings out while it streams.
+    a = appear(1);
+    const float ex = 1500.0f, ey = 360.0f;
+    list.push_opacity(a);
+    list.push_transform(0.9f + 0.1f * a, ex, ey, 0.0f, 0.0f);
+    if (snap_.streaming)
+    {
+        for (int i = 0; i < 3; ++i)
+        {
+            const float t = std::fmod(pulse_ * 0.45f + static_cast<float>(i) / 3.0f, 1.0f);
+            list.ring(ex, ey, 150.0f + t * 230.0f, 3.0f, kAccent.with_alpha(0.5f * (1.0f - t)));
+        }
+    }
+    const float breathe = running ? 1.0f + 0.02f * std::sin(time_ * 1.6f) : 1.0f;
+    icons::sun(list, ex, ey, 112.0f * breathe, sun_spin_, sun_glow_, sun_dim_);
+    // Its caption.
+    const std::string badge = snap_.streaming ? "LIVE" : running ? "READY" : snap_.polled ? "OFF" : "...";
+    const Color badge_color = snap_.streaming ? kBad : running ? kGood : kFaint;
+    const float bw = fonts_.semibold.measure(badge, 20.0f) + 60.0f;
+    const Rect br{ex - bw / 2.0f, ey + 190.0f, bw, 42.0f};
+    list.glass(glass, br, 21.0f, Color::rgb(0xffffff));
+    list.rounded_rect(br, 21.0f, Color::rgb(0x10162e, 0.6f));
+    const float blink = snap_.streaming ? 0.55f + 0.45f * std::sin(time_ * 4.0f) : 1.0f;
+    list.circle(br.x + 24.0f, br.cy(), 6.0f, badge_color.with_alpha(blink));
+    hui::ui::text(list, fonts_.semibold, badge, br.x + 40.0f, br.cy() + 7.0f, 20.0f, kInk, Align::left, 3.0f);
+    list.pop_transform();
+    list.pop_opacity();
+
+    // Pairing requests, and who is paired.
+    a = appear(3);
+    list.push_opacity(a);
+    list.push_transform(1.0f, 0.0f, 0.0f, 0.0f, 40.0f * (1.0f - a));
+    list.rounded_rect({96.0f, 706.0f, 40.0f, 3.0f}, 1.5f, kAccent);
+    hui::ui::text(list, fonts_.semibold, "PAIRING", 152.0f, 716.0f, 22.0f, kAccent, Align::left, 4.0f);
+    const int cards = visible_pairings();
+    if (cards == 0)
+    {
+        const Rect r{96.0f, 740.0f, 1100.0f, 172.0f};
+        glass_card(list, glass, r, 26.0f, 0.0f);
+        list.circle(r.x + 76.0f, r.cy(), 40.0f, Color::rgb(0xffffff, 0.06f));
+        icons::draw(list, Icon::link, r.x + 76.0f, r.cy(), 38.0f, running ? kAccent : kFaint);
+        hui::ui::text(list, fonts_.semibold, running ? "No one is waiting to pair" : "Pairing needs the host",
+                      r.x + 144.0f, r.y + 72.0f, 32.0f, kInk);
+        const std::string hint = running ? (snap_.address.empty() ? "In Moonlight, add this console and pick it. The PIN goes in here."
+                                                                  : "In Moonlight, add " + snap_.address + " and pick it. The PIN goes in here.")
+                                         : "Start the host, then pair from Moonlight.";
+        hui::ui::text(list, fonts_.regular, shorten(fonts_.regular, hint, 24.0f, r.w - 180.0f), r.x + 144.0f,
+                      r.y + 116.0f, 24.0f, kMuted);
+    }
+    for (int i = 0; i < cards; ++i)
+    {
+        const Pairing &p = snap_.pairings[static_cast<std::size_t>(i)];
+        const Rect r = pairing_rect(i);
+        const float f = card_amount_[i];
+        const float pulse = 0.5f + 0.5f * std::sin(time_ * 4.0f);
+        list.glow(r, 26.0f, 22.0f, kAccent.with_alpha(0.18f + 0.18f * pulse + 0.2f * f));
+        glass_card(list, glass, r, 26.0f, std::max(f, 0.35f));
+        list.circle(r.x + 68.0f, r.y + 70.0f, 36.0f, kAccent.with_alpha(0.18f));
+        icons::draw(list, Icon::link, r.x + 68.0f, r.y + 70.0f, 34.0f, kAccent);
+        hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, p.name.empty() ? "Moonlight" : p.name, 32.0f, r.w - 150.0f),
+                      r.x + 126.0f, r.y + 66.0f, 32.0f, kInk);
+        hui::ui::text(list, fonts_.regular, p.address.empty() ? "wants to pair" : "from " + p.address + " wants to pair",
+                      r.x + 126.0f, r.y + 100.0f, 22.0f, kMuted);
+        const Rect pill{r.x + 30.0f, r.y + r.h - 66.0f, 230.0f, 46.0f};
+        list.rounded_rect(pill, 23.0f, kAccent.with_alpha(0.18f + 0.3f * f));
+        hui::ui::draw_button(list, fonts_, hui::ui::GlyphStyle::dark(), hui::ui::Button::cross, pill.x + 16.0f, pill.cy(), 28.0f);
+        hui::ui::text(list, fonts_.semibold, "Enter PIN", pill.x + 58.0f, pill.cy() + 8.0f, 23.0f, kInk);
+    }
+    if (snap_.pairings.size() > 2)
+        hui::ui::text(list, fonts_.regular, "+" + std::to_string(snap_.pairings.size() - 2) + " more", 1196.0f, 726.0f, 20.0f,
+                      kFaint, Align::right);
+    {
+        const Rect r{1220.0f, 740.0f, 604.0f, 172.0f};
+        glass_card(list, glass, r, 26.0f, 0.0f);
+        hui::ui::text(list, fonts_.semibold, "PAIRED DEVICES", r.x + 30.0f, r.y + 44.0f, 19.0f, kMuted, Align::left, 3.0f);
+        if (snap_.paired.empty())
+        {
+            hui::ui::text(list, fonts_.regular, "None yet.", r.x + 30.0f, r.y + 96.0f, 24.0f, kFaint);
+        }
+        float cx = r.x + 30.0f, cy = r.y + 70.0f;
+        for (std::size_t i = 0; i < snap_.paired.size(); ++i)
+        {
+            const std::string name = shorten(fonts_.semibold, snap_.paired[i], 21.0f, 220.0f);
+            const float w = fonts_.semibold.measure(name, 21.0f) + 62.0f;
+            if (cx + w > r.x + r.w - 24.0f)
+            {
+                cx = r.x + 30.0f;
+                cy += 50.0f;
+                if (cy > r.y + r.h - 44.0f)
+                    break;
+            }
+            const Rect c{cx, cy, w, 40.0f};
+            list.rounded_rect(c, 20.0f, Color::rgb(0xffffff, 0.07f));
+            icons::draw(list, Icon::monitor, cx + 24.0f, c.cy(), 20.0f, kAccent);
+            hui::ui::text(list, fonts_.semibold, name, cx + 44.0f, c.cy() + 7.0f, 21.0f, kInk);
+            cx += w + 10.0f;
+        }
+    }
+    list.pop_transform();
+    list.pop_opacity();
+}
+
+// ---- drawing: the settings page ---------------------------------------------------------------
+
+void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
+{
+    float a = appear(0);
+    list.push_opacity(a);
+    list.push_transform(1.0f, 0.0f, 0.0f, static_cast<float>(page_direction_) * 40.0f * (1.0f - a), 0.0f);
+    const float tw = hui::ui::text(list, fonts_.display, "Settings", 90.0f, 250.0f, 72.0f, kInk);
+    hui::ui::text(list, fonts_.regular, "sunshine.conf on this console. The host reads it when it starts.", 120.0f + tw,
+                  248.0f, 24.0f, kMuted);
+    list.pop_transform();
+    list.pop_opacity();
+
+    for (int i = 0; i < 6; ++i)
+    {
+        const OptionSpec &spec = option_specs()[static_cast<std::size_t>(i)];
+        const auto edited = edits_.find(spec.key);
+        const auto saved = snap_.config.find(spec.key);
+        const bool changed = edits_loaded_ && edited != edits_.end() && saved != snap_.config.end() &&
+                             edited->second != saved->second;
+        const bool is_default = edited == edits_.end() || !edited->second;
+        const float f = tile_amount_[i];
+        a = appear(1 + i);
+        const Rect base = tile_rect(i);
+        list.push_opacity(a);
+        list.push_transform(1.0f + 0.02f * f, base.cx(), base.cy(), 0.0f, 30.0f * (1.0f - a));
+        if (f > 0.01f)
+            list.glow(base, 24.0f, 26.0f, kAccent.with_alpha(0.28f * f));
+        glass_card(list, glass, base, 24.0f, f);
+        icons::draw(list, kOptionIcons[i], base.x + 46.0f, base.y + 50.0f, 34.0f, kAccent);
+        hui::ui::text(list, fonts_.semibold, spec.label, base.x + 30.0f, base.y + 112.0f, 30.0f, kInk);
+        hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, value_text(i), 25.0f, base.w - 60.0f), base.x + 30.0f,
+                      base.y + 150.0f, 25.0f, is_default ? kMuted : mix(kInk, kAccent, 0.35f));
+        // Top right: default or changed.
+        const std::string tag = changed ? "UNSAVED" : is_default ? "DEFAULT" : "";
+        if (!tag.empty())
+        {
+            const float w = fonts_.semibold.measure(tag, 16.0f) + 34.0f;
+            const Rect t{base.x + base.w - w - 22.0f, base.y + 30.0f, w, 32.0f};
+            list.rounded_rect(t, 16.0f, changed ? kAccent.with_alpha(0.22f) : Color::rgb(0xffffff, 0.07f));
+            hui::ui::text(list, fonts_.semibold, tag, t.cx(), t.cy() + 6.0f, 16.0f, changed ? kAccent : kMuted,
+                          Align::center, 2.0f);
+        }
+        list.pop_transform();
+        list.pop_opacity();
+    }
+
+    a = appear(7);
+    list.push_opacity(a);
+    list.push_transform(1.0f, 0.0f, 0.0f, 0.0f, 30.0f * (1.0f - a));
+    const bool enabled = !busy();
+    draw_button(list, glass, settings_action_rect(0), static_cast<int>(Icon::save), dirty() ? "Save" : "Saved",
+                dirty(), tile_amount_[6], enabled && dirty());
+    draw_button(list, glass, settings_action_rect(1), static_cast<int>(Icon::restart), "Save and restart host", false,
+                tile_amount_[7], enabled);
+    draw_button(list, glass, settings_action_rect(2), static_cast<int>(Icon::undo), "Revert changes", false,
+                tile_amount_[8], dirty());
+
+    // What the focused part does.
+    std::string help;
+    std::string extra;
+    if (tile_ < 6)
+    {
+        const OptionSpec &spec = option_specs()[static_cast<std::size_t>(tile_)];
+        help = spec.help;
+        extra = std::string("Default: ") + spec.default_label;
+    }
+    else if (tile_ == 6)
+        help = "Writes the changes to sunshine.conf. They apply when the host starts next.";
+    else if (tile_ == 7)
+        help = "Writes the changes and restarts the host, which ends a running stream.";
+    else
+        help = "Puts back what sunshine.conf holds now.";
+    const Rect bar{96.0f, 840.0f, 1728.0f, 64.0f};
+    glass_card(list, glass, bar, 18.0f, 0.0f);
+    list.circle(bar.x + 32.0f, bar.cy(), 6.0f, kAccent);
+    hui::ui::text(list, fonts_.regular, help, bar.x + 56.0f, bar.cy() + 8.0f, 24.0f, kInk);
+    if (!extra.empty())
+        hui::ui::text(list, fonts_.regular, extra, bar.x + bar.w - 30.0f, bar.cy() + 8.0f, 22.0f, kMuted, Align::right);
+    list.pop_transform();
+    list.pop_opacity();
+}
+
+void Screen::draw_page(hui::gfx::DrawList &list, std::uint32_t glass) const
+{
+    draw_top_bar(list, glass);
+    if (page_ == Page::home)
+        draw_home(list, glass);
+    else
+        draw_settings(list, glass);
+
+    // The focus ring glides between the focused parts.
+    if (sheet_ == Sheet::none)
+    {
+        const Rect h = highlight_.rect(time_);
+        const bool pill = page_ == Page::home ? home_row_ == 0 : tile_ >= 6;
+        const float radius = pill ? h.h / 2.0f + 6.0f : 30.0f;
+        const float breathe = 0.75f + 0.25f * std::sin(time_ * 3.0f);
+        list.bordered_rect(h.inset(-6.0f), radius, kClear, 3.0f, kAccent.with_alpha(0.95f * breathe));
+    }
+    if (!has_sheet())
+        draw_footer(list, glass);
+}
+
+// ---- drawing: the sheet -----------------------------------------------------------------------
+
+void Screen::draw_sheet(hui::gfx::DrawList &list, std::uint32_t glass) const
+{
+    if (sheet_drawn_ == Sheet::none)
+        return;
+    const float a = ease_out(sheet_amount_);
+    list.push_opacity(a);
+    list.rounded_rect({0.0f, 0.0f, 1920.0f, 1080.0f}, 0.0f, Color::rgb(0x04060e, 0.55f));
+    const bool keys = sheet_drawn_ == Sheet::pin || sheet_drawn_ == Sheet::text;
+    const OptionSpec *spec = find_option(target_);
+    float height = keys ? 780.0f : 640.0f;
+    if (sheet_drawn_ == Sheet::choice && spec != nullptr)
+        height = 300.0f + static_cast<float>(spec->choices.size() + 1) * 76.0f;
+    const float width = sheet_drawn_ == Sheet::text ? 1120.0f : 880.0f;
+    const Rect card{960.0f - width / 2.0f, 540.0f - height / 2.0f + 10.0f, width, height};
+    list.push_transform(0.94f + 0.06f * a, card.cx(), card.cy(), 0.0f, 30.0f * (1.0f - a));
+    list.shadow(card, 34.0f, 60.0f, Color::rgb(0x000000, 0.55f));
+    list.glass(glass, card, 34.0f, Color::rgb(0xffffff));
+    list.rounded_rect(card, 34.0f, Color::rgb(0x121a36, 0.82f));
+    list.bordered_rect(card, 34.0f, kClear, 1.5f, Color::rgb(0xffffff, 0.14f));
+    list.gradient_rect({card.x, card.y, card.w, 120.0f}, 34.0f, kAccent.with_alpha(0.14f), kAccent.with_alpha(0.0f));
+
+    const Icon icon = sheet_drawn_ == Sheet::pin ? Icon::link
+                      : spec != nullptr        ? kOptionIcons[std::min<std::size_t>(5, static_cast<std::size_t>(spec - option_specs().data()))]
+                                               : Icon::sliders;
+    icons::draw(list, icon, card.cx(), card.y + 62.0f, 40.0f, kAccent);
+    hui::ui::text(list, fonts_.display, sheet_title_, card.cx(), card.y + 140.0f, 46.0f, kInk, Align::center);
+    hui::ui::text(list, fonts_.regular, sheet_help_, card.cx(), card.y + 184.0f, 24.0f, kMuted, Align::center);
+
+    if (sheet_drawn_ == Sheet::pin)
+    {
+        const float size = 104.0f, gap = 24.0f;
+        const float x0 = card.cx() - (4 * size + 3 * gap) / 2.0f;
+        for (int i = 0; i < 4; ++i)
+        {
+            const Rect cell{x0 + static_cast<float>(i) * (size + gap), card.y + 220.0f, size, 120.0f};
+            const bool current = static_cast<int>(buffer_.size()) == i;
+            const bool filled = i < static_cast<int>(buffer_.size());
+            if (current)
+                list.glow(cell, 20.0f, 18.0f, kAccent.with_alpha(0.3f));
+            list.rounded_rect(cell, 20.0f, Color::rgb(0x0a0f22, 0.8f));
+            list.bordered_rect(cell, 20.0f, kClear, current ? 3.0f : 1.5f,
+                               current ? kAccent : filled ? Color::rgb(0xffffff, 0.3f) : Color::rgb(0xffffff, 0.12f));
+            if (filled)
+                hui::ui::text(list, fonts_.mono, std::string(1, buffer_[static_cast<std::size_t>(i)]), cell.cx(),
+                              cell.y + 84.0f, 62.0f, kInk, Align::center);
+            else if (current && std::fmod(time_, 1.0f) < 0.6f)
+                list.rounded_rect({cell.cx() - 2.0f, cell.y + 34.0f, 4.0f, 52.0f}, 2.0f, kAccent);
+        }
+    }
+    else if (sheet_drawn_ == Sheet::text)
+    {
+        const Rect field{card.x + 90.0f, card.y + 220.0f, card.w - 180.0f, 96.0f};
+        list.rounded_rect(field, 22.0f, Color::rgb(0x0a0f22, 0.8f));
+        list.bordered_rect(field, 22.0f, kClear, 3.0f, kAccent);
+        const float w = hui::ui::text(list, fonts_.semibold, buffer_, field.x + 30.0f, field.y + 62.0f, 38.0f, kInk);
+        if (buffer_.empty())
+            hui::ui::text(list, fonts_.regular, "Default (network name)", field.x + 30.0f, field.y + 62.0f, 32.0f, kFaint);
+        if (std::fmod(time_, 1.0f) < 0.6f)
+            list.rounded_rect({field.x + 34.0f + (buffer_.empty() ? 0.0f : w), field.y + 24.0f, 3.0f, 50.0f}, 1.5f, kAccent);
+    }
+    if (keys)
+    {
+        if (!sheet_error_.empty())
+            hui::ui::text(list, fonts_.semibold, sheet_error_, card.cx(), card.y + 380.0f, 24.0f, kBad, Align::center);
+        hui::ui::Canvas canvas{list, fonts_, glass, time_};
+        keyboard_.draw(canvas);
+    }
+
+    if (sheet_drawn_ == Sheet::choice && spec != nullptr)
+    {
+        // The rows sit at the same place as in handle_sheet.
+        const float shift = card.y + 220.0f - 400.0f;
+        list.push_transform(1.0f, 0.0f, 0.0f, 0.0f, shift);
+        const Rect h = sheet_highlight_.rect(time_);
+        list.rounded_rect(h, 18.0f, kAccent.with_alpha(0.18f));
+        list.bordered_rect(h, 18.0f, kClear, 2.5f, kAccent);
+        const auto it = edits_.find(spec->key);
+        int selected = 0;
+        for (std::size_t i = 0; it != edits_.end() && it->second && i < spec->choices.size(); ++i)
+        {
+            if (*it->second == spec->choices[i].value)
+                selected = static_cast<int>(i) + 1;
+        }
+        for (int i = 0; i <= static_cast<int>(spec->choices.size()); ++i)
+        {
+            const Rect row{660.0f, 400.0f + static_cast<float>(i) * 76.0f, 600.0f, 64.0f};
+            const std::string label = i == 0 ? std::string("Default (") + spec->default_label + ")"
+                                             : spec->choices[static_cast<std::size_t>(i - 1)].label;
+            list.ring(row.x + 40.0f, row.cy(), 13.0f, 2.5f, i == selected ? kAccent : kMuted);
+            if (i == selected)
+                list.circle(row.x + 40.0f, row.cy(), 6.5f, kAccent);
+            hui::ui::text(list, fonts_.semibold, label, row.x + 72.0f, row.cy() + 9.0f, 26.0f, i == choice_ ? kInk : kMuted);
+        }
+        list.pop_transform();
+    }
+    if (sheet_drawn_ == Sheet::number && spec != nullptr)
+    {
+        const std::string text = number_default_ ? std::string("Default") : std::to_string(number_);
+        const float cy = card.y + 360.0f;
+        hui::ui::text(list, fonts_.display, text, card.cx(), cy + 40.0f, number_default_ ? 72.0f : 110.0f, kInk, Align::center);
+        if (number_default_)
+            hui::ui::text(list, fonts_.regular, spec->default_label, card.cx(), cy + 90.0f, 26.0f, kMuted, Align::center);
+        // Arrows and the range.
+        for (int side = -1; side <= 1; side += 2)
+        {
+            const float x = card.cx() + static_cast<float>(side) * 330.0f;
+            const Rect r{x - 36.0f, cy - 36.0f, 72.0f, 72.0f};
+            list.rounded_rect(r, 36.0f, Color::rgb(0xffffff, 0.08f));
+            list.triangle({x - 14.0f, cy - 14.0f, 28.0f, 28.0f}, kAccent, 0.0f, side < 0 ? -1.5708f : 1.5708f);
+        }
+        const float t = static_cast<float>(number_ - spec->min) / static_cast<float>(std::max(1L, spec->max - spec->min));
+        const Rect track{card.x + 140.0f, card.y + 520.0f, card.w - 280.0f, 8.0f};
+        list.rounded_rect(track, 4.0f, Color::rgb(0xffffff, 0.1f));
+        list.gradient_rect_h({track.x, track.y, std::max(8.0f, track.w * t), track.h}, 4.0f, kAccent, kAccentDeep);
+        hui::ui::text(list, fonts_.regular, std::to_string(spec->min), track.x, track.y + 40.0f, 20.0f, kFaint);
+        hui::ui::text(list, fonts_.regular, std::to_string(spec->max), track.x + track.w, track.y + 40.0f, 20.0f, kFaint,
+                      Align::right);
+    }
+    list.pop_transform();
+    list.pop_opacity();
+    draw_footer(list, glass);
 }
 
 } // namespace psapp

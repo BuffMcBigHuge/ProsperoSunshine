@@ -15,6 +15,7 @@
 #   /cache/ps5-opengl-sdk   the ps5-opengl SDK (manifest.sha256 inside); app/build.ps1 copies it from
 #                           PS5SD's build volume, PS5_OPENGL_SDK overrides the path
 #   HOST_ELF                the host payload to bundle (default out/prospero_sunshine.elf)
+#   APP_SCE_SYS             the title data folder (default app/sce_sys)
 # Output: build/app/PPSA47989/ (the title folder) and build/app/PPSA47989.zip.
 set -euo pipefail
 
@@ -27,6 +28,7 @@ kit="$cache/ps5-homebrew-ui"
 stage="$cache/stage"
 glsdk=${PS5_OPENGL_SDK:-$cache/ps5-opengl-sdk}
 host_elf=${HOST_ELF:-$repo/out/prospero_sunshine.elf}
+sce_sys=${APP_SCE_SYS:-$app_src/sce_sys}
 out="$repo/build/app"
 
 [ -f "$glsdk/manifest.sha256" ] || {
@@ -58,13 +60,13 @@ rsync -a --delete "$app_src/src/" "$stage/src/app/"
 mv "$stage/src/app/main.cpp" "$stage/src/main.cpp"
 rm -rf "$stage/sce_sys"
 mkdir -p "$stage/sce_sys"
-cp "$app_src/sce_sys/param.json" "$app_src/sce_sys/icon0.png" "$stage/sce_sys/"
+cp "$sce_sys/param.json" "$sce_sys/icon0.png" "$stage/sce_sys/"
 
 # ---- build -------------------------------------------------------------------------
 make -C "$stage" app PS5_OPENGL_PREFIX="$glsdk" USE_CCACHE=0 PS5_CLANG=clang-18
 
 # ---- the title folder --------------------------------------------------------------
-title_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["titleId"])' "$app_src/sce_sys/param.json")
+title_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["titleId"])' "$sce_sys/param.json")
 title="$stage/dist/$title_id"
 if [ -f "$host_elf" ]; then
     mkdir -p "$title/payloads"

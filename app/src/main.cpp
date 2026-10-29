@@ -101,7 +101,7 @@ int main()
     sky.colors[2] = gfx::Color::rgb(0x3b2a5a);
     sky.colors[3] = gfx::Color::rgb(0x7a4a1c);
 
-    gfx::DrawList list;
+    gfx::DrawList background, page, sheet;
     ui::Feedback feedback;
     PadSample samples[64];
     std::int64_t last = sys::monotonic_us();
@@ -126,12 +126,25 @@ int main()
             pad.rumble(feedback.rumble_strength, feedback.rumble_seconds);
         pad.tick(dt);
 
-        list.clear();
-        screen.draw(list, renderer.glass_texture());
+        // The sky and its light, frosted for the cards; the page; the sheet over the frosted page.
+        background.clear();
+        page.clear();
+        sheet.clear();
+        screen.draw_background(background);
+        screen.draw_page(page, renderer.glass_texture());
+        if (screen.has_sheet())
+            screen.draw_sheet(sheet, renderer.glass_texture());
         sky.time = static_cast<float>(now - start) / 1e6f;
         renderer.begin();
         renderer.backdrop(sky);
-        renderer.draw(list);
+        renderer.draw(background);
+        renderer.glass();
+        renderer.draw(page);
+        if (screen.has_sheet())
+        {
+            renderer.glass();
+            renderer.draw(sheet);
+        }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);

@@ -25,6 +25,7 @@ namespace psapp
 constexpr const char *kDataDir = "/data/prosperosunshine";
 constexpr const char *kConfPath = "/data/prosperosunshine/sunshine.conf";
 constexpr const char *kHostElf = "/data/prosperosunshine/prospero_sunshine.elf";
+constexpr const char *kStatePath = "/data/prosperosunshine/sunshine_state.json";
 constexpr const char *kBundledElf = "/app0/payloads/prospero_sunshine.elf";
 constexpr std::uint16_t kControlPort = 47995;
 constexpr std::uint16_t kLoaderPort = 9021;
@@ -45,6 +46,8 @@ struct Snapshot
     bool running = false;     // the control socket answered
     bool streaming = false;   // STATUS running=1
     std::string app;          // STATUS app=
+    std::string client;       // STATUS client= and address= (newer hosts; empty otherwise)
+    std::string client_address;
     std::vector<Pairing> pairings;
     std::string poll_error;   // set when the socket is there but did not answer properly
     // Files.
@@ -55,6 +58,8 @@ struct Snapshot
     bool manager_autoload = false;   // AUTOLOAD_ENABLED=1 in pldmgr_config.txt
     bool manager_present = false;    // /data/pldmgr exists
     long long host_elf_size = -1;    // /data/prosperosunshine/prospero_sunshine.elf
+    std::vector<std::string> paired; // named_devices in sunshine_state.json
+    std::string address;             // the console's IPv4 address, for Moonlight
     bool bundled_elf = false;        // the app carries one
     // The request being worked on ("" when idle), and the outcome of the last one.
     std::string busy;

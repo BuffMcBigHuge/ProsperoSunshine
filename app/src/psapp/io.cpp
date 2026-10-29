@@ -305,6 +305,29 @@ bool port_open(std::uint16_t port, int timeout_ms)
     return true;
 }
 
+std::string local_ipv4()
+{
+    const int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0)
+        return {};
+    sockaddr_in target{};
+    target.sin_family = AF_INET;
+    target.sin_port = htons(9);
+    target.sin_addr.s_addr = htonl(0x0A000001); // 10.0.0.1; a route is all that is needed
+    sockaddr_in local{};
+    socklen_t length = sizeof local;
+    std::string text;
+    if (::connect(fd, reinterpret_cast<sockaddr *>(&target), sizeof target) == 0 &&
+        ::getsockname(fd, reinterpret_cast<sockaddr *>(&local), &length) == 0 && local.sin_addr.s_addr != 0)
+    {
+        const std::uint32_t a = ntohl(local.sin_addr.s_addr);
+        text = std::to_string(a >> 24) + "." + std::to_string((a >> 16) & 255) + "." + std::to_string((a >> 8) & 255) +
+               "." + std::to_string(a & 255);
+    }
+    ::close(fd);
+    return text;
+}
+
 std::string send_file(std::uint16_t port, const std::string &path)
 {
     const int in = ::open(path.c_str(), O_RDONLY);

@@ -50,6 +50,30 @@ std::string status_field(const std::string &line, const std::string &name)
 
 // UTC as ISO 8601. The title's libc has no localtime_r, so the date is worked out here
 // (days to civil date, Howard Hinnant's algorithm).
+// The "name" of every entry of root.named_devices in sunshine_state.json. Sunshine writes the file
+// with boost::property_tree, one key a line, so a scan for the keys is enough here.
+std::vector<std::string> paired_names(const std::string &json)
+{
+    std::vector<std::string> names;
+    std::size_t at = json.find("\"named_devices\"");
+    if (at == std::string::npos)
+        return names;
+    const std::size_t end = json.find(']', at);
+    for (;;)
+    {
+        at = json.find("\"name\"", at);
+        if (at == std::string::npos || (end != std::string::npos && at > end))
+            break;
+        const std::size_t open = json.find('"', json.find(':', at) + 1);
+        const std::size_t close = open == std::string::npos ? open : json.find('"', open + 1);
+        if (close == std::string::npos)
+            break;
+        names.push_back(json.substr(open + 1, close - open - 1));
+        at = close + 1;
+    }
+    return names;
+}
+
 std::string iso_time()
 {
     const long long now = static_cast<long long>(std::time(nullptr));
@@ -267,6 +291,11 @@ void Host::read_files()
         if (io::exists(kConfPath))
             error = "sunshine.conf could not be read";
     }
+    std::string state;
+    std::vector<std::string> paired;
+    if (io::read_text(kStatePath, &state))
+        paired = paired_names(state);
+    const std::string address = io::local_ipv4();
     std::string list, manager;
     const bool have_list = io::read_text(autoload::kListPath, &list);
     const bool have_manager = io::read_text(autoload::kConfigPath, &manager);
@@ -278,13 +307,16 @@ void Host::read_files()
     state_.manager_autoload = have_manager && autoload::manager_autoload_enabled(manager);
     state_.manager_present = io::exists("/data/pldmgr");
     state_.host_elf_size = io::file_size(kHostElf);
+    state_.paired = paired;
+    if (!address.empty())
+        state_.address = address;
 }
 
 void Host::poll()
 {
     const io::Exchange reply = io::exchange(kControlPort, "STATUS\nPAIRINGS\n", is_end, 3000);
     bool running = false, streaming = false;
-    std::string app, error;
+    std::string app, client, client_address, error;
     std::vector<Pairing> pairings;
     if (reply.connect_refused)
     {
@@ -310,6 +342,8 @@ void Host::poll()
                 }
                 streaming = status_field(line, "running") == "1";
                 app = status_field(line, "app");
+                client = status_field(line, "client");
+                client_address = status_field(line, "address");
                 continue;
             }
             if (line == "END" || line.rfind("OK ", 0) != 0)
@@ -337,6 +371,8 @@ void Host::poll()
     state_.running = running;
     state_.streaming = streaming;
     state_.app = app;
+    state_.client = client;
+    state_.client_address = client_address;
     state_.pairings = pairings;
     state_.poll_error = error;
 }
@@ -416,6 +452,7 @@ void Host::do_pin(const Job &job)
             std::lock_guard<std::mutex> lock(mutex_);
             ++state_.paired_serial;
         }
+        read_files();
         finish("Paired with " + (job.c.empty() ? job.a : job.c), true);
     }
     else
