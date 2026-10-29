@@ -13,9 +13,11 @@
 using namespace std::literals;
 
 namespace video {
-// Only H.264 SDR 4:2:0 is offered (see ROADMAP v1.0 scope).
-int active_hevc_mode = 0;
-int active_av1_mode = 0;
+// Only H.264 SDR 4:2:0 is offered (see ROADMAP v1.0 scope). In Sunshine 1 means "disabled"; 0 would
+// still advertise HEVC/AV1 in the RTSP DESCRIBE reply, and clients that prefer HEVC (Moonlight on
+// iOS) then wait for HEVC keyframes in our H.264 stream and give up with "no video frame".
+int active_hevc_mode = 1;
+int active_av1_mode = 1;
 bool last_encoder_probe_supported_ref_frames_invalidation = false;
 std::array<bool, 3> last_encoder_probe_supported_yuv444_for_codec = {false, false, false};
 std::array<bool, 3> last_encoder_probe_supported_dynamic_range_for_codec = {false, false, false};
