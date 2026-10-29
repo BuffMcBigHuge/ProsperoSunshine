@@ -3,11 +3,13 @@
 // and RTSP services with the PS5 platform layer and offers a small line-based control socket for
 // development (ROADMAP P2.3): pairing PIN, status and shutdown.
 #include "control/control_server.hpp"
+#include "platform/ps5/mdns_responder.hpp"
 #include "src/config.h"
 #include "src/globals.h"
 #include "src/httpcommon.h"
 #include "src/input.h"
 #include "src/logging.h"
+#include "src/network.h"
 #include "src/nvhttp.h"
 #include "src/platform/common.h"
 #include "src/process.h"
@@ -92,12 +94,18 @@ int main(int argc, char *argv[]) {
     std::jthread rtsp_thread{rtsp_stream::start};
     prospero::ControlServer control(shutdown_event);
     std::jthread control_thread([&](std::stop_token stop) { control.run(stop); });
+    // Moonlight discovery (P9.2); on any socket problem the responder logs and ends, the host runs on.
+    std::jthread mdns_thread([name = config::nvhttp.sunshine_name](std::stop_token stop) {
+        prospero::mdns::run_responder(stop, name, net::map_port(nvhttp::PORT_HTTP));
+    });
     klog_printf("ProsperoSunshine: host ready control_port=%u\n", prospero::ControlServer::port);
 
     shutdown_event->view();
     BOOST_LOG(info) << "ProsperoSunshine host shutting down"sv;
     control_thread.request_stop();
+    mdns_thread.request_stop();
     proc::proc.terminate();
+    mdns_thread.join();
     http_thread.join();
     rtsp_thread.join();
     task_pool.stop();

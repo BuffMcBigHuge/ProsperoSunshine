@@ -29,7 +29,8 @@ namespace platf {
 std::unique_ptr<deinit_t> init() { return std::make_unique<deinit_t>(); }
 
 namespace publish {
-// Discovery via mDNS comes after v1.0 (ROADMAP R6); clients add the console by IP.
+// Upstream calls this from main.cpp, which the PS5 host replaces; mDNS runs from main_ps5.cpp
+// (src/platform/ps5/mdns_responder.cpp, ROADMAP P9.2).
 std::unique_ptr<deinit_t> start() { return nullptr; }
 }
 
