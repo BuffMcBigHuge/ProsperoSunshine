@@ -13,9 +13,11 @@
 using namespace std::literals;
 
 namespace video {
-// Only H.264 SDR 4:2:0 is offered (see ROADMAP v1.0 scope).
-int active_hevc_mode = 0;
-int active_av1_mode = 0;
+// Only H.264 SDR 4:2:0 is offered (see ROADMAP v1.0 scope). In Sunshine 1 means "disabled"; 0 would
+// still advertise HEVC/AV1 in the RTSP DESCRIBE reply, and clients that prefer HEVC (Moonlight on
+// iOS) then wait for HEVC keyframes in our H.264 stream and give up with "no video frame".
+int active_hevc_mode = 1;
+int active_av1_mode = 1;
 bool last_encoder_probe_supported_ref_frames_invalidation = false;
 std::array<bool, 3> last_encoder_probe_supported_yuv444_for_codec = {false, false, false};
 std::array<bool, 3> last_encoder_probe_supported_dynamic_range_for_codec = {false, false, false};
@@ -71,6 +73,17 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     touch_port_event->raise(port);
     hdr_event->raise(std::make_unique<hdr_info_raw_t>(false));
 
+    // One encoder channel, one stream: a second session would read frames from the same Avcap2 ring
+    // and starve the first. It is ended here; a reconnecting client gets through once the old
+    // session has timed out (ping_timeout).
+    static std::atomic_bool streaming{false};
+    if (streaming.exchange(true)) {
+        BOOST_LOG(warning) << "PS5 capture busy with another session; ending the new one"sv;
+        shutdown_event->raise(true);
+        return;
+    }
+    const auto release = util::fail_guard([] { streaming = false; });
+
     prospero::CaptureSession session(prospero::make_ps5_capture_backend());
     if (const int rc = session.start()) {
         BOOST_LOG(error) << "PS5 capture failed to start: "sv << rc;
@@ -97,9 +110,29 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
         const auto status = session.read(frame, 100ms, {}, &desc);
         if (status == prospero::CaptureStatus::timeout) continue;
         if (status != prospero::CaptureStatus::frame) {
-            BOOST_LOG(error) << "PS5 capture ended: "sv << static_cast<int>(status);
-            shutdown_event->raise(true);
-            break;
+            // Starting or closing a game takes the capture resource away for a moment; reopen
+            // instead of ending the stream. The first frame after a reopen is an IDR.
+            BOOST_LOG(warning) << "PS5 capture lost ("sv << static_cast<int>(status) << "), reopening"sv;
+            const auto lost_at = std::chrono::steady_clock::now();
+            bool recovered = false;
+            while (!shutdown_event->peek() && std::chrono::steady_clock::now() - lost_at < 20s) {
+                std::this_thread::sleep_for(250ms);
+                if (session.start() == 0) {
+                    recovered = true;
+                    break;
+                }
+            }
+            if (!recovered) {
+                BOOST_LOG(error) << "PS5 capture could not be reopened; ending the session"sv;
+                shutdown_event->raise(true);
+                break;
+            }
+            if (average != opening_average) session.set_bitrate(average, average / 100 * 112);
+            BOOST_LOG(info) << "PS5 capture reopened after "sv
+                            << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
+                                                                                     lost_at).count()
+                            << " ms"sv;
+            continue;
         }
         auto packet = std::make_unique<packet_raw_generic>(std::move(frame.bytes), static_cast<int64_t>(frame.index),
                                                            frame.idr);

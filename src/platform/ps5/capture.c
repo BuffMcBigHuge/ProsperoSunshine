@@ -25,7 +25,12 @@ struct ps_capture {
     handle_fn stop, close;
     int (*headers)(intptr_t, void *);
     int (*read)(intptr_t, void *, size_t, void *, uint32_t);
-    uint32_t av;
+    // Optional calls (docs/re/avcap2-exports.md), resolved once at open: kernel_dynlib_dlsym is not
+    // safe to call from several threads at once, and the video, audio and control threads all use these.
+    handle_fn request_keyframe, start;
+    int (*set_bitrate)(intptr_t, void *);
+    int (*open_audio)(intptr_t *, const void *, uint8_t);
+    int (*read_audio)(intptr_t, void *, size_t, void *, uint32_t);
     // Audio channel (docs/re/avcap2-exports.md, R2); shares the video session's resource grant.
     intptr_t audio;
     int audio_opened, audio_started;
@@ -134,7 +139,6 @@ int ps_capture_open(ps_capture **out)
     uint32_t av = module(load, "libSceAvcap2.sprx");
     uint32_t ra = module(load, "libSceResourceArbitrator.sprx");
     if (!av || !ra) goto fail;
-    s->av = av;
     intptr_t base = kernel_dynlib_mapbase_addr(-1, ra);
     if (!base) goto fail;
     int (*reg)(int, void *, void *) = (void *)(base + 0xdb0);
@@ -149,12 +153,16 @@ int ps_capture_open(ps_capture **out)
     int (*init)(void) = (void *)SYM("sceAvcap2Initialize");
     int (*mode)(int *) = (void *)SYM("sceAvcap2GetVideoOutMode");
     int (*open_video)(intptr_t *, const void *, uint8_t) = (void *)SYM("sceAvcap2OpenVideo");
-    handle_fn start = (void *)SYM("sceAvcap2Start");
+    handle_fn start = s->start = (void *)SYM("sceAvcap2Start");
     s->terminate = (void *)SYM("sceAvcap2Terminate");
     s->stop = (void *)SYM("sceAvcap2Stop");
     s->close = (void *)SYM("sceAvcap2Close");
     s->headers = (void *)SYM("sceAvcap2GetNonVclNalUnitStream");
     s->read = (void *)SYM("sceAvcap2ReadVideo");
+    s->request_keyframe = (void *)SYM("sceAvcap2RequestKeyFrame");
+    s->set_bitrate = (void *)SYM("sceAvcap2SetVideoBitrate");
+    s->open_audio = (void *)SYM("sceAvcap2OpenAudio");
+    s->read_audio = (void *)SYM("sceAvcap2ReadAudio");
 #undef SYM
     if (!init || !mode || !open_video || !start || !s->terminate || !s->stop || !s->close || !s->headers || !s->read)
         goto fail;
@@ -226,32 +234,22 @@ int ps_capture_read(ps_capture *s, void *destination, size_t capacity, uint8_t d
     return rc;
 }
 
-// Optional Avcap2 calls, resolved by name on first use (docs/re/avcap2-exports.md).
-static void *avcap_symbol(ps_capture *s, const char *name)
-{
-    return s && s->av ? (void *)kernel_dynlib_dlsym(-1, s->av, name) : NULL;
-}
-
 int ps_capture_request_keyframe(ps_capture *s)
 {
-    if (!s || !s->started) return PS_CAPTURE_ERROR;
-    int (*request)(intptr_t) = avcap_symbol(s, "sceAvcap2RequestKeyFrame");
-    if (!request) return PS_CAPTURE_ERROR;
-    int rc = request(s->handle);
+    if (!s || !s->started || !s->request_keyframe) return PS_CAPTURE_ERROR;
+    int rc = s->request_keyframe(s->handle);
     if (rc < 0) { LOG("RequestKeyFrame rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
     return 0;
 }
 
 int ps_capture_set_bitrate(ps_capture *s, uint32_t average, uint32_t peak)
 {
-    if (!s || !s->started) return PS_CAPTURE_ERROR;
-    int (*set)(intptr_t, void *) = avcap_symbol(s, "sceAvcap2SetVideoBitrate");
-    if (!set) return PS_CAPTURE_ERROR;
+    if (!s || !s->started || !s->set_bitrate) return PS_CAPTURE_ERROR;
     uint8_t request[0x10] = {0};
     u64(request, 0, sizeof request);
     u32(request, 8, average);
     u32(request, 0xc, peak);
-    int rc = set(s->handle, request);
+    int rc = s->set_bitrate(s->handle, request);
     if (rc < 0) { LOG("SetVideoBitrate rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
     return 0;
 }
@@ -266,10 +264,7 @@ int ps_capture_audio_open(ps_capture *s, uint32_t encoder, uint32_t bitrate, uin
 int ps_capture_audio_open_ex(ps_capture *s, uint32_t encoder, uint32_t bitrate, uint32_t frame_index,
                              uint32_t purpose, uint32_t field_1c, uint8_t flag)
 {
-    if (!s || !s->started || s->audio_opened) return PS_CAPTURE_ERROR;
-    int (*open_audio)(intptr_t *, const void *, uint8_t) = avcap_symbol(s, "sceAvcap2OpenAudio");
-    int (*start)(intptr_t) = avcap_symbol(s, "sceAvcap2Start");
-    if (!open_audio || !start) return PS_CAPTURE_ERROR;
+    if (!s || !s->started || s->audio_opened || !s->open_audio) return PS_CAPTURE_ERROR;
     uint8_t config[0x38] = {0};
     u64(config, 0, sizeof config);
     u64(config, 8, 0x18);
@@ -280,11 +275,11 @@ int ps_capture_audio_open_ex(ps_capture *s, uint32_t encoder, uint32_t bitrate, 
     u64(config, 0x20, encoder == 2 ? 0x18 : 0x10);
     u32(config, 0x28, bitrate);
     u32(config, 0x30, frame_index);
-    int rc = open_audio(&s->audio, config, flag);
+    int rc = s->open_audio(&s->audio, config, flag);
     LOG("OpenAudio encoder=%u purpose=%u 1c=%#x flag=%u rc=%#x\n", encoder, purpose, field_1c, flag, rc);
     if (rc) return rc < 0 ? rc : PS_CAPTURE_ERROR;
     s->audio_opened = 1;
-    rc = start(s->audio);
+    rc = s->start(s->audio);
     LOG("audio Start rc=%#x\n", rc);
     if (rc) { ps_capture_audio_close(s); return PS_CAPTURE_ERROR; }
     s->audio_started = 1;
@@ -293,13 +288,11 @@ int ps_capture_audio_open_ex(ps_capture *s, uint32_t encoder, uint32_t bitrate, 
 
 int ps_capture_audio_read(ps_capture *s, void *destination, size_t capacity, uint8_t header[0x10])
 {
-    if (!s || !s->audio_started || !destination || !header) return PS_CAPTURE_ERROR;
+    if (!s || !s->audio_started || !s->read_audio || !destination || !header) return PS_CAPTURE_ERROR;
     if (!atomic_load(&granted) || atomic_load(&revoked)) return PS_CAPTURE_REVOKED;
-    int (*read_audio)(intptr_t, void *, size_t, void *, uint32_t) = avcap_symbol(s, "sceAvcap2ReadAudio");
-    if (!read_audio) return PS_CAPTURE_ERROR;
     memset(header, 0, 0x10);
     u64(header, 0, 0x10);
-    int rc = read_audio(s->audio, destination, capacity, header, 1);
+    int rc = s->read_audio(s->audio, destination, capacity, header, 1);
     if (rc == AGAIN || rc == 0) return 0;
     if (rc < 0 || (size_t)rc > capacity) { LOG("ReadAudio rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
     return rc;

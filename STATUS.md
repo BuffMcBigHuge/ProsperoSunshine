@@ -1,6 +1,6 @@
 # Arbeitsstand
 
-Stand: 28. Oktober 2026, abends. Plan und Reihenfolge: `ROADMAP.md`. Ziel und Regeln: `PLAN.md`. Architektur: `docs/adr/001-sunshine-port.md`.
+Stand: 29. Oktober 2026, nachts. Plan und Reihenfolge: `ROADMAP.md`. Ziel und Regeln: `PLAN.md`. Architektur: `docs/adr/001-sunshine-port.md`.
 
 ## Kurzfassung
 
@@ -8,7 +8,13 @@ Stand: 28. Oktober 2026, abends. Plan und Reihenfolge: `ROADMAP.md`. Ziel und Re
 
 Eine 30-Minuten-Sitzung und zehn Wiederverbindungen liefen fehlerfrei.
 
-**Noch nicht geprüft:** eine echte Moonlight-App (PC, Handy, TV), reguläre Spiele als Bildquelle, Bild-/Ton-Synchronisation, gezielte Fehlerinjektion (Paketverlust, Ruhemodus).
+Echte Moonlight-Clients (Moonlight Web, Moonlight PC, Moonlight auf dem iPhone im WLAN) sind gepairt und streamen; Spiele (GTA III, Mario 64) erscheinen im Stream, und Spielstart/-ende überbrückt der Host automatisch.
+
+**PS5-App (Phase 8):** Die App „ProsperoSunshine“ (`PPSA47989`) liegt auf dem Branch `claude/ps5-settings-app-b5c39b` (Commit `8dc11eb`, noch nicht in `main` gemergt) unter `app/`. Live per Controller auf der Konsole geprüft: Host-Status, PIN-Eingabe für eine echte Pairing-Anfrage (Client meldet `PairStatus=1`), Autoload über den Payload Manager an und wieder aus (Eintrag `local/prospero-sunshine` in `/data/pldmgr/autoload.txt`, andere Einträge unverändert), „Restart host“ (Host fährt sauber herunter und startet neu). Einstellungen speichern und auf Standard zurücksetzen live geprüft (`wan_encryption_mode = 0` geschrieben, danach Datei wieder leer). Wunsch für die nächste Runde: Optik auf das Niveau von ProsperoStore/ProsperoEden/Playden heben. Autoload steht aktuell auf **aus**.
+
+**Bild-/Ton-Synchronisation (P5.2, erste Messung):** Navigationsklick im Home-Menü als gemeinsames Ereignis, 60 s, gemessen am Client (`tools/moonlight/av_sync.py`). Tastendruck → Bildänderung 23–25 ms, Tastendruck → Klickton 28–49 ms; Ton liegt 5–23 ms hinter dem Bild (burst-korrigiert Median ≈ 0 ms), also innerhalb der üblichen ±45-ms-Toleranz. Nur die Rechts-Drücke sind auswertbar (bei Links-Drücken erkennt der Bild-Detektor die Änderung nicht zuverlässig); der Drift über 60 s (−4,3 ms/min) ist zu kurz gemessen, ein 10-Minuten-Lauf steht aus.
+
+**Noch nicht geprüft:** Langzeit-Drift Bild/Ton, Ruhemodus, Moonlight auf Android/TV, andere Firmwares als 13.00.
 
 ## Nachweise nach Roadmap
 
@@ -32,6 +38,10 @@ Eine 30-Minuten-Sitzung und zehn Wiederverbindungen liefen fehlerfrei.
 | P3.4 | Nicht nötig: der PS5-Encoder schreibt bereits VUI mit `max_num_reorder_frames=0`, `max_dec_frame_buffering=1` | `cbs_probe` |
 | P4.1/4.2 | Gamepad-Ereignisse kommen an, Pad wird angelegt; Tastenabbildung als getestete Tabelle | `src/input/gamepad_map.hpp`, `tests/gamepad_map_test.cpp` |
 | P5.1 | Echter Spielton im Stream (RMS ≈ −40 dBFS im Home-Menü), Sunshines Opus-Encoder mit 5-ms-Paketen | — |
+| P1.4 / P6.2 | Spiele als Bildquelle: GTA III und Mario 64 erscheinen im Stream. Spielstart und -ende entziehen dem Host die Capture-Ressource (`0x81950009`); der Host öffnet Video und Ton automatisch neu (1,6–2,1 s Pause, Frame-Nummern laufen weiter). 120-s-Stream über zwei Spielstarts/-enden: 6989 Frames, 0 Frame-Lücken, fehlerfrei decodierbar, 0 Audiofehler | `out/game_tiles.png` (lokal), `src/sunshine/video_ps5.cpp` |
+| Echte Clients | Moonlight Web und Moonlight (PC) gepairt (PIN über Steuer-Socket) und gestreamt; Moonlight Web braucht ein App-Cover (jetzt eingebettet) | — |
+| iPhone | Moonlight auf dem iPhone (WLAN, PS5 per Kabel) gepairt, Bild und Ton laufen. Vorher kam nur Ton: Der Host meldete im RTSP-DESCRIBE HEVC (`active_hevc_mode = 0` heißt in Sunshine „unbekannt“, nicht „aus“), das iPhone wählte HEVC (`bitStreamFormat:1`) und fand in unserem H.264 nie einen Keyframe (`ML_ERROR_NO_VIDEO_FRAME`). Jetzt `1` = aus für HEVC und AV1 | `src/sunshine/video_ps5.cpp`, Debug-Log der Sitzung |
+| Steuer-Socket | `STATUS` meldet während eines Streams `address=<ip> client=<name>` (live: `address=… client=handy`), sonst leer; Sunshine-Patch 0005 merkt sich den Client des letzten Launch/Resume | `src/control/control_server.cpp`, `patches/sunshine/0005-last-launch-client.patch` |
 | P4.3 | Client mit gehaltenem Steuerkreuz + R2 hart beendet: Host erkennt den Abbruch nach ≈ 5,2 s (ENet-Timeout) und setzt das Pad 0,4 s später neutral (`Resetting Input`). Keine dauerhaft hängenden Eingaben, aber ≈ 5,6 s Nachlauf | `tools/moonlight/hold_kill_test.sh`, `tools/klog_tail.py` |
 | P6.2 (Teil) | 10 % verworfene Videopakete beim Client: Stream läuft durch, 18 von 1792 Frames fehlen (4 Lücken), 6 IDR-Anforderungen jeweils nach 50–70 ms bedient, längster Aussetzer 100 ms | `tools/moonlight/loss_test.sh` |
 | P6 (Teil) | 30-Minuten-Sitzung bei 20 Mbit/s angefordert: 107 885 Frames, 59,94 fps, 0 Frame-Lücken, 0 FEC-Fehler, max. Abstand 22 ms, komplett decodierbar; 359 787 Audiopakete ohne Fehler. 10/10 Wiederverbindungen. Host-Speicher 18,8–26,0 MB je nach Sitzungszustand, ohne Anstieg über die Sitzungen | `out/moonlight/soak30.log`, `tools/moonlight/reconnect_test.sh` |
@@ -42,12 +52,13 @@ Eine 30-Minuten-Sitzung und zehn Wiederverbindungen liefen fehlerfrei.
 
 ## Offen und bekannte Grenzen
 
-- **Echte Moonlight-App:** braucht ein Gerät mit Moonlight im LAN; PS5 per IP hinzufügen, PIN über `tools/moonlight/README.md` bzw. Steuer-Socket eingeben.
-- **Spiele als Quelle (P1.4):** nur Home-Menü und Systemoberfläche geprüft.
 - **MAC-Adresse** in `/serverinfo` ist 0: weder `getifaddrs` noch `sceNetGetMacAddress` liefern sie im Payload. Betrifft nur Wake-on-LAN.
 - **Boost.Filesystem `create_directories`** scheitert bei neuen verschachtelten Pfaden, wenn `errno` vorher belegt ist (ein Libc-Aufruf setzt kein `errno`). Der Host nutzt nur `std::filesystem` und ist nicht betroffen.
 - **Zweite RTSP-Verbindung** wird ohne erklärende Fehlermeldung geschlossen (Upstream-Verhalten).
-- **Eingaben nach hartem Verbindungsabbruch** wirken bis zur Abbruch-Erkennung nach (≈ 5,6 s). Abhilfe wäre ein früherer Eingabe-Watchdog im Steuerkanal (Patch an Sunshine) oder ein kürzeres `ping_timeout` (Risiko falscher Abbrüche im WLAN).
+- **Eingaben nach hartem Verbindungsabbruch** wirkten mit Sunshines Standard (`ping_timeout` 10 s) ≈ 5,6 s nach. Mit dem neuen Host-Standard von 2 s (Moonlight pingt alle 100 ms) erkennt der Host den Abbruch nach 1,8 s und setzt das Pad dann neutral (gemessen mit `tools/moonlight/hold_kill_test.sh`).
+- **Entzug der Capture-Ressource** passiert bei Spielstart/-ende (immer) und sporadisch wenige Sekunden nach Anmeldung des virtuellen Pads (2 von 7 Sitzungsstarts; in vier gezielten Wiederholungen mit vollem Kernel-Log nicht reproduziert). Der Host stellt Video und Ton jeweils nach ≈ 2 s wieder her; der Client sieht eine kurze Pause.
+- **Nur eine Sitzung gleichzeitig:** Eine zweite Streaming-Sitzung (z. B. Moonlight Web, das während einer laufenden Sitzung erneut verbindet) wird beendet, weil sonst zwei Leser denselben Avcap2-Kanal leeren.
+- **Avcap2-Symbolauflösung war nicht threadsicher:** `kernel_dynlib_dlsym` aus mehreren Threads gleichzeitig ließ Ton und Keyframe-Anforderung scheitern; alle Funktionen werden jetzt einmal beim Öffnen aufgelöst.
 - **Log-Stufe:** `min_log_level` in `/data/prosperosunshine/sunshine.conf` gilt auch für das Kernel-Log (z. B. `min_log_level = debug` für Diagnose).
 - **Steuer-Socket** ist im LAN offen und nur für Entwicklung gedacht; die Host-API für die PS5-App (P2.5) ist noch nicht abgestimmt.
 - **Kein HDR/HEVC, keine Maus/Tastatur, kein Rumble** (v1.0-Umfang).

@@ -8,7 +8,9 @@ Erledigt und live belegt (Details in `STATUS.md`): Phase 0 komplett, Spikes R1�
 
 P7.2 (Lizenzübersicht `docs/licenses.md`) und P7.3 (englische README mit Voraussetzungen, Ablauf und Grenzen) sind erledigt.
 
-Als Nächstes: Test mit einer echten Moonlight-App, Spiele als Bildquelle (P1.4), Bild-/Ton-Synchronisation (P5.2), früherer Eingabe-Watchdog (P4.3-Folgepunkt), weitere Fehlerinjektion wie Ruhemodus und Ressourcenentzug (P6.2), Host-API mit der PS5-App abstimmen (P2.5), Release (P7.4).
+Inzwischen außerdem: echte Moonlight-Clients (Web und PC) gepairt und gestreamt, Spiele als Bildquelle (P1.4), automatischer Wiederanlauf bei Ressourcenentzug durch Spielstart/-ende, Begrenzung auf eine Sitzung, App-Cover.
+
+Als Nächstes: PS5-App (Phase 8), Bild-/Ton-Synchronisation (P5.2), früherer Eingabe-Watchdog (P4.3-Folgepunkt), weitere Fehlerinjektion wie Ruhemodus und Ressourcenentzug (P6.2), Host-API mit der PS5-App abstimmen (P2.5), Release (P7.4).
 
 ## Zielbild v1.0
 
@@ -153,6 +155,40 @@ Jeder Spike endet mit einer schriftlichen Antwort in `docs/` („geht, so“ ode
 
 **Abnahme Phase 6:** wie `PLAN.md` M6: 30-Minuten-Sitzung, zehn Wiederverbindungen, fünf Host-Zyklen, kein Speicheranstieg, keine hängenden Eingaben oder Ressourcen; danach ein zweiter Client auf anderer Plattform.
 
+## Phase 8: PS5-App „ProsperoSunshine“ (läuft parallel, eigene Session)
+
+Eine Homebrew-App auf der Konsole (Vorbild: PS5SD) macht den Host ohne PC bedienbar und ist der Produktweg aus P2.5.
+
+| ID | Aufgabe | Aufwand | Ergebnis und Nachweis |
+| --- | --- | --- | --- |
+| P8.1 | App-Gerüst, Build, Packaging, Installation nach dem PS5SD-Muster | M | App startet auf der Konsole |
+| P8.2 | Einstellungen lesen/schreiben (`/data/prosperosunshine/sunshine.conf`: Hostname, Log-Stufe, `ping_timeout`, Verschlüsselung, Basisport) | S | Wert in der App ändern, Host neu starten, Wirkung im Log |
+| P8.3 | Host-Status, wartende Pairing-Anfragen und PIN-Eingabe über den Steuer-Socket (lokal 127.0.0.1:47995) | S | Moonlight paart mit PIN-Eingabe auf der Konsole |
+| P8.4 | Autoload des Host-ELF über den Payload Manager an/aus | S | Nach Neustart der Konsole läuft der Host bzw. nicht |
+| P8.5 | Host starten/neu starten aus der App | S | Schaltfläche lädt das ELF neu |
+| P8.6 | Optik auf das Niveau von ProsperoStore/ProsperoEden/Playden | M | Screenshots aller Seiten, komplett per Controller bedienbar |
+| P8.7 | Icon (`icon0.png`, 512²) und Home-Hintergrund (`pic0.png`, 1920×1080), Quellen in `assets/app/`; Einordnung im Media-Tab wie Prospero Themes | S | Kachel im Media-Tab mit neuem Icon, App startet von dort |
+| P8.8 | App-ID: `PPSA47989` gegen den ProsperoStore-Katalog und installierte Titel prüfen und vor dem Release erneut prüfen; bei Kollision eine freie ID wählen | S | ID taucht im Katalog nicht auf |
+| P8.9 | Release im ProsperoStore (Kategorie `streaming`, ZIP mit Titelordner, Version = `contentVersion`), zusammen mit P7.4 | S | App lässt sich aus dem Store installieren und startet |
+
+**Abnahme Phase 8:** Ein Nutzer ohne PC kann den Host einrichten, Moonlight pairen und Autoload festlegen.
+
+Stand: P8.1, P8.3, P8.4 und P8.5 live geprüft (Branch `claude/ps5-settings-app-b5c39b`, Commit `8dc11eb`); P8.2 ebenfalls live geprüft. P8.6 läuft in der App-Session. P8.7 live geprüft (2026-10-29): Die App steht im Media-Tab (`applicationCategoryType` 65536, `contentBadgeType` 1, `launchActivity`) und startet von dort; der `amm`-Block musste dafür aus `param.json` raus, mit ihm scheitert der Start mit 0x80020016. Für P8.8 wurde am 2026-10-29 geprüft: `PPSA47989` kommt im Store-Katalog (156 Apps, Stand 2026-10-28) nicht vor.
+
+## Phase 9: Feinschliff vor dem Release (nach dem ersten Handy-Test)
+
+| ID | Aufgabe | Aufwand | Ergebnis und Nachweis |
+| --- | --- | --- | --- |
+| P9.1 | Steuer-Socket nur auf `127.0.0.1` (die App spricht lokal); LAN-Zugriff für Entwicklung nur per Schalterdatei | S | Vom PC aus abgewiesen, aus der App erreichbar |
+| P9.2 | Automatisches Finden in Moonlight (mDNS `_nvstream._tcp`) | M | Moonlight am PC/Handy listet die PS5 ohne IP-Eingabe |
+| P9.3 | Auflösung und Bildrate des Clients beachten (z. B. 720p/30 fürs Handy), soweit Avcap2 das kann (Spike) | M | Client erhält die angeforderte Auflösung bzw. Bildrate, oder dokumentiert, warum nicht |
+| P9.4 | Bild/Ton-Drift über 10 Minuten messen (`tools/moonlight/av_sync.py`) | S | Drift pro Minute im Toleranzbereich |
+| P9.5 | Firmware-Porting vorbereiten: ResourceArbitrator-Funktionen per Mustersuche statt fester Adressen, Anleitung `docs/firmware-porting.md` | M | Mustersuche findet auf 13.00 die bekannten Adressen |
+| P9.6 | Weitere Clients: Android, TV/Shield, Steam Deck | S | Je ein Stream mit Bild, Ton und Eingabe |
+| P9.7 | Spike: HEVC über den PS5-Encoder | M | Ergebnis dokumentiert |
+
+Stand: P9.1 live geprüft (2026-10-29): Der Steuer-Socket ist vom PC aus abgewiesen, das Log meldet „local only“. Moonlight auf dem iPhone streamt seit 2026-10-29 mit Bild und Ton; vorher kam nur Ton, weil der Host fälschlich HEVC angeboten hatte (`STATUS.md`).
+
 ## Release 0.1 (öffentlich)
 
 | ID | Aufgabe | Aufwand |
@@ -161,6 +197,7 @@ Jeder Spike endet mit einer schriftlichen Antwort in `docs/` („geht, so“ ode
 | P7.2 | Lizenzprüfung: GPL-3.0 für eigenen und Sunshine-Code, Lizenztexte aller Bibliotheken im Release, Patch-Liste mit Herkunft | S |
 | P7.3 | Englische Nutzerdoku: Voraussetzungen (Firmware 13.00, ELF-Loader), Installation, Pairing, bekannte Grenzen | S |
 | P7.4 | Release mit ELF, Prüfsummen und Changelog | S |
+| P7.5 | Gleichzeitig die PS5-App im ProsperoStore veröffentlichen (P8.8, P8.9) | S |
 
 Ist R2 negativ, erscheint 0.1 als Vorschau ohne Ton und benennt das deutlich.
 

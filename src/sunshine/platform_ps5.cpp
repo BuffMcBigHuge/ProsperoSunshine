@@ -195,46 +195,54 @@ private:
 
 // Game audio from Avcap2 as raw PCM: float32, stereo, 48 kHz, 1024 frames per packet (R2). Sunshine's
 // own Opus encoder then cuts the frames Moonlight negotiated (5 ms by default).
+//
+// When the capture session is lost (a game start takes the resource) or replaced by a reopen, the
+// audio channel is gone; the microphone then delivers paced silence and reopens its channel on the
+// current session every half second, so the stream itself never ends because of audio.
 class avcap_mic final : public mic_t {
 public:
-    static std::unique_ptr<mic_t> open(int channels, std::uint32_t frame_size) {
+    static std::unique_ptr<mic_t> open(int channels, std::uint32_t sample_rate, std::uint32_t frame_size) {
         int rc = 0;
         auto shared = prospero::SharedCapture::acquire(rc);
         if (!shared) {
             BOOST_LOG(error) << "PS5 audio: capture session unavailable: "sv << rc;
             return nullptr;
         }
-        {
-            std::lock_guard lock(shared->control());
-            rc = ps_capture_audio_open(shared->session(), 0, 0, 0);
-        }
-        if (rc) {
-            BOOST_LOG(error) << "PS5 audio: OpenAudio failed: "sv << rc;
-            return nullptr;
-        }
-        return std::unique_ptr<mic_t>(new avcap_mic(std::move(shared), channels, frame_size));
+        auto mic = std::unique_ptr<avcap_mic>(new avcap_mic(std::move(shared), channels, sample_rate, frame_size));
+        if (!mic->open_channel()) return nullptr;
+        return mic;
     }
 
     ~avcap_mic() override {
-        std::lock_guard lock(shared_->control());
-        ps_capture_audio_close(shared_->session());
+        if (open_) close_channel();
     }
 
     capture_e sample(std::vector<float> &frame_buffer) override {
         const size_t needed = static_cast<size_t>(frame_size_) * 2;
+        const auto start = std::chrono::steady_clock::now();
         while (pending_.size() < needed) {
-            const int rc = ps_capture_audio_read(shared_->session(), packet_.data(), packet_.size(), header_);
+            if (open_ && generation_ != shared_->generation()) open_ = false;  // session was reopened
+            if (!open_) return silence(frame_buffer);
+            const int rc = shared_->with_session(
+                [&](ps_capture *s) { return ps_capture_audio_read(s, packet_.data(), packet_.size(), header_); });
             if (rc < 0) {
-                BOOST_LOG(error) << "PS5 audio: ReadAudio failed: "sv << rc;
-                return capture_e::capture_error;
+                BOOST_LOG(warning) << "PS5 audio: ReadAudio failed: "sv << rc << ", reopening"sv;
+                close_channel();
+                return silence(frame_buffer);
             }
             if (rc == 0) {
+                // A stalled channel (no packet for a while) is treated like a lost one.
+                if (std::chrono::steady_clock::now() - start > 500ms) {
+                    close_channel();
+                    return silence(frame_buffer);
+                }
                 std::this_thread::sleep_for(1ms);
                 continue;
             }
             const auto *samples = reinterpret_cast<const float *>(packet_.data());
             pending_.insert(pending_.end(), samples, samples + rc / sizeof(float));
         }
+        next_ = std::chrono::steady_clock::now();
         // Stereo from the console; any further requested channels stay silent.
         frame_buffer.assign(static_cast<size_t>(frame_size_) * channels_, 0.0f);
         for (std::uint32_t i = 0; i < frame_size_; ++i)
@@ -245,14 +253,53 @@ public:
     }
 
 private:
-    avcap_mic(std::shared_ptr<prospero::SharedCapture> shared, int channels, std::uint32_t frame_size)
-        : shared_(std::move(shared)), channels_(channels), frame_size_(frame_size), packet_(0xC000) {}
+    avcap_mic(std::shared_ptr<prospero::SharedCapture> shared, int channels, std::uint32_t sample_rate,
+              std::uint32_t frame_size)
+        : shared_(std::move(shared)), channels_(channels), frame_size_(frame_size),
+          period_(std::chrono::nanoseconds(1'000'000'000LL * frame_size / sample_rate)), packet_(0xC000) {}
+
+    bool open_channel() {
+        const unsigned generation = shared_->generation();
+        const int rc = shared_->exclusive([](ps_capture *s) { return ps_capture_audio_open(s, 0, 0, 0); });
+        if (rc) {
+            BOOST_LOG(warning) << "PS5 audio: OpenAudio failed: "sv << rc;
+            return false;
+        }
+        open_ = true;
+        generation_ = generation;
+        pending_.clear();
+        return true;
+    }
+
+    void close_channel() {
+        // After a reopen the channel died with the old session; closing would hit the new one.
+        if (generation_ == shared_->generation())
+            shared_->exclusive([](ps_capture *s) { return ps_capture_audio_close(s); });
+        open_ = false;
+    }
+
+    capture_e silence(std::vector<float> &frame_buffer) {
+        if (std::chrono::steady_clock::now() >= retry_at_) {
+            retry_at_ = std::chrono::steady_clock::now() + 500ms;
+            if (open_channel()) BOOST_LOG(info) << "PS5 audio: channel reopened"sv;
+        }
+        next_ = std::max(next_ + period_, std::chrono::steady_clock::now() - period_);
+        std::this_thread::sleep_until(next_);
+        frame_buffer.assign(static_cast<size_t>(frame_size_) * channels_, 0.0f);
+        return capture_e::ok;
+    }
+
     std::shared_ptr<prospero::SharedCapture> shared_;
     int channels_;
     std::uint32_t frame_size_;
+    std::chrono::nanoseconds period_;
     std::vector<uint8_t> packet_;
     uint8_t header_[0x10] = {};
     std::vector<float> pending_;
+    bool open_ = false;
+    unsigned generation_ = 0;
+    std::chrono::steady_clock::time_point next_ = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point retry_at_{};
 };
 
 class silent_audio_control final : public audio_control_t {
@@ -261,7 +308,7 @@ public:
     std::unique_ptr<mic_t> microphone(const std::uint8_t *, int channels, std::uint32_t sample_rate,
                                       std::uint32_t frame_size, bool, bool) override {
         if (sample_rate == 48000) {
-            if (auto mic = avcap_mic::open(channels, frame_size)) {
+            if (auto mic = avcap_mic::open(channels, sample_rate, frame_size)) {
                 BOOST_LOG(info) << "PS5 audio: game audio via Avcap2, "sv << channels << " channels, "sv << frame_size
                                 << " frames per packet"sv;
                 return mic;

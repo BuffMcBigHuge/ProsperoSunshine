@@ -100,7 +100,14 @@ if(EXISTS "${PROSPERO_DEPS}/include/boost" AND EXISTS "${PROSPERO_DEPS}/lib/liba
         nvhttp.cpp httpcommon.cpp rtsp.cpp stream.cpp crypto.cpp network.cpp audio.cpp input.cpp config.cpp
         logging.cpp cbs.cpp file_handler.cpp globals.cpp stat_trackers.cpp)
     list(TRANSFORM SUNSHINE_KEPT PREPEND "${SUNSHINE_SRC}/src/")
-    add_executable(prospero_sunshine
+    # Cover art for the single app, embedded so the host can install it without a separate upload.
+    set(COVER_PNG "${CMAKE_SOURCE_DIR}/assets/ps5_screen.png")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${COVER_PNG}")
+    file(READ "${COVER_PNG}" COVER_HEX HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," COVER_BYTES "${COVER_HEX}")
+    file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/generated/cover_png.cpp" CONTENT
+        "// Generated from assets/ps5_screen.png by CMakeLists.txt\n#include <cstddef>\nextern const unsigned char prospero_cover_png[] = {@COVER_BYTES@};\nextern const std::size_t prospero_cover_png_size = sizeof prospero_cover_png;\n")
+    add_executable(prospero_sunshine "${CMAKE_BINARY_DIR}/generated/cover_png.cpp"
         ${SUNSHINE_KEPT}
         "${MOONLIGHT_SRC}/src/RtspParser.c"
         src/sunshine/main_ps5.cpp src/sunshine/video_ps5.cpp src/sunshine/process_ps5.cpp

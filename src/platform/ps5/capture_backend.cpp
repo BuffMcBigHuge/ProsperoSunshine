@@ -12,18 +12,20 @@ public:
         return rc;
     }
     int headers(void *destination, size_t capacity) override {
-        return ps_capture_headers(shared_->session(), destination, capacity);
+        return shared_->with_session([&](ps_capture *s) { return ps_capture_headers(s, destination, capacity); });
     }
     int read(void *destination, size_t capacity, uint8_t descriptor[0x70]) override {
-        return ps_capture_read(shared_->session(), destination, capacity, descriptor);
+        const int rc = shared_->with_session(
+            [&](ps_capture *s) { return ps_capture_read(s, destination, capacity, descriptor); });
+        // Lost resource or a dead channel: the next open() reopens the shared session.
+        if (rc < 0) shared_->mark_failed();
+        return rc;
     }
     int request_keyframe() override {
-        std::lock_guard lock(shared_->control());
-        return ps_capture_request_keyframe(shared_->session());
+        return shared_->exclusive([](ps_capture *s) { return ps_capture_request_keyframe(s); });
     }
     int set_bitrate(uint32_t average, uint32_t peak) override {
-        std::lock_guard lock(shared_->control());
-        return ps_capture_set_bitrate(shared_->session(), average, peak);
+        return shared_->exclusive([&](ps_capture *s) { return ps_capture_set_bitrate(s, average, peak); });
     }
     // Releases this user's reference; the session closes once audio has released it too.
     int close() override {

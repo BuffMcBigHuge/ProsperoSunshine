@@ -14,6 +14,12 @@
 //       --rikey <32 hex> --rikeyid <int> --appversion 7.1.431.-1 \
 //       --gfe 3.23.0.74 --codec-mode 1 --out out/moonlight-test.h264 \
 //       [--duration 20] [--bitrate 6000] [--audio-out file.s16] [--no-encryption]
+//       [--timing-log file.csv] [--ui-ticks N [--tick-interval-ms 1500] [--tick-kind dpad|ps] [--tick-start S]]
+//       [--no-script]
+//
+// --timing-log writes one CSV line per video frame / audio packet / input press on a common monotonic microsecond
+// clock, --ui-ticks presses D-pad RIGHT/LEFT (or the PS button) N times after the startup input, --no-script skips
+// the scripted startup input (see tools/moonlight/av_sync.py, README).
 
 #include <getopt.h>
 #include <math.h>
@@ -39,6 +45,33 @@ static uint64_t now_ms(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return (uint64_t) ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+// ---------------------------------------------------------------- timing log (--timing-log)
+//
+// One CSV line per received video frame, per received audio packet and per UI tick press, all on the
+// same CLOCK_MONOTONIC microsecond axis (arrival time of the callback in this process):
+//   H,<t0_us>                                     first line: client time zero (all other times are absolute)
+//   V,<frame_number>,<idr 0|1>,<arrival_us>,<presentationTimeUs>,<bytes>
+//   A,<packet_index>,<arrival_us>,<rms 0..1>,<peak 0..1>
+//   P,<tick_index>,<action>,<sent_us>             action: right|left|ps  (press sent), release_* (release sent)
+static FILE *g_timing = NULL;
+static pthread_mutex_t g_timing_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static uint64_t now_us(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (uint64_t) ts.tv_sec * 1000000 + (uint64_t) ts.tv_nsec / 1000;
+}
+
+static void timing_line(const char *fmt, ...) {
+  if (!g_timing) return;
+  va_list ap;
+  va_start(ap, fmt);
+  pthread_mutex_lock(&g_timing_lock);
+  vfprintf(g_timing, fmt, ap);
+  pthread_mutex_unlock(&g_timing_lock);
+  va_end(ap);
 }
 
 static void tlog(const char *fmt, ...) {
@@ -80,6 +113,7 @@ static void vstop(void) { tlog("video stop\n"); }
 static void vcleanup(void) { tlog("video cleanup\n"); }
 
 static int vsubmit(PDECODE_UNIT du) {
+  uint64_t t_us = g_timing ? now_us() : 0;
   uint64_t t = now_ms();
   if (V.frames == 0) {
     V.first_ms = t;
@@ -112,6 +146,8 @@ static int vsubmit(PDECODE_UNIT du) {
     if (g_out) fwrite(e->data, 1, (size_t) e->length, g_out);
     total += (size_t) e->length;
   }
+  timing_line("V,%d,%d,%llu,%llu,%zu\n", du->frameNumber, is_idr ? 1 : 0, (unsigned long long) t_us,
+              (unsigned long long) du->presentationTimeUs, total);
   V.frames++;
   V.bytes += total;
   V.sec_frames++;
@@ -160,6 +196,7 @@ static void acleanup(void) {
   A.dec = NULL;
 }
 static void adecode(char *data, int len) {
+  uint64_t t_us = g_timing ? now_us() : 0;
   A.packets++;
   A.sec_packets++;
   A.bytes += (uint64_t) len;
@@ -171,10 +208,17 @@ static void adecode(char *data, int len) {
     return;
   }
   size_t cnt = (size_t) n * (size_t) A.channels;
+  double psumsq = 0, ppeak = 0;
   for (size_t i = 0; i < cnt; i++) {
     double s = pcm[i] / 32768.0;
     A.sumsq += s * s;
+    psumsq += s * s;
     if (fabs(s) > A.peak) A.peak = fabs(s);
+    if (fabs(s) > ppeak) ppeak = fabs(s);
+  }
+  if (cnt) {
+    timing_line("A,%llu,%llu,%.6f,%.6f\n", (unsigned long long) (A.packets - 1), (unsigned long long) t_us,
+                sqrt(psumsq / (double) cnt), ppeak);
   }
   A.decoded_samples += cnt;
   if (g_audio_out) fwrite(pcm, sizeof(int16_t), cnt, g_audio_out);
@@ -248,12 +292,17 @@ int main(int argc, char **argv) {
   long rikeyid = 0;
   int codec_mode = SCM_H264, duration = 20, bitrate = 6000, no_enc = 0, w = 1920, h = 1080, fps = 60;
   int idr_at = -1;
+  int ui_ticks = 0, tick_interval_ms = 1500, no_script = 0;
+  double tick_start = -1;
+  const char *tick_kind = "dpad", *timing_path = NULL;
 
   static const struct option opts[] = {
     {"addr", 1, 0, 'a'},     {"rtsp-url", 1, 0, 'r'},   {"rikey", 1, 0, 'k'},    {"rikeyid", 1, 0, 'i'},
     {"appversion", 1, 0, 'v'}, {"gfe", 1, 0, 'g'},      {"codec-mode", 1, 0, 'c'}, {"out", 1, 0, 'o'},
     {"audio-out", 1, 0, 'A'}, {"duration", 1, 0, 'd'},  {"bitrate", 1, 0, 'b'},  {"no-encryption", 0, 0, 'n'},
     {"width", 1, 0, 'W'},    {"height", 1, 0, 'H'},     {"fps", 1, 0, 'f'},      {"idr-at", 1, 0, 'I'},
+    {"ui-ticks", 1, 0, 'U'}, {"tick-interval-ms", 1, 0, 'T'}, {"tick-start", 1, 0, 'S'}, {"tick-kind", 1, 0, 'K'},
+    {"timing-log", 1, 0, 'L'}, {"no-script", 0, 0, 'N'},
     {0, 0, 0, 0}};
   int c;
   while ((c = getopt_long(argc, argv, "", opts, NULL)) != -1) {
@@ -274,6 +323,12 @@ int main(int argc, char **argv) {
       case 'H': h = atoi(optarg); break;
       case 'f': fps = atoi(optarg); break;
       case 'I': idr_at = atoi(optarg); break;
+      case 'U': ui_ticks = atoi(optarg); break;
+      case 'T': tick_interval_ms = atoi(optarg); break;
+      case 'S': tick_start = atof(optarg); break;
+      case 'K': tick_kind = optarg; break;
+      case 'L': timing_path = optarg; break;
+      case 'N': no_script = 1; break;
       default: return 2;
     }
   }
@@ -282,6 +337,20 @@ int main(int argc, char **argv) {
     return 2;
   }
   if (idr_at < 0) idr_at = duration / 2;
+  int tick_ps = !strcmp(tick_kind, "ps");
+  if (!tick_ps && strcmp(tick_kind, "dpad")) {
+    fprintf(stderr, "--tick-kind must be dpad or ps\n");
+    return 2;
+  }
+  // The UI ticks start after the scripted startup input (which ends at 7.0 s) unless --tick-start says otherwise.
+  if (tick_start < 0) tick_start = no_script ? 5.0 : 9.0;
+  if (timing_path) {
+    g_timing = fopen(timing_path, "w");
+    if (!g_timing) {
+      perror(timing_path);
+      return 2;
+    }
+  }
   g_t0_ms = now_ms();
 
   STREAM_CONFIGURATION sc;
@@ -351,6 +420,7 @@ int main(int argc, char **argv) {
   ar.decodeAndPlaySample = adecode;
   ar.capabilities = CAPABILITY_SUPPORTS_ARBITRARY_AUDIO_DURATION;
 
+  if (g_timing) timing_line("H,%llu\n", (unsigned long long) now_us());
   g_out = fopen(outp, "wb");
   if (!g_out) {
     perror(outp);
@@ -375,6 +445,11 @@ int main(int argc, char **argv) {
     tlog("host feature flags: 0x%x\n", ff);
     uint64_t run_start = now_ms();
     int sent_arrival = 0, step = 0, sent_idr = 0;
+    // UI ticks (--ui-ticks): phase 0 = press due, 1 = release due.  D-pad RIGHT/LEFT alternate so the highlight
+    // stays on screen; the PS button toggles the control centre.
+    int tick_n = 0, tick_phase = 0;
+    uint64_t tick_next_ms = 0;
+    const char *tick_names[2] = {"right", "left"};
     int last_sec = -1;
     while (!g_terminated) {
       double el = (now_ms() - run_start) / 1000.0;
@@ -391,6 +466,14 @@ int main(int argc, char **argv) {
         A.sec_packets = 0;
       }
       // scripted input
+      if (no_script && !sent_arrival && el >= 2.0) {
+        // --no-script: only attach the virtual pad, press nothing (plus A so the "Who's using this controller?"
+        // prompt is answered if it is up), then wait for the UI ticks.
+        int r = LiSendControllerArrivalEvent(0, 0x1, LI_CTYPE_PS, 0x3FFFF | 0, LI_CCAP_ANALOG_TRIGGERS | LI_CCAP_RUMBLE);
+        tlog("input: controller arrival (pad 0, PS) -> %d\n", r);
+        sent_arrival = 1;
+        step = 8;
+      }
       if (!sent_arrival && el >= 2.0) {
         int r = LiSendControllerArrivalEvent(0, 0x1, LI_CTYPE_PS, 0x3FFFF | 0, LI_CCAP_ANALOG_TRIGGERS | LI_CCAP_RUMBLE);
         tlog("input: controller arrival (pad 0, PS) -> %d\n", r);
@@ -404,12 +487,36 @@ int main(int argc, char **argv) {
       if (step == 5 && el >= 6.0) { pad_event(0, 0, 0, 0, 0, 0, 0, "left stick centre"); step++; }
       if (step == 6 && el >= 6.5) { pad_event(DOWN_FLAG, 0, 200, 0, 0, 0, 0, "dpad down + R2=200"); step++; }
       if (step == 7 && el >= 7.0) { pad_event(0, 0, 0, 0, 0, 0, 0, "release all"); step++; }
+      if (ui_ticks > 0 && tick_n < ui_ticks && el >= tick_start && (tick_phase || step >= 8 || no_script)) {
+        uint64_t nowm = now_ms();
+        if (tick_next_ms == 0 || nowm >= tick_next_ms) {
+          if (tick_phase == 0) {
+            const char *nm = tick_ps ? "ps" : tick_names[tick_n & 1];
+            int flag = tick_ps ? SPECIAL_FLAG : ((tick_n & 1) ? LEFT_FLAG : RIGHT_FLAG);
+            uint64_t ts = now_us();
+            int r = LiSendMultiControllerEvent(0, 0x1, flag, 0, 0, 0, 0, 0, 0);
+            timing_line("P,%d,%s,%llu\n", tick_n, nm, (unsigned long long) ts);
+            tlog("input: tick %d/%d %s press -> %d\n", tick_n + 1, ui_ticks, nm, r);
+            tick_phase = 1;
+            tick_next_ms = nowm + 120;  // hold time
+          } else {
+            const char *nm = tick_ps ? "ps" : tick_names[tick_n & 1];
+            uint64_t ts = now_us();
+            int r = LiSendMultiControllerEvent(0, 0x1, 0, 0, 0, 0, 0, 0, 0);
+            timing_line("P,%d,release_%s,%llu\n", tick_n, nm, (unsigned long long) ts);
+            (void) r;
+            tick_phase = 0;
+            tick_n++;
+            tick_next_ms = nowm + (uint64_t) (tick_interval_ms > 120 ? tick_interval_ms - 120 : 1);
+          }
+        }
+      }
       if (!sent_idr && el >= idr_at) {
         tlog("requesting IDR frame (LiRequestIdrFrame); IDRs so far: %llu\n", (unsigned long long) V.idrs);
         LiRequestIdrFrame();
         sent_idr = 1;
       }
-      sleep_ms(20);
+      sleep_ms(ui_ticks > 0 ? 2 : 20);
     }
     uint64_t run_end = now_ms();
     tlog("stopping connection (terminated=%d code=%d)\n", g_terminated, g_term_code);
@@ -456,5 +563,6 @@ int main(int argc, char **argv) {
   }
   if (g_out) fclose(g_out);
   if (g_audio_out) fclose(g_audio_out);
+  if (g_timing) fclose(g_timing);
   return exit_code;
 }

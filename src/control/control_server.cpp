@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "control/control_server.hpp"
 #include "src/logging.h"
+#include "src/platform/common.h"
 #include "src/nvhttp.h"
 #include "src/process.h"
+#include "src/rtsp.h"
 #include <cerrno>
+#include <filesystem>
 #include <netinet/in.h>
 #include <poll.h>
 #include <sstream>
@@ -21,8 +24,11 @@ std::string ControlServer::handle(const std::string &line) {
     in >> command;
     if (command == "STATUS") {
         const auto pending = nvhttp::get_pending_pairings().size();
-        return "OK running="s + (proc::proc.running() > 0 ? "1" : "0") + " app=" + proc::proc.get_last_run_app_name() +
-               " pending=" + std::to_string(pending);
+        std::string answer = "OK running="s + (proc::proc.running() > 0 ? "1" : "0") +
+                             " app=" + proc::proc.get_last_run_app_name() + " pending=" + std::to_string(pending);
+        // The client of the live stream; the name comes last because it may contain spaces.
+        const auto client = rtsp_stream::session_count() > 0 ? nvhttp::get_last_launch_client() : nvhttp::launch_client_t{};
+        return answer + " address=" + client.address + " client=" + client.name;
     }
     if (command == "PAIRINGS") {
         std::string out;
@@ -61,15 +67,20 @@ void ControlServer::run(std::stop_token stop) {
     if (listener < 0) return;
     int one = 1;
     setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+    // The socket has no authentication: only the PS5 app on the console reaches it, unless the
+    // development switch file exists.
+    std::error_code ec;
+    const bool lan = std::filesystem::exists(platf::appdata() / "control_lan", ec);
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(lan ? INADDR_ANY : INADDR_LOOPBACK);
     if (bind(listener, reinterpret_cast<sockaddr *>(&addr), sizeof addr) || listen(listener, 2)) {
         BOOST_LOG(error) << "Control socket failed to bind port "sv << port;
         close(listener);
         return;
     }
-    BOOST_LOG(info) << "Control socket on port "sv << port;
+    BOOST_LOG(info) << "Control socket on port "sv << port << (lan ? " (LAN, development switch control_lan)"sv : " (local only)"sv);
     while (!stop.stop_requested()) {
         pollfd pfd{listener, POLLIN, 0};
         if (poll(&pfd, 1, 250) <= 0) continue;

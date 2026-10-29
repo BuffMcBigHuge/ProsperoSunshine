@@ -57,6 +57,10 @@ int main(int argc, char *argv[]) {
     // no assets on the console, and the app list is fixed in process_ps5.cpp anyway.
     if (const auto apps = platf::appdata() / "apps.json"; !std::filesystem::exists(apps, ec))
         std::ofstream(apps) << R"({"env":{},"apps":[{"name":"PS5 Screen"}]})" << '\n';
+    // Held controller input stays active until a dead client is detected. Moonlight pings the
+    // control stream every 100 ms, so 2 s (upstream default 10 s) still tolerates 20 lost pings while
+    // cutting the stuck-input window after a network drop (P4.3). sunshine.conf can override it.
+    config::stream.ping_timeout = 2s;
     mail::man = std::make_shared<safe::mail_raw_t>();
     if (const int rc = config::parse(argc, argv)) {
         klog_printf("ProsperoSunshine: host config::parse returned %d\n", rc);

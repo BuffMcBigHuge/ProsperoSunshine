@@ -103,5 +103,19 @@ int main() {
         EncodedFrame f;
         assert(s.read(f, 50ms) == CaptureStatus::error && calls.closes == 1);
     }
-    std::cout << "PASS: capture session start/busy, SPS/PPS on IDR, timeout, stop token, revocation, single close\n";
+    {
+        // After a lost capture the stream reopens; frame numbers must keep counting forwards.
+        Calls calls;
+        auto s = session(calls, 0, {idr, p, {-5}, idr, p});
+        assert(s.start() == 0);
+        EncodedFrame f;
+        assert(s.read(f, 50ms) == CaptureStatus::frame && f.index == 0);
+        assert(s.read(f, 50ms) == CaptureStatus::frame && f.index == 1);
+        assert(s.read(f, 50ms) == CaptureStatus::revoked && !s.running());
+        assert(s.start() == 0 && calls.opens == 2);
+        assert(s.read(f, 50ms) == CaptureStatus::frame && f.index == 2 && f.idr);
+        assert(s.read(f, 50ms) == CaptureStatus::frame && f.index == 3);
+    }
+    std::cout << "PASS: capture session start/busy, SPS/PPS on IDR, timeout, stop token, revocation, single close, "
+                 "frame numbers across reopen\n";
 }
