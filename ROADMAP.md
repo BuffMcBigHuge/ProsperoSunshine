@@ -175,6 +175,20 @@ Eine Homebrew-App auf der Konsole (Vorbild: PS5SD) macht den Host ohne PC bedien
 
 Stand: P8.1, P8.3, P8.4 und P8.5 live geprüft (Branch `claude/ps5-settings-app-b5c39b`, Commit `8dc11eb`); P8.2 ebenfalls live geprüft. P8.6 läuft in der App-Session. P8.7 live geprüft (2026-10-29): Die App steht im Media-Tab (`applicationCategoryType` 65536, `contentBadgeType` 1, `launchActivity`) und startet von dort; der `amm`-Block musste dafür aus `param.json` raus, mit ihm scheitert der Start mit 0x80020016. Für P8.8 wurde am 2026-10-29 geprüft: `PPSA47989` kommt im Store-Katalog (156 Apps, Stand 2026-10-28) nicht vor.
 
+## Phase 9: Feinschliff vor dem Release (nach dem ersten Handy-Test)
+
+| ID | Aufgabe | Aufwand | Ergebnis und Nachweis |
+| --- | --- | --- | --- |
+| P9.1 | Steuer-Socket nur auf `127.0.0.1` (die App spricht lokal); LAN-Zugriff für Entwicklung nur per Schalterdatei | S | Vom PC aus abgewiesen, aus der App erreichbar |
+| P9.2 | Automatisches Finden in Moonlight (mDNS `_nvstream._tcp`) | M | Moonlight am PC/Handy listet die PS5 ohne IP-Eingabe |
+| P9.3 | Auflösung und Bildrate des Clients beachten (z. B. 720p/30 fürs Handy), soweit Avcap2 das kann (Spike) | M | Client erhält die angeforderte Auflösung bzw. Bildrate, oder dokumentiert, warum nicht |
+| P9.4 | Bild/Ton-Drift über 10 Minuten messen (`tools/moonlight/av_sync.py`) | S | Drift pro Minute im Toleranzbereich |
+| P9.5 | Firmware-Porting vorbereiten: ResourceArbitrator-Funktionen per Mustersuche statt fester Adressen, Anleitung `docs/firmware-porting.md` | M | Mustersuche findet auf 13.00 die bekannten Adressen |
+| P9.6 | Weitere Clients: Android, TV/Shield, Steam Deck | S | Je ein Stream mit Bild, Ton und Eingabe |
+| P9.7 | Spike: HEVC über den PS5-Encoder | M | Ergebnis dokumentiert |
+
+Stand: P9.1 live geprüft (2026-10-29): Der Steuer-Socket ist vom PC aus abgewiesen, das Log meldet „local only“. Moonlight auf dem iPhone streamt seit 2026-10-29 mit Bild und Ton; vorher kam nur Ton, weil der Host fälschlich HEVC angeboten hatte (`STATUS.md`).
+
 ## Release 0.1 (öffentlich)
 
 | ID | Aufgabe | Aufwand |

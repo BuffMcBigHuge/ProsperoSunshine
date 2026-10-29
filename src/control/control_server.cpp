@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "control/control_server.hpp"
 #include "src/logging.h"
+#include "src/platform/common.h"
 #include "src/nvhttp.h"
 #include "src/process.h"
 #include "src/rtsp.h"
 #include <cerrno>
+#include <filesystem>
 #include <netinet/in.h>
 #include <poll.h>
 #include <sstream>
@@ -65,15 +67,20 @@ void ControlServer::run(std::stop_token stop) {
     if (listener < 0) return;
     int one = 1;
     setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+    // The socket has no authentication: only the PS5 app on the console reaches it, unless the
+    // development switch file exists.
+    std::error_code ec;
+    const bool lan = std::filesystem::exists(platf::appdata() / "control_lan", ec);
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(lan ? INADDR_ANY : INADDR_LOOPBACK);
     if (bind(listener, reinterpret_cast<sockaddr *>(&addr), sizeof addr) || listen(listener, 2)) {
         BOOST_LOG(error) << "Control socket failed to bind port "sv << port;
         close(listener);
         return;
     }
-    BOOST_LOG(info) << "Control socket on port "sv << port;
+    BOOST_LOG(info) << "Control socket on port "sv << port << (lan ? " (LAN, development switch control_lan)"sv : " (local only)"sv);
     while (!stop.stop_requested()) {
         pollfd pfd{listener, POLLIN, 0};
         if (poll(&pfd, 1, 250) <= 0) continue;
