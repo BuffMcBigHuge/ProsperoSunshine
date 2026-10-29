@@ -27,3 +27,8 @@ Stand: 28. Oktober 2026. ProsperoSunshine steht unter GPL-3.0-only (`LICENSE`), 
 
 - Keine Sony-Binärdateien oder -Daten. Die entschlüsselten Systemmodule für die Analyse liegen ausschließlich im ignorierten `.cache/re`; `docs/re/` beschreibt Offsets und Verhalten ohne Code-Auszüge, `tools/re/` liest die Dateien nur lokal.
 - Keine Bilder oder Assets von Sunshine (die Web-UI wird nicht gebaut).
+
+## Offene Punkte aus der Lizenzprüfung (WIP, P7.2 nicht abgeschlossen)
+
+- **Lizenztext der SDK-Laufzeit fehlt im Release-Artefakt.** `scripts/deps/*.sh` legen für elf Komponenten (boost, enet, ffmpeg, libdisplaydevice, moonlight-common-c, nanors, nlohmann-json, openssl, opus, simple-web-server, sunshine) einen Text in `out/deps/licenses/` ab (am gebauten Verzeichnis geprüft). Für das PS5 Payload SDK und seine statisch gelinkte Laufzeit (FreeBSD-libc, LLVM libc++/libc++abi/libunwind, compiler-rt-Builtins) gibt es keinen Text; der CI-Schritt „Collect licences“ bündelt nur diese Dateien plus `LICENSE`. Die BSD-Lizenz der libc verlangt den Copyright-Hinweis bei Binärverteilung. Das Release muss die Lizenz- und Copyright-Texte aus `ps5-payload-sdk-v0.45.zip` (Hash im `scripts/Dockerfile`) beilegen. Noch nicht gegen den Inhalt des SDK-Archivs verifiziert.
+- Noch zu erledigen: NOTICE/THIRD_PARTY-Liste für das Release-Archiv, Patch-Liste mit Herkunft je Datei, Sunshine-Unterverzeichnis `third-party` auf weitere eingebundene Lizenzen prüfen, englische README (P7.3).
