@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Native virtual controller: the system's own virtual-pad device that Remote Play feeds.
-// Ported from ps5-mcp's RemoteEye (C#); layouts measured on FW 13.00.
+// Ported from ps5-mcp's RemoteEye (C#); layouts measured on FW 13.00. There is no firmware check
+// here: ioctl numbers, the 0xA8-byte blocks and their field offsets are unverified on any other
+// firmware (checklist in docs/firmware-porting.md).
 #ifndef PROSPERO_PAD_H
 #define PROSPERO_PAD_H
 #include <stdint.h>

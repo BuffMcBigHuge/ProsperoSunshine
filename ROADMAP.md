@@ -183,12 +183,14 @@ Stand: P8.1, P8.3, P8.4 und P8.5 live geprüft (Branch `claude/ps5-settings-app-
 | P9.2 | Automatisches Finden in Moonlight (mDNS `_nvstream._tcp`) | M | Moonlight am PC/Handy listet die PS5 ohne IP-Eingabe |
 | P9.3 | Auflösung und Bildrate des Clients beachten (z. B. 720p/30 fürs Handy), soweit Avcap2 das kann (Spike) | M | Client erhält die angeforderte Auflösung bzw. Bildrate, oder dokumentiert, warum nicht |
 | P9.4 | Bild/Ton-Drift über 10 Minuten messen (`tools/moonlight/av_sync.py`) | S | Drift pro Minute im Toleranzbereich |
-| P9.5 | Firmware-Porting vorbereiten: ResourceArbitrator-Funktionen per Mustersuche statt fester Adressen, Anleitung `docs/firmware-porting.md` | M | Mustersuche findet auf 13.00 die bekannten Adressen |
+| P9.5 | Firmware-Porting vorbereiten: ResourceArbitrator-Funktionen per NID statt fester Adressen, Anleitung `docs/firmware-porting.md` | M | NID-Suche findet auf 13.00 die bekannten Adressen |
 | P9.6 | Weitere Clients: Android, TV/Shield, Steam Deck | S | Je ein Stream mit Bild, Ton und Eingabe |
 | P9.7 | Spike: HEVC über den PS5-Encoder | M | Ergebnis dokumentiert |
 | P9.8 | Virtuelles Pad nach Sitzungsende: Laut App-Session bekam die App nach einem Handy-Stream (App blieb „running“, kein Client) keine Eingaben vom RemoteEye-Test-Pad, erst nach Host-Neustart. Prüfen, ob `free_gamepad` läuft (Log „detached“) oder ob sich Host-Pad und RemoteEye-Pad stören; ggf. „PS5 Screen“ nach Client-Abbruch beenden | S | Nach Streamende erreichen Eingaben wieder Apps, ohne Host-Neustart |
 
 Stand: P9.1 live geprüft (2026-10-29): Der Steuer-Socket ist vom PC aus abgewiesen, das Log meldet „local only“. Moonlight auf dem iPhone streamt seit 2026-10-29 mit Bild und Ton; vorher kam nur Ton, weil der Host fälschlich HEVC angeboten hatte (`STATUS.md`).
+
+Stand P9.5 (2026-10-29): erledigt für 13.00. Die vier ResourceArbitrator-Funktionen sind unter NIDs exportiert und werden jetzt per `kernel_dynlib_resolve` gefunden, abgeglichen mit der Offset-Tabelle je Firmware; `ra_nid_probe.elf` meldet auf 13.00 `result=PASS` mit `0xdb0`/`0xee0`/`0x10b0`/`0x11f0`. Byte-Signaturen wurden verworfen (Code nur über den Kernel lesbar, Muster wären Sony-Code-Auszüge). Andere Firmware bleibt ungeprüft; Avcap2-Konfiguration, Descriptor, Bitrate-Grenze und Pad-Layouts sind 13.00-Messungen (Checkliste in `docs/firmware-porting.md`).
 
 ## Release 0.1 (öffentlich)
 
@@ -204,7 +206,7 @@ Ist R2 negativ, erscheint 0.1 als Vorschau ohne Ton und benennt das deutlich.
 
 ## Nach v1.0
 
-In dieser Reihenfolge, jeweils mit eigenem Spike: 60 FPS stabil, Moonlight-Discovery per mDNS, HEVC, Rumble und Feedback, weitere Firmware-Versionen (Offsets je Version in der Plattformdatei), HDR und 4K, mehrere Controller.
+In dieser Reihenfolge, jeweils mit eigenem Spike: 60 FPS stabil, Moonlight-Discovery per mDNS, HEVC, Rumble und Feedback, weitere Firmware-Versionen (Checkliste `docs/firmware-porting.md`; ResourceArbitrator per NID, Rest live zu prüfen), HDR und 4K, mehrere Controller.
 
 ## Risikoregister
 
@@ -214,7 +216,7 @@ In dieser Reihenfolge, jeweils mit eigenem Spike: 60 FPS stabil, Moonlight-Disco
 | ~~Kein Audio-Zugang (R2)~~ | erledigt: PCM über `OpenAudio` mit RA-Id 180 | – | – |
 | ~~Boost-Teile bauen nicht (P0.2)~~ | erledigt: Boost 1.92 gebaut, ein Patch für Process v2 | – | – |
 | Encoder-Bitrate über 15 Mbit/s | Encoder stoppt | sicher bei > 15 Mbit/s | Host klemmt auf 15 Mbit/s (Spitze ×1,12) |
-| Firmware-Update ändert Offsets | Capture fällt aus | sicher bei Update | Strikte Versionsprüfung, kontrollierte Ablehnung |
+| Firmware-Update ändert Offsets oder Strukturen | Capture fällt aus | sicher bei Update | ResourceArbitrator per NID mit Tabellenabgleich, Ablehnung bei Fehlschlag; Avcap2-Konfiguration und Pad je Version live prüfen (`docs/firmware-porting.md`) |
 | Avcap2 im Spiel belegt oder gesperrt | Kein Bild in bestimmten Titeln | unbekannt | Früh mit regulärem Spiel testen (P1.4), Meldung statt Absturz |
 | Zuordnungsdialog des virtuellen Pads | Bedienung blockiert | mittel | R5, einmalige Bestätigung vor Streambeginn |
 | Upstream-Drift bei Sunshine | Aufwändige Updates | mittel | Fester Commit, kleine dokumentierte Patches, Updates nur gezielt |

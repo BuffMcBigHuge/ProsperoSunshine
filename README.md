@@ -22,7 +22,8 @@ reverse-engineering notes: `docs/` (German).
 
 ## Requirements
 
-- PS5 on **firmware 13.00**. Any other firmware is refused on purpose.
+- PS5 on **firmware 13.00**. Other firmware is untested and not supported; the host refuses it unless its
+  system-library lookups succeed (`docs/firmware-porting.md`, German).
 - A homebrew environment with an **ELF loader** (for example one listening on port 9021).
 - SDR output (HDR is not supported).
 - A wired or good wireless LAN, and a Moonlight client in the same network.
@@ -67,7 +68,8 @@ inside the stream; answer it with your Moonlight controller.
   client and the console (client or router firewall).
 - **iPhone:** works. An earlier bug (sound but no picture, because the host announced HEVC) is fixed.
 - **Black or paused picture for a moment:** expected when a game starts or exits (see limits).
-- **Wrong firmware:** the host refuses to run on anything but 13.00.
+- **Wrong firmware:** only 13.00 is supported. On other versions capture is refused unless the system-library
+  lookups succeed, and even then it is unverified; the kernel log says which case applies.
 - **Diagnosis:** set `min_log_level = debug` in `/data/prosperosunshine/sunshine.conf`; messages go to the kernel log.
 
 ## Development control socket
