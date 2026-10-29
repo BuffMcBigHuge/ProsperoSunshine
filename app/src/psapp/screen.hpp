@@ -86,6 +86,12 @@ class Screen
         return !snap_.busy.empty();
     }
     bool dirty() const;
+    // A client is connected: the host streams. A host that reports its client (client=) and names
+    // none keeps the app open for a client that left: a paused session, not a stream.
+    bool live() const
+    {
+        return snap_.streaming && !(snap_.client_known && snap_.client.empty());
+    }
     std::string value_text(int index) const;
     hui::gfx::Rect focus_rect() const;
     hui::gfx::Rect action_rect(int index) const;
@@ -118,7 +124,8 @@ class Screen
     float armed_age_ = 100.0f;
     std::string version_;
     float time_ = 0.0f;
-    bool input_ready_ = false;
+    std::uint32_t blocked_ = 0; // buttons held since the start, ignored until let go
+    bool blocked_logged_ = false;
 
     // Pages and focus.
     Page page_ = Page::home;

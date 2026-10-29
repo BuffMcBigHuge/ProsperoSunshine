@@ -47,7 +47,7 @@ and how the last request went.
 
 | Part | What it does |
 | --- | --- |
-| Hero | Host stopped, ready to stream, or streaming (which app, and which client when the host reports it), polled every two seconds through the host's control socket. The sun turns while the host runs and sends out rings while it streams. The chips under it: the port, LAN encryption, whether the host starts at boot, how many devices are paired. The console's IP address is in the top bar. |
+| Hero | Host stopped, ready to stream, streaming (which app, and which client when the host reports it), or session paused (the host still has "PS5 Screen" open for a client that left; only hosts that report `client=` tell this apart), polled every two seconds through the host's control socket. The sun turns while the host runs and sends out rings while it streams. The chips under it: the port, LAN encryption, whether the host starts at boot, how many devices are paired. The console's IP address is in the top bar. |
 | Start host / Stop host | Start sends the host ELF to the ELF loader (`127.0.0.1:9021`) and waits until the host answers. Stop sends `QUIT` and waits until it is gone. |
 | Restart host | Stop, then start: the way new settings take effect. |
 | Start at boot | The switch for the Payload Manager's autoload (below). A line under it warns when the Payload Manager's own autoload is off (only when the app can read `pldmgr_config.txt`; on the test console a title may not). |
@@ -55,8 +55,13 @@ and how the last request went.
 
 While a stream runs, Stop, Restart and Save and restart need a second Cross within four seconds: the
 player streaming the console may be the one pressing. Input is taken only after the app has been up
-for half a second and every button was let go once, so a press that started the app does not reach
-the focused Stop host.
+for half a second.
+
+Known limit: while the host has a session open, also a paused one, its virtual DualSense is
+connected for the console's user, and the app (which reads that user's pad, as the kit does) gets
+its input from it. On the test console the remote-play test controller then did not reach the app
+until the session ended (Quit in Moonlight, or a host restart). A button that is down when the app
+starts is ignored until it is let go, so it cannot act on the focused Stop host.
 
 **Settings** shows one tile per option. Cross opens its editor in a sheet over the frosted page: a
 list for choices, a stepper for numbers (left and right one step, up and down ten, L1 and R1 a

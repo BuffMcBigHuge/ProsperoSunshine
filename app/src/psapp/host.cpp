@@ -322,6 +322,7 @@ void Host::poll()
     const io::Exchange reply = io::exchange(kControlPort, "STATUS\nPAIRINGS\n", is_end, 3000);
     bool running = false, streaming = false;
     std::string app, client, client_address, error;
+    bool client_known = false;
     std::vector<Pairing> pairings;
     if (reply.connect_refused)
     {
@@ -349,6 +350,7 @@ void Host::poll()
                 app = status_field(line, "app");
                 client = status_field(line, "client");
                 client_address = status_field(line, "address");
+                client_known = line.find(" client=") != std::string::npos;
                 continue;
             }
             if (line == "END" || line.rfind("OK ", 0) != 0)
@@ -378,6 +380,7 @@ void Host::poll()
     state_.app = app;
     state_.client = client;
     state_.client_address = client_address;
+    state_.client_known = client_known;
     state_.pairings = pairings;
     state_.poll_error = error;
 }

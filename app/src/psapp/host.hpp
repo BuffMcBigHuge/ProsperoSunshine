@@ -46,7 +46,8 @@ struct Snapshot
     bool running = false;     // the control socket answered
     bool streaming = false;   // STATUS running=1
     std::string app;          // STATUS app=
-    std::string client;       // STATUS client= and address= (newer hosts; empty otherwise)
+    bool client_known = false; // the host reports client= (newer hosts); then empty means nobody
+    std::string client;       // STATUS client= and address=
     std::string client_address;
     std::vector<Pairing> pairings;
     std::string poll_error;   // set when the socket is there but did not answer properly

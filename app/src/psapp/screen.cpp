@@ -2,6 +2,7 @@
 #include "app/psapp/screen.hpp"
 
 #include "app/psapp/icons.hpp"
+#include "platform/ps5/system.hpp"
 #include "ui/glyphs.hpp"
 
 #include <algorithm>
@@ -183,20 +184,37 @@ void Screen::update(const hui::InputFrame &input, float dt, hui::ui::Feedback &f
         home_row_ = 0;
     home_card_ = std::clamp(home_card_, 0, std::max(0, visible_pairings() - 1));
 
-    // Input counts only once the app has been up for a moment and every button was let go once: a
-    // press that started the app (or a held button) must not act on the focused Stop host.
-    if (!input_ready_ && time_ > 0.5f && input.held == 0)
-        input_ready_ = true;
-    if (input_ready_)
+    // A button that is down while the app starts (the press that started it, or a pad that reports
+    // one held, as the virtual pad of a host session without its client does) is ignored until it
+    // is let go, so it never acts on the focused Stop host. Every other button works at once.
+    if (time_ < 0.5f)
+        blocked_ |= input.held;
+    else
+        blocked_ &= input.held;
+    if (blocked_ != 0 && !blocked_logged_ && time_ > 2.0f)
+    {
+        hui::sys::log("[PSAPP] ignoring buttons held since the start: 0x%x", static_cast<unsigned>(blocked_));
+        blocked_logged_ = true;
+    }
+    hui::InputFrame in = input;
+    in.pressed &= ~blocked_;
+    const InputAction directions[] = {InputAction::up, InputAction::down, InputAction::left, InputAction::right};
+    const Direction navs[] = {Direction::up, Direction::down, Direction::left, Direction::right};
+    for (int i = 0; i < 4; ++i)
+    {
+        if (in.nav == navs[i] && (blocked_ & hui::action_bit(directions[i])) != 0)
+            in.nav = Direction::none;
+    }
+    if (time_ >= 0.5f)
     {
         if (sheet_ != Sheet::none)
-            handle_sheet(input, feedback);
-        else if (input.is_pressed(InputAction::page_prev) || input.is_pressed(InputAction::page_next))
-            switch_page(input.is_pressed(InputAction::page_prev) ? Page::home : Page::settings, feedback);
+            handle_sheet(in, feedback);
+        else if (in.is_pressed(InputAction::page_prev) || in.is_pressed(InputAction::page_next))
+            switch_page(in.is_pressed(InputAction::page_prev) ? Page::home : Page::settings, feedback);
         else if (page_ == Page::home)
-            handle_home(input, feedback);
+            handle_home(in, feedback);
         else
-            handle_settings(input, feedback);
+            handle_settings(in, feedback);
     }
 
     // Motion.
@@ -221,11 +239,11 @@ void Screen::update(const hui::InputFrame &input, float dt, hui::ui::Feedback &f
         sheet_drawn_ = Sheet::none;
 
     const bool running = snap_.polled && snap_.running;
-    const float spin_speed = snap_.streaming ? 0.55f : running ? 0.12f : 0.0f;
+    const float spin_speed = live() ? 0.55f : running ? 0.12f : 0.0f;
     sun_spin_ += spin_speed * dt;
-    sun_glow_ = approach(sun_glow_, snap_.streaming ? 1.0f : running ? 0.7f : 0.15f, dt, 3.0f);
+    sun_glow_ = approach(sun_glow_, live() ? 1.0f : running ? 0.7f : 0.15f, dt, 3.0f);
     sun_dim_ = approach(sun_dim_, running ? 0.0f : 0.85f, dt, 3.0f);
-    if (snap_.streaming)
+    if (live())
         pulse_ += dt;
     keyboard_.update(dt);
     if (sheet_ == Sheet::choice)
@@ -399,7 +417,7 @@ void Screen::run(Action action, hui::ui::Feedback &feedback)
     }
     // Stopping the host ends a running stream, and a player streaming this screen may be the one
     // pressing: such a press has to come twice.
-    const bool ends_stream = snap_.streaming && ((action == Action::start_stop && snap_.running) ||
+    const bool ends_stream = live() && ((action == Action::start_stop && snap_.running) ||
                                                  action == Action::restart || action == Action::save_restart);
     if (ends_stream && (armed_ != static_cast<int>(action) || armed_age_ > kArmSeconds))
     {
@@ -847,6 +865,11 @@ void Screen::draw_home(hui::gfx::DrawList &list, std::uint32_t glass) const
         state = "Host busy";
         detail = "It did not answer: " + snap_.poll_error;
     }
+    else if (snap_.streaming && !live())
+    {
+        state = "Session paused";
+        detail = "\"" + snap_.app + "\" is still open with no one connected. Resume or quit it in Moonlight.";
+    }
     else if (snap_.streaming)
     {
         state = "Streaming";
@@ -931,7 +954,7 @@ void Screen::draw_home(hui::gfx::DrawList &list, std::uint32_t glass) const
     const float ex = 1500.0f, ey = 360.0f;
     list.push_opacity(a);
     list.push_transform(0.9f + 0.1f * a, ex, ey, 0.0f, 0.0f);
-    if (snap_.streaming)
+    if (live())
     {
         for (int i = 0; i < 3; ++i)
         {
@@ -942,13 +965,13 @@ void Screen::draw_home(hui::gfx::DrawList &list, std::uint32_t glass) const
     const float breathe = running ? 1.0f + 0.02f * std::sin(time_ * 1.6f) : 1.0f;
     icons::sun(list, ex, ey, 112.0f * breathe, sun_spin_, sun_glow_, sun_dim_);
     // Its caption.
-    const std::string badge = snap_.streaming ? "LIVE" : running ? "READY" : snap_.polled ? "OFF" : "...";
-    const Color badge_color = snap_.streaming ? kBad : running ? kGood : kFaint;
+    const std::string badge = live() ? "LIVE" : snap_.streaming ? "PAUSED" : running ? "READY" : snap_.polled ? "OFF" : "...";
+    const Color badge_color = live() ? kBad : snap_.streaming ? kAccent : running ? kGood : kFaint;
     const float bw = fonts_.semibold.measure(badge, 20.0f) + 60.0f;
     const Rect br{ex - bw / 2.0f, ey + 190.0f, bw, 42.0f};
     list.glass(glass, br, 21.0f, Color::rgb(0xffffff));
     list.rounded_rect(br, 21.0f, Color::rgb(0x10162e, 0.6f));
-    const float blink = snap_.streaming ? 0.55f + 0.45f * std::sin(time_ * 4.0f) : 1.0f;
+    const float blink = live() ? 0.55f + 0.45f * std::sin(time_ * 4.0f) : 1.0f;
     list.circle(br.x + 24.0f, br.cy(), 6.0f, badge_color.with_alpha(blink));
     hui::ui::text(list, fonts_.semibold, badge, br.x + 40.0f, br.cy() + 7.0f, 20.0f, kInk, Align::left, 3.0f);
     list.pop_transform();
