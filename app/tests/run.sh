@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-only
 # Builds and runs the app's PC tests (app/tests/psapp_test.cpp) with the host compiler, e.g. in the
-# app build image: docker run --rm -v "$PWD":/repo prosperosunshine-app:1 bash app/tests/run.sh
+# app build image: docker run --rm -v "$PWD":/repo prosperosunshine-app:2 bash app/tests/run.sh
 set -euo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 work=$(mktemp -d)

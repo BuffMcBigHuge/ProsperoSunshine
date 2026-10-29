@@ -3,7 +3,7 @@
 # Builds the ProsperoSunshine PS5 app (a title folder for ShadowMountPlus) inside app/Dockerfile's
 # image. app/build.ps1 starts it; run by hand:
 #
-#   docker run --rm -v "$PWD":/repo -v prosperosunshine-app-cache:/cache prosperosunshine-app:1 \
+#   docker run --rm -v "$PWD":/repo -v prosperosunshine-app-cache:/cache prosperosunshine-app:2 \
 #       bash app/build.sh
 #
 # The app is drawn with ps5-homebrew-ui (GPL-3.0-or-later), which also brings the PS5 build: its
@@ -61,6 +61,16 @@ mv "$stage/src/app/main.cpp" "$stage/src/main.cpp"
 rm -rf "$stage/sce_sys"
 mkdir -p "$stage/sce_sys"
 cp "$sce_sys/param.json" "$sce_sys/icon0.png" "$stage/sce_sys/"
+# The kit's checks know a game (category 0, badge 1, gameIntent) and a media app (65536, badge 2, no
+# gameIntent). The title is a media app the way the console's homebrew media apps are (65536, badge
+# 1, gameIntent; app/README.md), so the kit builds with the game variant and the real param.json
+# goes into the title folder afterwards.
+python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); p["applicationCategoryType"]=0; p["contentBadgeType"]=1; json.dump(p, open(sys.argv[1], "w"), indent=2)' \
+    "$stage/sce_sys/param.json"
+# The home screen backgrounds come from pic0.png (1920x1080 or larger); without it the title has none.
+if [ -f "$sce_sys/pic0.png" ]; then
+    bash "$app_src/tools/make-backgrounds.sh" "$sce_sys/pic0.png" "$stage/sce_sys" "$cache"
+fi
 
 # ---- build -------------------------------------------------------------------------
 make -C "$stage" app PS5_OPENGL_PREFIX="$glsdk" USE_CCACHE=0 PS5_CLANG=clang-18
@@ -68,6 +78,7 @@ make -C "$stage" app PS5_OPENGL_PREFIX="$glsdk" USE_CCACHE=0 PS5_CLANG=clang-18
 # ---- the title folder --------------------------------------------------------------
 title_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["titleId"])' "$sce_sys/param.json")
 title="$stage/dist/$title_id"
+cp "$sce_sys/param.json" "$title/sce_sys/param.json"
 if [ -f "$host_elf" ]; then
     mkdir -p "$title/payloads"
     cp "$host_elf" "$title/payloads/prospero_sunshine.elf"

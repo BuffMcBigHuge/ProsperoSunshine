@@ -7,7 +7,7 @@
 param([string]$HostElf, [string]$OpenGlSdk, [switch]$RebuildImage)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$image = 'prosperosunshine-app:1'
+$image = 'prosperosunshine-app:2'
 $cache = 'prosperosunshine-app-cache'
 
 docker image inspect $image 2>$null | Out-Null

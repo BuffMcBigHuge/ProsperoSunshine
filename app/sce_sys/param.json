@@ -2,12 +2,7 @@
   "ageLevel": {
     "default": 0
   },
-  "amm": {
-    "multimapVaRangeInGib": 512,
-    "pagetableMemorySizeInMib": 256,
-    "vaRangeInGib": 512
-  },
-  "applicationCategoryType": 0,
+  "applicationCategoryType": 65536,
   "applicationDrmType": "free",
   "attribute": 0,
   "attribute2": 0,
@@ -15,7 +10,7 @@
   "conceptId": "47989",
   "contentBadgeType": 1,
   "contentId": "UP9000-PPSA47989_00-PROSPEROSUNSHINE",
-  "contentVersion": "01.000.000",
+  "contentVersion": "01.000.001",
   "downloadDataSize": 256,
   "gameIntent": {
     "permittedIntents": [
@@ -25,8 +20,7 @@
     ]
   },
   "kernel": {
-    "cpuPageTableSize": 268435456,
-    "gpuPageTableSize": 268435456
+    "flexibleMemorySize": 1073741824
   },
   "localizedParameters": {
     "defaultLanguage": "en-US",

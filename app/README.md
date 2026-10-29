@@ -24,7 +24,12 @@ ShadowMountPlus.
 
 Copy the folder `PPSA47989` (from `build/app/`, or unpacked from `PPSA47989.zip`) to
 `/data/homebrew/` on the console, for example with ftpsrv on port 2121, and let ShadowMountPlus scan.
-"ProsperoSunshine" then shows on the home screen.
+"ProsperoSunshine" then shows on the home screen, under Media.
+
+ShadowMountPlus copies the title's `sce_sys` (icon, `param.json`, backgrounds) to
+`/user/appmeta/PPSA47989/` when it registers the title, and leaves that copy alone for a title it
+knows. After a change to those files, copy them there too (or remove the title and let it register
+again). In the Media row the home screen shows the system theme's wallpaper, not `pic0.dds`.
 
 The title carries the host (`payloads/prospero_sunshine.elf`). At every start the app copies it to
 `/data/prosperosunshine/prospero_sunshine.elf` when that file is missing or another build; start,
@@ -123,7 +128,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File app/build.ps1
 The result is `build/app/PPSA47989/` and `build/app/PPSA47989.zip`. `-HostElf <path>` bundles another
 host build.
 
-`app/build.ps1` builds the image `prosperosunshine-app:1` (`app/Dockerfile`: Debian with Clang 18) and
+`app/build.ps1` builds the image `prosperosunshine-app:2` (`app/Dockerfile`: Debian with Clang 18, CMake and FFmpeg) and
 runs `app/build.sh` in it, with a Docker volume `prosperosunshine-app-cache` for everything that is
 fetched or built once:
 
@@ -134,6 +139,19 @@ fetched or built once:
    against ps5-opengl, sign, and the title folder;
 4. the host ELF and the licences added to the folder.
 
+The title data:
+
+- `sce_sys/param.json`: a media app (Media row of the home screen), set up the way the console's
+  homebrew media apps are (Jelly5): category 65536 with badge 1 and `gameIntent`, and
+  `kernel.flexibleMemorySize` of 1 GiB. With the kit's game memory settings
+  (`cpuPageTableSize`/`gpuPageTableSize`) a media title does not start (CE-100022-5; the system
+  refuses its budget before the process exists). The kit's own checks allow a media app only with
+  badge 2 and without `gameIntent`, so `app/build.sh` builds with a game variant of the file and puts
+  the real one into the title folder afterwards.
+- `sce_sys/icon0.png` (512x512) and `sce_sys/pic0.png` (1920x1080): `app/tools/make-backgrounds.sh`
+  turns the picture into `pic0.dds` and `pic1.dds` (3840x2160, BC7, one level) at build time, with
+  FFmpeg and a pinned bc7enc_rdo, the way PS5_Vulkan does; the result is cached by the picture's hash.
+
 The one thing the build does not fetch is the **ps5-opengl SDK** (EGL and OpenGL 4.6 for the screen):
 its release download is gone. PS5SD builds it from source with its `scripts/build-opengl-sdk.sh`
 (about 30 to 60 minutes; see its `docs/BUILDING.md`). `app/build.ps1` copies it into the cache volume
@@ -143,7 +161,7 @@ from PS5SD's Docker volume `ps5sd-work` when that exists, or from a folder given
 PC tests for the `sunshine.conf` and autoload edits:
 
 ```powershell
-docker run --rm -v "${PWD}:/repo" prosperosunshine-app:1 bash app/tests/run.sh
+docker run --rm -v "${PWD}:/repo" prosperosunshine-app:2 bash app/tests/run.sh
 ```
 
 ## Source
@@ -157,7 +175,8 @@ docker run --rm -v "${PWD}:/repo" prosperosunshine-app:1 bash app/tests/run.sh
 | `src/psapp/conf.*` | `sunshine.conf`: the offered options, their checks, line-preserving edits. |
 | `src/psapp/autoload.*` | The Payload Manager's `autoload.txt` and slot. |
 | `src/psapp/io.*` | Files and loopback sockets. |
-| `sce_sys/` | `param.json` and the icon. |
+| `sce_sys/` | `param.json`, the icon and the background picture. |
+| `tools/make-backgrounds.sh` | The background picture to `pic0.dds` and `pic1.dds`. |
 | `tests/` | The PC tests. |
 
 The app logs to the kernel log (klogsrv, port 3232) with the prefix `[PSAPP]`.
