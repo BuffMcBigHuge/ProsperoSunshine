@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Derived from ps5-mcp/payload/avcap_probe/avcap_probe.c, FW 13.00 research.
 #include "capture.h"
+#include "ra_resolve.h"
 #include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -121,7 +122,6 @@ int ps_capture_open(ps_capture **out)
 {
     if (!out) return PS_CAPTURE_ERROR;
     *out = NULL;
-    if ((kernel_get_fw_version() & 0xffff0000u) != 0x13000000u) return PS_CAPTURE_FIRMWARE;
     if (atomic_flag_test_and_set(&owned)) return PS_CAPTURE_BUSY;
     ps_capture *s = calloc(1, sizeof *s);
     if (!s) { atomic_flag_clear(&owned); return PS_CAPTURE_ERROR; }
@@ -139,12 +139,20 @@ int ps_capture_open(ps_capture **out)
     uint32_t av = module(load, "libSceAvcap2.sprx");
     uint32_t ra = module(load, "libSceResourceArbitrator.sprx");
     if (!av || !ra) goto fail;
+    // Firmware gate: the four ResourceArbitrator calls are exported only under NIDs whose names are
+    // unknown, so they are resolved by NID and checked against the offsets verified per firmware
+    // (ra_resolve.c, docs/firmware-porting.md). Resolved once per process (opens are serialised by
+    // `owned`); a refusal is final.
+    static ps_ra_functions ra_calls;
+    static int ra_state; // 0 not yet resolved, 1 resolved, -1 refused
+    if (!ra_state) ra_state = ps_ra_resolve(ra, &ra_calls) ? -1 : 1;
+    if (ra_state < 0) { error = PS_CAPTURE_FIRMWARE; goto fail; }
     intptr_t base = kernel_dynlib_mapbase_addr(-1, ra);
     if (!base) goto fail;
-    int (*reg)(int, void *, void *) = (void *)(base + 0xdb0);
-    s->unregister = (void *)(base + 0xee0);
-    s->request = (void *)(base + 0x10b0);
-    int (*list)(int32_t *) = (void *)(base + 0x11f0);
+    int (*reg)(int, void *, void *) = (void *)(base + ra_calls.offset[PS_RA_REGISTER]);
+    s->unregister = (void *)(base + ra_calls.offset[PS_RA_UNREGISTER]);
+    s->request = (void *)(base + ra_calls.offset[PS_RA_REQUEST]);
+    int (*list)(int32_t *) = (void *)(base + ra_calls.offset[PS_RA_LIST]);
     int32_t active[32] = {0};
     if (list(active)) goto fail;
     for (size_t i = 0; i < 32; i++) if (active[i] == RESOURCE) { error = PS_CAPTURE_BUSY; goto fail; }

@@ -37,8 +37,14 @@ endforeach()
 set_target_properties(dep::ssl PROPERTIES INTERFACE_LINK_LIBRARIES "dep::crypto;pthread")
 
 # Platform layer.
+# ResourceArbitrator lookup by NID; never calls into the module.
+add_library(prospero_ra STATIC src/platform/ps5/ra_resolve.c)
+target_include_directories(prospero_ra PUBLIC src)
+target_compile_options(prospero_ra PRIVATE ${PROSPERO_WARNINGS})
+
 add_library(prospero_capture STATIC src/platform/ps5/capture.c)
 target_include_directories(prospero_capture PUBLIC src)
+target_link_libraries(prospero_capture PUBLIC prospero_ra)
 target_compile_options(prospero_capture PRIVATE ${PROSPERO_WARNINGS})
 
 add_library(prospero_pad STATIC src/platform/ps5/pad.c)
@@ -65,6 +71,7 @@ prospero_probe(pad_probe prospero_pad)
 prospero_probe(avcap_spike prospero_capture)
 prospero_probe(audio_spike prospero_capture prospero_pad)
 prospero_probe(bitrate_spike prospero_capture)
+prospero_probe(ra_nid_probe prospero_ra)
 prospero_probe(deps_probe dep::ssl dep::opus dep::enet dep::nanors)
 
 if(EXISTS "${PROSPERO_DEPS}/lib/libboost_log.a")

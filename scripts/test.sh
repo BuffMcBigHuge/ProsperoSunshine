@@ -14,3 +14,4 @@ run_test() {
 run_test video_test
 run_test capture_session_test "$root/src/capture/capture_session.cpp"
 run_test gamepad_map_test
+run_test ra_choose_test

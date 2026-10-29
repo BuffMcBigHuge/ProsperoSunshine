@@ -31,7 +31,8 @@ Toolchain: PS5 Payload SDK v0.45 in the Docker image `prosperosunshine-sdk:v0.45
 
 - **The repo will be public.** No console IP, local paths, e-mail addresses or names in tracked files.
   Test tools take the console address from `PS5_HOST`. Grep the diff before every commit.
-- Firmware 13.00 only; other versions are refused on purpose.
+- Firmware 13.00 only is verified. Capture refuses other versions unless the ResourceArbitrator calls
+  resolve by NID, and then logs them as unverified; see `docs/firmware-porting.md` before porting.
 - New or changed third-party sources: pin them in `deps.lock` (SHA256), patch via `patches/<dep>/`.
 - `STATUS.md` records only what was verified live, with how it was measured. Plans go in `ROADMAP.md`.
 - Commit only when asked; never push without being asked.
