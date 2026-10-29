@@ -1,34 +1,78 @@
-# Lizenzen und Herkunft (P7.2)
+# Licences and provenance (ROADMAP P7.2)
 
-Stand: 28. Oktober 2026. ProsperoSunshine steht unter GPL-3.0-only (`LICENSE`), wie Sunshine. Alle Fremdquellen sind mit SHA256 in `deps.lock` festgehalten; `scripts/deps.sh` legt ihre Lizenztexte beim Build in `out/deps/licenses/` ab, und der CI-Workflow packt sie zusammen mit den ELFs ins Artefakt.
+Checked: 29 October 2026. ProsperoSunshine is licensed GPL-3.0-only (`LICENSE`), like Sunshine, which it builds on.
+Every third-party source is pinned by SHA256 in `deps.lock`. `scripts/deps.sh` and `scripts/deps/*.sh` install one
+licence text per component into `out/deps/licenses/`; the CI workflow copies those plus `LICENSE` into the artifact.
 
-| Komponente | Version / Pin | Lizenz | Einbindung | Mit GPL-3.0 vereinbar |
+## Findings (read first)
+
+1. **Gap: no licence text for the PS5 Payload SDK runtime is shipped.** The host links the SDK's `libc.a`
+   (FreeBSD-derived libc), `libc++.a`, `libc++abi.a`, `libunwind.a`, `libpthread.a` and the `crt*.o` start files
+   statically. The SDK zip (`ps5-payload-sdk.zip`, v0.45) contains no licence or copyright file at all (checked: no
+   `LICENSE`, `COPYING` or `NOTICE` anywhere in the archive), and neither `scripts/deps/*.sh` nor the CI step collects
+   one. FreeBSD libc code is BSD-licensed, which requires the copyright notice and licence text in binary
+   distributions; LLVM libc++/libc++abi/libunwind are Apache-2.0 with the LLVM exception (the exception waives the
+   attribution duty for binary form, but the notice is still good practice). Not a blocker for the GPL-3.0 combination,
+   but a release must bundle those texts: see `docs/THIRD_PARTY.md`, "SDK runtime". This is a documentation/packaging
+   gap only; no build script was changed.
+2. **OpenSSL 3.5.9 is Apache-2.0 only.** That is compatible with GPL-3.0-only but not with GPL-2.0-only. Nothing in the
+   project is GPL-2.0-only, but never relicense or combine with GPL-2.0-only code without checking this.
+3. **FFmpeg is LGPL-2.1-or-later and linked statically.** Allowed inside a GPL-3.0 work (LGPL-2.1 section 3 permits
+   conversion to GPL). It is built without `--enable-gpl` and with no codec, only `libavcodec`/`libavutil`/`libswscale`
+   with the CBS bitstream filters. A release must make the complete corresponding source available (repository tag with
+   `deps.lock`, `patches/` and build scripts), which satisfies LGPL-2.1 and GPL-3.0 section 6.
+4. No incompatible licence was found among the pinned dependencies. Sunshine's own `third-party/` submodules
+   (ViGEmClient, nvapi, glad, tray, wayland protocols and so on) are not downloaded, compiled or linked; only the
+   sources listed in `CMakeLists.txt` (`SUNSHINE_KEPT`, `RtspParser.c`) are used.
+
+## Components
+
+| Component | Version / pin | Licence | Licence text comes from | Notes |
 | --- | --- | --- | --- | --- |
-| Sunshine | `a679b059` + 4 Patches (`patches/sunshine/`) | GPL-3.0 | Quellen kompiliert, Teile ersetzt | ja (gleiche Lizenz) |
-| moonlight-common-c | `04053843` | GPL-3.0 | `RtspParser.c`, Header | ja |
-| ENet (Moonlight-Fork) | `aca87840` | MIT | statisch | ja |
-| nanors | `b1e3c22c` | MIT | statisch | ja |
-| Simple-Web-Server | `546895a9` | MIT | Header | ja |
-| nlohmann_json | 3.11.3 | MIT | Header | ja |
-| libdisplaydevice (nur `common`) | `a2afc043` | MIT | statisch | ja |
-| Boost | 1.92.0 + 1 Patch (`patches/boost/`) | Boost Software License 1.0 | statisch | ja |
-| OpenSSL | 3.5.9 | Apache-2.0 | statisch | ja, für GPL-3.0 (nicht für GPL-2.0-only) |
-| Opus | 1.6.1 | BSD-3-Clause | statisch | ja |
-| FFmpeg (avcodec, avutil, swscale; ohne `--enable-gpl`) | 9.0.2 + 1 Patch (`patches/ffmpeg/`, aus LizardByte/build-deps, MIT) | LGPL-2.1-or-later | statisch | ja; als Teil eines GPL-Werks mit vollständigem Quelltext verteilt |
-| PS5 Payload SDK | v0.45 (Hash im `scripts/Dockerfile`) | Werkzeuge GPL-3.0; Laufzeit aus FreeBSD-libc (BSD) und LLVM libc++/libc++abi/libunwind (Apache-2.0 mit LLVM-Ausnahme) | statisch gelinkte Laufzeit | ja |
+| Sunshine | `a679b059` | GPL-3.0 | `LICENSE` of the pinned tree, installed by `scripts/deps/sunshine.sh` as `sunshine.txt` | Only `nvhttp, httpcommon, rtsp, stream, crypto, network, audio, input, config, logging, cbs, file_handler, globals, stat_trackers` are compiled; 5 patches (below). |
+| moonlight-common-c | `04053843` | GPL-3.0 | `LICENSE.txt`, `moonlight-common-c.txt` | Only `src/RtspParser.c` compiled plus headers. |
+| ENet (Moonlight fork) | `aca87840` | MIT | `LICENSE`, `enet.txt` | Static library. |
+| nanors | `b1e3c22c` | MIT | `LICENSE`, `nanors.txt` | Static library (Reed-Solomon FEC). |
+| Simple-Web-Server (LizardByte fork) | `546895a9` | MIT | `LICENSE`, `simple-web-server.txt` | Headers only. |
+| nlohmann/json | 3.11.3 | MIT | `LICENSE.MIT`, `nlohmann-json.txt` | Headers only. |
+| libdisplaydevice (`common` only) | `a2afc043` | MIT | `LICENSE`, `libdisplaydevice.txt` | Static library; types and logger only. |
+| Boost | 1.92.0 | BSL-1.0 | `LICENSE_1_0.txt`, `boost.txt` | Static libraries plus headers; 1 patch. |
+| OpenSSL | 3.5.9 | Apache-2.0 | `LICENSE.txt`, `openssl.txt` | libcrypto and libssl, static. No `NOTICE` file in this release. |
+| Opus | 1.6.1 | BSD-3-Clause | `COPYING`, `opus.txt` | Static library. |
+| FFmpeg (avcodec, avutil, swscale) | 9.0.2 | LGPL-2.1-or-later | `COPYING.LGPLv2.1`, `ffmpeg.txt` | Static, no `--enable-gpl`, no codecs; 1 patch. Some FFmpeg files carry MIT/BSD-style licences, covered by the LGPL statement in FFmpeg's `LICENSE.md`. |
+| PS5 Payload SDK | v0.45 (zip SHA256 in `scripts/Dockerfile`) | Tools: GPL-3.0 upstream (to be confirmed from the upstream repository, the zip has no licence file); runtime: FreeBSD libc (BSD-2/3-Clause, various), LLVM libc++/libc++abi/libunwind (Apache-2.0 with LLVM exception) | **Not shipped today** (finding 1) | Statically linked runtime; the SDK tools (clang wrappers, linker) are not part of the output. |
+| LLVM 18 toolchain (Debian `clang-18`, `lld-18`, `libclang-rt-18-dev`) | Debian trixie packages | Apache-2.0 with LLVM exception | Not shipped | Build tools only. If the compiler-rt builtins archive is linked into the ELF, its licence (same terms) is covered by the same LLVM text. |
+| ProsperoSunshine's own code | this repository | GPL-3.0-only | `LICENSE` | Copied to `licenses/prosperosunshine.txt` by CI. |
 
-## Pflichten bei Veröffentlichung eines Releases
+Not third-party code: the app icon and background in `assets/` and the cover image `assets/ps5_screen.png` are
+original project assets. No Sunshine images or web UI are built or shipped.
 
-- Quelltext des Releases vollständig verfügbar halten (Repository-Tag), inklusive `deps.lock`, `patches/` und Build-Skripten, damit die statisch gelinkten Bibliotheken nachgebaut werden können (GPL-3.0 §6, LGPL-2.1 §6).
-- Lizenztexte aus `out/deps/licenses/` und `LICENSE` dem Release beilegen (macht der CI-Workflow).
-- Änderungen an Fremdcode nur als Patches mit Herkunft und Begründung (bereits so umgesetzt).
+## Patches
 
-## Nicht enthalten
+Patches are applied on top of the pinned sources by the `scripts/deps/*.sh` scripts. Sunshine patches are by this
+project and fall under Sunshine's GPL-3.0; the Boost patch is by this project under BSL-1.0; the FFmpeg patch is
+third-party (MIT).
 
-- Keine Sony-Binärdateien oder -Daten. Die entschlüsselten Systemmodule für die Analyse liegen ausschließlich im ignorierten `.cache/re`; `docs/re/` beschreibt Offsets und Verhalten ohne Code-Auszüge, `tools/re/` liest die Dateien nur lokal.
-- Keine Bilder oder Assets von Sunshine (die Web-UI wird nicht gebaut).
+| Patch | Origin | Purpose |
+| --- | --- | --- |
+| `patches/sunshine/0001-input-drop-libvirtualhid.patch` | ProsperoSunshine | Removes the libvirtualhid dependency from `input.cpp` (no keyboard/mouse in v1.0; gamepads go through the PS5 platform layer). |
+| `patches/sunshine/0002-config-no-nvenc-vaapi-headers.patch` | ProsperoSunshine | Defines the few NVENC/VAAPI enum values `config.cpp` needs on `__SCE__` instead of including both vendor SDK headers. |
+| `patches/sunshine/0003-httpcommon-no-curl.patch` | ProsperoSunshine | Builds `httpcommon` without libcurl (only used by the unbuilt web UI); `url_escape` keeps the same encoding. |
+| `patches/sunshine/0004-httpcommon-url-host-without-curl.patch` | ProsperoSunshine | Parses the URL host directly instead of via libcurl, follows 0003. |
+| `patches/sunshine/0005-last-launch-client.patch` | ProsperoSunshine | Remembers the client of the last launch/resume so the control socket `STATUS` can report it. |
+| `patches/boost/0001-process-v2-no-close-range-on-prospero.patch` | ProsperoSunshine | The PS5 libc has no `close_range()`; makes that path opt-in so the portable fallback is used (Boost.Process v2 is built but unused). |
+| `patches/ffmpeg/0001-remove-register.patch` | LizardByte/build-deps `d0ac5ef4` (MIT), unchanged | Removes the `register` storage class in `get_bits.h`, ill-formed in the C++23 code that includes it. |
 
-## Offene Punkte aus der Lizenzprüfung (WIP, P7.2 nicht abgeschlossen)
+## Obligations for a release
 
-- **Lizenztext der SDK-Laufzeit fehlt im Release-Artefakt.** `scripts/deps/*.sh` legen für elf Komponenten (boost, enet, ffmpeg, libdisplaydevice, moonlight-common-c, nanors, nlohmann-json, openssl, opus, simple-web-server, sunshine) einen Text in `out/deps/licenses/` ab (am gebauten Verzeichnis geprüft). Für das PS5 Payload SDK und seine statisch gelinkte Laufzeit (FreeBSD-libc, LLVM libc++/libc++abi/libunwind, compiler-rt-Builtins) gibt es keinen Text; der CI-Schritt „Collect licences“ bündelt nur diese Dateien plus `LICENSE`. Die BSD-Lizenz der libc verlangt den Copyright-Hinweis bei Binärverteilung. Das Release muss die Lizenz- und Copyright-Texte aus `ps5-payload-sdk-v0.45.zip` (Hash im `scripts/Dockerfile`) beilegen. Noch nicht gegen den Inhalt des SDK-Archivs verifiziert.
-- Noch zu erledigen: NOTICE/THIRD_PARTY-Liste für das Release-Archiv, Patch-Liste mit Herkunft je Datei, Sunshine-Unterverzeichnis `third-party` auf weitere eingebundene Lizenzen prüfen, englische README (P7.3).
+- Keep the complete source available: repository tag including `deps.lock`, `patches/` and the build scripts (GPL-3.0
+  section 6, LGPL-2.1 section 6).
+- Bundle licence texts and a notice file as specified in `docs/THIRD_PARTY.md`.
+- Offer the release ELF with its SHA256; the GPL-3.0 text and the written source offer are covered by the tag and the
+  bundled `LICENSE`.
+
+## Not included
+
+- No Sony binaries or data. Decrypted system modules used for analysis live only in the ignored `.cache/re`;
+  `docs/re/` describes offsets and behaviour without code excerpts, and `tools/re/` only reads files locally.
+- No images or assets from Sunshine (the web UI is not built).
