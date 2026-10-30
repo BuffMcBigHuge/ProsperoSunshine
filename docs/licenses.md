@@ -6,15 +6,10 @@ licence text per component into `out/deps/licenses/`; the CI workflow copies tho
 
 ## Findings (read first)
 
-1. **Gap: no licence text for the PS5 Payload SDK runtime is shipped.** The host links the SDK's `libc.a`
-   (FreeBSD-derived libc), `libc++.a`, `libc++abi.a`, `libunwind.a`, `libpthread.a` and the `crt*.o` start files
-   statically. The SDK zip (`ps5-payload-sdk.zip`, v0.45) contains no licence or copyright file at all (checked: no
-   `LICENSE`, `COPYING` or `NOTICE` anywhere in the archive), and neither `scripts/deps/*.sh` nor the CI step collects
-   one. FreeBSD libc code is BSD-licensed, which requires the copyright notice and licence text in binary
-   distributions; LLVM libc++/libc++abi/libunwind are Apache-2.0 with the LLVM exception (the exception waives the
-   attribution duty for binary form, but the notice is still good practice). Not a blocker for the GPL-3.0 combination,
-   but a release must bundle those texts: see `docs/THIRD_PARTY.md`, "SDK runtime". This is a documentation/packaging
-   gap only; no build script was changed.
+1. **PS5 Payload SDK runtime: texts kept in this repository.** The host links the SDK's `libc.a` (FreeBSD-derived),
+   `libc++.a`, `libc++abi.a`, `libunwind.a`, `libpthread.a` and the `crt*.o` start files statically, and the SDK zip
+   (v0.45) contains no licence file. The texts are therefore stored in `licenses/ps5-payload-sdk-runtime/` and bundled
+   by CI and `app/build.sh`; sources and limits are in `docs/THIRD_PARTY.md`, "SDK runtime".
 2. **OpenSSL 3.5.9 is Apache-2.0 only.** That is compatible with GPL-3.0-only but not with GPL-2.0-only. Nothing in the
    project is GPL-2.0-only, but never relicense or combine with GPL-2.0-only code without checking this.
 3. **FFmpeg is LGPL-2.1-or-later and linked statically.** Allowed inside a GPL-3.0 work (LGPL-2.1 section 3 permits
@@ -40,7 +35,7 @@ licence text per component into `out/deps/licenses/`; the CI workflow copies tho
 | OpenSSL | 3.5.9 | Apache-2.0 | `LICENSE.txt`, `openssl.txt` | libcrypto and libssl, static. No `NOTICE` file in this release. |
 | Opus | 1.6.1 | BSD-3-Clause | `COPYING`, `opus.txt` | Static library. |
 | FFmpeg (avcodec, avutil, swscale) | 9.0.2 | LGPL-2.1-or-later | `COPYING.LGPLv2.1`, `ffmpeg.txt` | Static, no `--enable-gpl`, no codecs; 1 patch. Some FFmpeg files carry MIT/BSD-style licences, covered by the LGPL statement in FFmpeg's `LICENSE.md`. |
-| PS5 Payload SDK | v0.45 (zip SHA256 in `scripts/Dockerfile`) | Tools: GPL-3.0 upstream (to be confirmed from the upstream repository, the zip has no licence file); runtime: FreeBSD libc (BSD-2/3-Clause, various), LLVM libc++/libc++abi/libunwind (Apache-2.0 with LLVM exception) | **Not shipped today** (finding 1) | Statically linked runtime; the SDK tools (clang wrappers, linker) are not part of the output. |
+| PS5 Payload SDK | v0.45 (zip SHA256 in `scripts/Dockerfile`) | GPL-3.0 (upstream `LICENSE` at v0.45); runtime: FreeBSD libc (BSD-2/3-Clause, various), LLVM libc++/libc++abi/libunwind (Apache-2.0 with LLVM exception) | `licenses/ps5-payload-sdk-runtime/` (finding 1) | Statically linked runtime; the SDK tools (clang wrappers, linker) are not part of the output. |
 | LLVM 18 toolchain (Debian `clang-18`, `lld-18`, `libclang-rt-18-dev`) | Debian trixie packages | Apache-2.0 with LLVM exception | Not shipped | Build tools only. If the compiler-rt builtins archive is linked into the ELF, its licence (same terms) is covered by the same LLVM text. |
 | ProsperoSunshine's own code | this repository | GPL-3.0-only | `LICENSE` | Copied to `licenses/prosperosunshine.txt` by CI. |
 

@@ -1,6 +1,6 @@
 # Arbeitsstand
 
-Stand: 29. Oktober 2026, nachts. Plan und Reihenfolge: `ROADMAP.md`. Ziel und Regeln: `PLAN.md`. Architektur: `docs/adr/001-sunshine-port.md`.
+Stand: 30. Oktober 2026. Plan und Reihenfolge: `ROADMAP.md`. Ziel und Regeln: `PLAN.md`. Architektur: `docs/adr/001-sunshine-port.md`.
 
 ## Kurzfassung
 
@@ -14,7 +14,7 @@ Echte Moonlight-Clients (Moonlight Web, Moonlight PC, Moonlight auf dem iPhone i
 
 **Bild-/Ton-Synchronisation (P5.2, erste Messung):** Navigationsklick im Home-Menü als gemeinsames Ereignis, 60 s, gemessen am Client (`tools/moonlight/av_sync.py`). Tastendruck → Bildänderung 23–25 ms, Tastendruck → Klickton 28–49 ms; Ton liegt 5–23 ms hinter dem Bild (burst-korrigiert Median ≈ 0 ms), also innerhalb der üblichen ±45-ms-Toleranz. Nur die Rechts-Drücke sind auswertbar (bei Links-Drücken erkennt der Bild-Detektor die Änderung nicht zuverlässig); der Drift über 60 s (−4,3 ms/min) ist zu kurz gemessen, ein 10-Minuten-Lauf steht aus.
 
-**Noch nicht geprüft:** Langzeit-Drift Bild/Ton, Ruhemodus, Moonlight auf Android/TV, andere Firmwares als 13.00.
+**Noch nicht geprüft:** Ruhemodus, Moonlight auf Android/TV, andere Firmwares als 13.00.
 
 ## Nachweise nach Roadmap
 
@@ -52,22 +52,23 @@ Echte Moonlight-Clients (Moonlight Web, Moonlight PC, Moonlight auf dem iPhone i
 
 ## Offen und bekannte Grenzen
 
-### Übergabe 29. Oktober 2026, nachts (alles lokal in `main`, nichts gepusht)
+### Stand 30. Oktober 2026 (alles lokal in `main`, nichts gepusht)
 
-Neu in `main` seit dem letzten Stand: App unter `app/` (Media-Tab, ohne `amm`), STATUS mit `address=`/`client=`, HEVC-Fehler am iPhone behoben, Steuer-Socket nur lokal (`control_lan` öffnet ihn), mDNS-Responder, ResourceArbitrator per NID statt fester Adressen, englische README, Lizenztabelle und `docs/THIRD_PARTY.md`, `docs/firmware-porting.md`, CLAUDE.md.
+Live auf der Konsole geprüft mit dem aktuellen Host (Testclient vom PC):
 
-Was noch fehlt oder zu prüfen ist:
+- **mDNS im echten Host:** `tools/mdns_query.py` sieht `PS5._nvstream._tcp.local` mit PTR, SRV (Port 47989), TXT und A. Ob Moonlight die PS5 von selbst listet, ist noch nicht gesehen.
+- **NID-Auflösung im Host:** Bildaufnahme öffnet sich auf 13.00, Stream 15 s: 895 Frames, 0 Lücken, 0 Audiofehler, fehlerfrei decodierbar.
+- **Client-Abbruch (behebt P9.8):** Client hart beendet ohne `/cancel`: Ping-Timeout, 0,2 s später `Session app stopped` und `virtual pad 0 detached (0)`. Danach `currentgame = 0`, ein neuer Client startet direkt, und die App bekommt sofort wieder Eingaben (RemoteEye). Vorher blieb das Pad angemeldet und nahm der App die Eingaben (Sunshine-Patch 0006).
+- **App mit aktuellem Host:** App neu gebaut und installiert (`01.000.001`), sie kopiert ihren Host beim Start; „Restart host“ startet ihn neu („The host restarted with the saved settings“).
 
-1. **Neuen Host live prüfen:** Der Stand aus `main` (mDNS und NID-Auflösung im Host, Log „virtual pad … detached“) ist gebaut und getestet, lief aber noch nicht als Host auf der Konsole. Auf der Konsole läuft bis zum Ausschalten `7d15ea5`. Nächster Start: ELF senden, `tools/mdns_query.py`, ein Stream mit `run_smoke.sh`, Klog nach `ra ... (nid)` durchsehen.
-2. **App mit neuem Host:** Die App bringt eine eigene Kopie des Host-ELF mit und kopiert sie beim Start nach `/data/prosperosunshine/`, wenn sie abweicht. Vor dem Release die eingebettete Kopie auf den aktuellen Host bringen, sonst spielt die App einen älteren Host auf.
-3. **Lizenzen (Release-Blocker):** Die Lizenztexte der statisch gelinkten SDK-Laufzeit (FreeBSD-libc, libc++/libc++abi/libunwind) werden nicht mitgeliefert; was ins Release-Archiv muss, steht in `docs/THIRD_PARTY.md`. Die Lizenz des SDK selbst ist noch zu bestätigen.
-4. **Pad nach Streamende (P9.8):** Die App bekam nach einem Handy-Stream ohne Host-Neustart keine Eingaben vom RemoteEye-Test-Pad. Ursache offen (Pad nicht freigegeben oder Konflikt mit RemoteEye); das neue Log zeigt es beim nächsten Test.
-5. **„PS5 Screen“ bleibt nach Client-Abbruch „running“:** Ein neuer Client muss dann „Resume“ statt „Start“ nehmen; `run_smoke.sh`/`av_sync.py` scheitern mit „An app is already running“, bis `/cancel` kommt. Erwägen: App nach einigen Minuten ohne Client beenden.
-6. **Auflösung/Bildrate (P9.3):** Der Host liefert immer 1080p60, auch wenn das Handy 720p30 will. Spike mit Avcap2 offen.
-7. **av_sync-Auffälligkeit (P9.4):** Klickton nicht erkannt und Bildreaktion 265 ms im 10-Minuten-Lauf; die Drift ist trotzdem sauber gemessen.
-8. **Eigene Werkzeuge vom PC:** `PIN`/`QUIT` über den Steuer-Socket gehen vom PC aus nur noch mit der leeren Datei `/data/prosperosunshine/control_lan` (danach Host neu starten).
-9. **Zeilenenden:** In neuen Worktrees checkt Git `deps.lock` und `patches/` mit CRLF aus, das bricht `deps.sh`. Eine `.gitattributes` mit `eol=lf` für diese Dateien würde das beheben.
-10. **Weiter offen wie bisher:** Ruhemodus (nur mit Rückfrage testen), Android/TV-Clients, andere Firmwares (Checkliste in `docs/firmware-porting.md`), MAC-Adresse 0 (kein Wake-on-LAN), CI noch nie auf GitHub gelaufen, Store-Release (P8.8/P8.9).
+Noch offen:
+
+1. **Auflösung/Bildrate (P9.3):** Der Host liefert immer 1080p60, auch wenn das Handy 720p30 will. Spike mit Avcap2 offen.
+2. **av_sync-Auffälligkeit (P9.4):** Die Drift ist sauber gemessen (−0,01 ms/min über 10 Minuten), aber der Klickton wurde nicht erkannt (0/380) und die Bildreaktion lag bei 265 ms statt früher 23–25 ms. Ursache ungeklärt.
+3. **Payload-Manager-Fenster:** Ein offenes Fenster des Payload Managers liegt über Apps und nimmt Eingaben an sich, auch wenn es nicht reagiert. In dem Zustand lässt es sich nur am echten Controller schließen. Beim Fernsteuern vorher prüfen.
+4. **Eigene Werkzeuge vom PC:** `PIN`/`QUIT` und `pair.py status` über den Steuer-Socket gehen vom PC aus nur noch mit der leeren Datei `/data/prosperosunshine/control_lan` (danach Host neu starten). Sonst geht der Host-Neustart über die App.
+5. **Release:** `THIRD_PARTY.md` fürs Archiv wird noch nicht erzeugt, CI lief noch nie auf GitHub, Store-Release (P8.8/P8.9) offen.
+6. **Weiter offen wie bisher:** Ruhemodus (nur mit Rückfrage testen), Android/TV-Clients, andere Firmwares (Checkliste in `docs/firmware-porting.md`), MAC-Adresse 0 (kein Wake-on-LAN).
 
 - **MAC-Adresse** in `/serverinfo` ist 0: weder `getifaddrs` noch `sceNetGetMacAddress` liefern sie im Payload. Betrifft nur Wake-on-LAN.
 - **Boost.Filesystem `create_directories`** scheitert bei neuen verschachtelten Pfaden, wenn `errno` vorher belegt ist (ein Libc-Aufruf setzt kein `errno`). Der Host nutzt nur `std::filesystem` und ist nicht betroffen.

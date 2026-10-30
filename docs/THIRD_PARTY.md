@@ -16,7 +16,7 @@ licenses/
   sunshine.txt  moonlight-common-c.txt  enet.txt  nanors.txt  simple-web-server.txt
   nlohmann-json.txt  libdisplaydevice.txt  boost.txt  openssl.txt  opus.txt  ffmpeg.txt
                              all produced by scripts/deps.sh into out/deps/licenses/ (already collected by CI)
-  ps5-payload-sdk-runtime/   NEW, see below
+  ps5-payload-sdk-runtime/   from this repository, see below
 ```
 
 Also state in the release notes the tag that contains the corresponding source (`deps.lock`, `patches/`, scripts).
@@ -41,24 +41,21 @@ licence texts are in `licenses/`. Versions and SHA256 of the exact sources: `dep
 | FFmpeg libavcodec/libavutil/libswscale | LGPL-2.1-or-later | `ffmpeg.txt` |
 | PS5 Payload SDK runtime (libc, libc++, libc++abi, libunwind, start files) | BSD (FreeBSD libc), Apache-2.0 with LLVM exception | `ps5-payload-sdk-runtime/` |
 
-## SDK runtime: what to add
+## SDK runtime
 
-Finding: neither `scripts/deps/*.sh` nor the CI step collects any text for the Payload SDK runtime, and the SDK zip
-(v0.45) itself ships none. The release must add a directory `licenses/ps5-payload-sdk-runtime/` with:
+The SDK zip (v0.45) ships no licence file, so the texts are kept in this repository under
+`licenses/ps5-payload-sdk-runtime/`; CI and `app/build.sh` copy that directory into their output.
 
-1. The SDK's own licence: `LICENSE` from the upstream `ps5-payload-dev/sdk` repository at the tag matching `SDK_VERSION`
-   in `scripts/Dockerfile` (v0.45). Confirm there that it covers the shipped libraries; the zip's `target/lib/*.a` are
-   not marked.
-2. FreeBSD libc: the BSD copyright/licence notice (FreeBSD `COPYRIGHT` file, covering the UCB and other BSD notices
-   in `libc.a`) for the FreeBSD release the SDK libc derives from. Identify that release from the SDK's `target/include`
-   (`sys/param.h`, `__FreeBSD_version`) when assembling, and take the text from that release's tree.
-3. LLVM libc++, libc++abi, libunwind: `libcxx/LICENSE.TXT`, `libcxxabi/LICENSE.TXT`, `libunwind/LICENSE.TXT` (or the
-   single top-level `llvm/LICENSE.TXT`) of the LLVM version the SDK was built from (Apache-2.0 with LLVM exception).
-4. If the compiler-rt builtins archive is linked into the ELF: `compiler-rt/LICENSE.TXT`, or the Debian copyright file
-   `/usr/share/doc/libclang-rt-18-dev/copyright` from the SDK Docker image (`prosperosunshine-sdk:v0.45`).
+| File | Source | Covers |
+| --- | --- | --- |
+| `ps5-payload-sdk-LICENSE.txt` | `ps5-payload-dev/sdk`, tag v0.45, `LICENSE` (GPL-3.0) | the SDK |
+| `freebsd-11.4-COPYRIGHT.txt` | `freebsd-src`, tag `release/11.4.0`, `COPYRIGHT`; the SDK headers report `__FreeBSD_version` 1104001 | FreeBSD-derived `libc.a`, `libpthread.a` and start files |
+| `llvm-18.1-libcxx-LICENSE.txt`, `-libcxxabi-`, `-libunwind-` | `llvm-project`, tag `llvmorg-18.1.0`; the SDK headers report `_LIBCPP_VERSION` 180100 | `libc++.a`, `libc++abi.a`, `libunwind.a` |
+| `llvm-18.1-compiler-rt-LICENSE.txt` | same tag | compiler-rt builtins, if linked (same terms; kept either way) |
 
-Verify with `ar t` / `strings` on the linked archives which of items 2 to 4 actually end up in the ELF before
-finalising. Until these files are bundled, the release is incomplete with respect to the BSD notice requirement.
+The tags were derived from the version macros in the SDK headers, because the SDK does not state which upstream
+release its runtime was built from. Individual libc source files can carry further BSD notices that the FreeBSD
+`COPYRIGHT` file does not reproduce one by one.
 
 ## Checks before publishing
 
