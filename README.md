@@ -64,7 +64,7 @@ inside the stream; answer it with your Moonlight controller.
 - H.264 and SDR only. The stream is always 1080p: the console encoder starts no other resolution, so a client asking
   for less gets 1080p and scales it. The frame rate follows the client: 30 or 60 fps.
 - The bitrate is capped at 15 Mbit/s (the console encoder stops above that).
-- One streaming session and one controller at a time.
+- One streaming session at a time. More than one controller is untested.
 - No HDR, HEVC, 4K, mouse, keyboard, touch, rumble or microphone.
 - No Wake-on-LAN (the console MAC address is not available to the host).
 - Starting or quitting a game briefly takes the capture resource away: video and audio pause for about 2 seconds
