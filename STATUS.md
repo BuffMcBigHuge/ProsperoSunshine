@@ -63,6 +63,7 @@ Live auf der Konsole geprüft mit dem aktuellen Host (Testclient vom PC):
 - **Verbindungsaufbau:** Der auf 2 s gesenkte `ping_timeout` galt in Sunshine auch für die Zeit von `/launch` bis RTSP; Clients, die länger brauchten, scheiterten mit „RTSP OPTIONS -1“ (reproduziert mit dem Docker-Testclient, ≈ 3 s). Jetzt 10 s für den Aufbau, 2 s bleiben für die Abbruch-Erkennung (Patch 0007). Kommt kein Client, endet auch „PS5 Screen“.
 - **App mit aktuellem Host:** App neu gebaut und installiert (`01.000.001`), sie kopiert ihren Host beim Start; „Restart host“ startet ihn neu („The host restarted with the saved settings“).
 - **Release-Archiv:** `scripts/package.sh` lokal aus dem aktuellen Build ausgeführt: 23 Dateien, `sha256sum -c` ohne Fehler, keine lokalen Pfade oder Konsolenadresse im ELF (per `grep -a`).
+- **Release 0.1.0:** Inhalt von `PPSA47989.zip` auf die Konsole kopiert, App gestartet, „Restart host“ ausgelöst, danach Stream 15 s: 896 Frames, fehlerfrei decodierbar. GitHub-CI baut von null und ist grün; das fand einen Fehler in der Baureihenfolge (`nlohmann-json` vor `libdisplaydevice`), den der lokale Cache verdeckt hatte. Die SHA-256 der Release-Datei stimmt mit dem Katalog-Eintrag überein, der Katalog-Bot hat den Eintrag nach seinen Prüfungen gemergt.
 
 Noch offen:
 
@@ -70,7 +71,7 @@ Noch offen:
 2. **Bild und Ton beim Tastendruck (P9.4):** Die Drift ist sauber gemessen (−0,01 ms/min über 10 Minuten; +0,11 ms/min im 60-s-Lauf auf dem Home-Bildschirm). Der Lauf ohne Klickton (0/380, 265 ms) war ein Messfehler: Die Startsequenz von `stream_test` drückt A und startete die fokussierte App, deren animierter Hintergrund den Bild-Detektor auslöst und bei der der Ton-Detektor nichts erkennt. Ein Kontrolllauf reproduzierte das (0/30, 342 ms); `av_sync.py` nutzt jetzt immer `--no-script`. Auf dem Home-Bildschirm (60 s, 30 Drücke, Klickton 18/30): Taste → Bild meist 88–102 ms, Taste → Ton 85–118 ms, Abstand im Median 7 ms. Ab Druck 19 reagierten nur die Rechts-Drücke im Bild nach 29–41 ms, der Ton blieb bei ≈ 100 ms (Abstand dort bis 88 ms). Ungeklärt bleibt dieser Sprung und der Unterschied zu den 23–25 ms (Bild) und 28–49 ms (Ton) der ersten Messung. Es ist nicht entschieden, ob die Verzögerung im Host, im Eingabeweg oder in der Oberfläche der Konsole entsteht.
 3. **Payload-Manager-Fenster:** Ein offenes Fenster des Payload Managers liegt über Apps und nimmt Eingaben an sich, auch wenn es nicht reagiert. In dem Zustand lässt es sich nur am echten Controller schließen. Beim Fernsteuern vorher prüfen.
 4. **Eigene Werkzeuge vom PC:** `PIN`/`QUIT` und `pair.py status` über den Steuer-Socket gehen vom PC aus nur noch mit der leeren Datei `/data/prosperosunshine/control_lan` (danach Host neu starten). Sonst geht der Host-Neustart über die App.
-5. **Release:** CI lief noch nie auf GitHub, Tag und Upload (P7.4) und Store-Release (P8.8/P8.9) offen.
+5. **Store-Installation (P8.9):** Der Katalog-Eintrag ist gemergt, die Installation aus dem ProsperoStore auf der Konsole ist noch nicht ausprobiert.
 6. **Weiter offen wie bisher:** Ruhemodus (nur mit Rückfrage testen), Android/TV-Clients, andere Firmwares (Checkliste in `docs/firmware-porting.md`), MAC-Adresse 0 (kein Wake-on-LAN).
 
 - **MAC-Adresse** in `/serverinfo` ist 0: weder `getifaddrs` noch `sceNetGetMacAddress` liefern sie im Payload. Betrifft nur Wake-on-LAN.

@@ -6,11 +6,11 @@ Stand: 28. Oktober 2026. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN
 
 Erledigt und live belegt (Details in `STATUS.md`): Phase 0 komplett, Spikes R1–R5 positiv (R6 ohne mDNS), Phase 1 bis auf Spiele als Bildquelle, P2.1–P2.4, P3.1–P3.4, P4.1–P4.2, P5.1, aus P6 die 30-Minuten-Sitzung und zehn Wiederverbindungen, P6.4 (automatischer Testclient in `tools/moonlight/`), P4.3 geprüft (Pad wird nach Abbruch neutral, ≈ 5,6 s Nachlauf), P6.2 Paketverlust (10 % ohne Abbruch), P7.1 (CI-Workflow, noch nicht auf GitHub gelaufen). Ende-zu-Ende-Stream mit einem moonlight-common-c-Client funktioniert.
 
-P7.2 (Lizenzübersicht `docs/licenses.md`) und P7.3 (englische README mit Voraussetzungen, Ablauf und Grenzen) sind erledigt. Das Archiv für P7.4 baut `scripts/package.sh` (mit Prüfsummen, `CHANGELOG.md` und `THIRD_PARTY.md`); Tag und Upload stehen aus.
+P7.2 (Lizenzübersicht `docs/licenses.md`) und P7.3 (englische README mit Voraussetzungen, Ablauf und Grenzen) sind erledigt. Das Archiv für P7.4 baut `scripts/package.sh` (mit Prüfsummen, `CHANGELOG.md` und `THIRD_PARTY.md`). P7.1, P7.4, P7.5, P8.8: Release `v0.1.0` am 2026-10-30 auf GitHub, CI grün, Katalog-Eintrag `PPSA47989` gemergt. Offen für P8.9 ist nur die Probe, die App wirklich aus dem Store zu installieren.
 
 Inzwischen außerdem: echte Moonlight-Clients (Web und PC) gepairt und gestreamt, Spiele als Bildquelle (P1.4), automatischer Wiederanlauf bei Ressourcenentzug durch Spielstart/-ende, Begrenzung auf eine Sitzung, App-Cover.
 
-Als Nächstes: PS5-App (Phase 8), Bild-/Ton-Synchronisation (P5.2), früherer Eingabe-Watchdog (P4.3-Folgepunkt), weitere Fehlerinjektion wie Ruhemodus und Ressourcenentzug (P6.2), Host-API mit der PS5-App abstimmen (P2.5), Release (P7.4).
+Als Nächstes: PS5-App (Phase 8), Bild-/Ton-Synchronisation (P5.2), früherer Eingabe-Watchdog (P4.3-Folgepunkt), weitere Fehlerinjektion wie Ruhemodus und Ressourcenentzug (P6.2), Host-API mit der PS5-App abstimmen (P2.5).
 
 ## Zielbild v1.0
 
