@@ -7,7 +7,7 @@ the PS5 screen, game audio and controller input over your LAN.
 
 > **Status: first release, 0.1.0 ([changelog](CHANGELOG.md)).** Pairing, 1080p H.264 video at 30 or 60 fps, game audio and controller input work end to end
 > with Moonlight on PC, in the browser (Moonlight Web) and on iPhone. Sessions of 30 minutes and ten reconnects
-> were tested without errors. Firmware 13.00 only. Not every client or game has been tried.
+> were tested without errors. Only firmware 13.00 has been tested so far. Not every client or game has been tried.
 
 ## How it works
 
@@ -24,8 +24,8 @@ reverse-engineering notes: `docs/` (German).
 
 ## Requirements
 
-- PS5 on **firmware 13.00**. Other firmware is untested and not supported; the host refuses it unless its
-  system-library lookups succeed (`docs/firmware-porting.md`, German).
+- PS5 firmware: **13.00 is the only tested version**. Other versions are untested; the host refuses them only if its
+  system-library lookups fail (`docs/firmware-porting.md`, German).
 - A homebrew environment with an **ELF loader** (for example one listening on port 9021). The app also needs
   [ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus), which registers titles from `/data/homebrew/`.
 - SDR output (HDR is not supported).
@@ -84,8 +84,8 @@ inside the stream; answer it with your Moonlight controller.
 - **Black or paused picture for a moment:** expected when a game starts or exits (see limits).
 - **Controller works on the home screen but not in an app:** turn off other controllers connected to the console (see
   limits).
-- **Wrong firmware:** only 13.00 is supported. On other versions capture is refused unless the system-library
-  lookups succeed, and even then it is unverified; the kernel log says which case applies.
+- **Other firmware:** only 13.00 is tested. On other versions capture is refused if the system-library lookups fail;
+  if they succeed it runs, untested. The kernel log says which case applies.
 - **Diagnosis:** set `min_log_level = debug` in `/data/prosperosunshine/sunshine.conf`; messages go to the kernel log.
 
 ## Development control socket

@@ -2,7 +2,7 @@
 
 ## 0.1.0 (2026-10-30)
 
-First release. PS5 firmware 13.00 only.
+First release. Tested on PS5 firmware 13.00; other versions are untested.
 
 ### Added
 
