@@ -5,7 +5,7 @@
 A native, Sunshine-compatible game-stream host for the PlayStation 5. Add your console to Moonlight and stream
 the PS5 screen, game audio and controller input over your LAN.
 
-> **Status: early development.** Pairing, 1080p60 H.264 video, game audio and controller input work end to end
+> **Status: first release, 0.1.0 ([changelog](CHANGELOG.md)).** Pairing, 1080p H.264 video at 30 or 60 fps, game audio and controller input work end to end
 > with Moonlight on PC, in the browser (Moonlight Web) and on iPhone. Sessions of 30 minutes and ten reconnects
 > were tested without errors. Firmware 13.00 only. Not every client or game has been tried.
 
@@ -26,7 +26,8 @@ reverse-engineering notes: `docs/` (German).
 
 - PS5 on **firmware 13.00**. Other firmware is untested and not supported; the host refuses it unless its
   system-library lookups succeed (`docs/firmware-porting.md`, German).
-- A homebrew environment with an **ELF loader** (for example one listening on port 9021).
+- A homebrew environment with an **ELF loader** (for example one listening on port 9021). The app also needs
+  [ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus), which registers titles from `/data/homebrew/`.
 - SDR output (HDR is not supported).
 - A wired or good wireless LAN, and a Moonlight client in the same network.
 
@@ -46,7 +47,7 @@ Sending the ELF again restarts the host.
 
 ## Pairing
 
-1. In Moonlight, add the console by its IP address (`<console-ip>`) and start pairing. Moonlight shows a PIN.
+1. In Moonlight, pick the console, or add it by its IP address (`<console-ip>`), and start pairing. Moonlight shows a PIN.
 2. Enter the PIN in the ProsperoSunshine app on the PS5 (option A).
 3. Without the app, approve it through the control socket from the same machine, or from the LAN if you enabled it
    (see below): `printf 'PIN 1234\n' | nc <console-ip> 47995`.
@@ -60,7 +61,9 @@ inside the stream; answer it with your Moonlight controller.
 
 ## Known limits
 
-- H.264, 1080p at 60 fps, SDR only. The bitrate is capped at 15 Mbit/s (the console encoder stops above that).
+- H.264 and SDR only. The stream is always 1080p: the console encoder starts no other resolution, so a client asking
+  for less gets 1080p and scales it. The frame rate follows the client: 30 or 60 fps.
+- The bitrate is capped at 15 Mbit/s (the console encoder stops above that).
 - One streaming session and one controller at a time.
 - No HDR, HEVC, 4K, mouse, keyboard, touch, rumble or microphone.
 - No Wake-on-LAN (the console MAC address is not available to the host).
@@ -70,7 +73,8 @@ inside the stream; answer it with your Moonlight controller.
 
 ## Troubleshooting
 
-- **Moonlight cannot find the console:** add it by IP; automatic discovery (mDNS) is not provided.
+- **Moonlight cannot find the console:** add it by IP. The host answers mDNS discovery queries, but whether a client
+  lists the console on its own also depends on the network and has not been confirmed with a real Moonlight client yet.
 - **Connection fails or stalls:** make sure nothing blocks TCP 47984, 47989, 48010 and UDP 47998-48000 between the
   client and the console (client or router firewall).
 - **iPhone:** works. An earlier bug (sound but no picture, because the host announced HEVC) is fixed.
@@ -97,7 +101,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 ```
 
 The first run builds the dependencies into `out/deps` (around 30 minutes, mostly Boost). The host is
-`out/prospero_sunshine.elf`; the other ELFs are hardware probes. Portable unit tests:
+`out/prospero_sunshine.elf`; the other ELFs are hardware probes. `app/build.ps1` then builds the app, and
+`bash scripts/package.sh` the release archive. Portable unit tests:
 
 ```sh
 docker run --rm --mount type=bind,source="$PWD",target=/repo prosperosunshine-sdk:v0.45 bash scripts/test.sh
