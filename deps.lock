@@ -1,5 +1,6 @@
 # Pinned third-party sources for the PS5 build. Read by scripts/deps.sh.
 # name  version  sha256  url
+# Libraries build in this order: nlohmann-json before libdisplaydevice, which includes its header.
 # OpenSSL and Opus hashes match the upstream-published checksums; Boost matches Sunshine's
 # package-lock.cmake, nlohmann-json the MD5 Sunshine checks. FFmpeg 9.0.2 is the release of the commit
 # LizardByte/build-deps d0ac5ef4 pins; its tarball was verified against the FFmpeg release signing key
@@ -11,8 +12,8 @@ moonlight-common-c  04053843c90c4268583f2496b997d54d59f03957  e0c70cb355673e474b
 enet  aca87840b57f045a1f7f9299e4b1b9b8e2a5e2f1  6bb1a151e6d21e1756baeff5a95eaf85a5b6731aeda6d0bc255651192ba4a32d  https://github.com/cgutman/enet/archive/aca87840b57f045a1f7f9299e4b1b9b8e2a5e2f1.tar.gz
 nanors  b1e3c22ca0cdc0bb83e3cd6ed1a2fc77869ed99a  41edc0309b255b0eeb5e8eb1ad79f7c7e9e6c31db1bd79a16d73271c62867003  https://github.com/sleepybishop/nanors/archive/b1e3c22ca0cdc0bb83e3cd6ed1a2fc77869ed99a.tar.gz
 simple-web-server  546895a93a29062bb178367b46c7afb72da9881e  de46eeceb87f6d8ff30a494ed9d3b915844a179b32067f8347ee854a07fd3c8c  https://github.com/LizardByte-infrastructure/Simple-Web-Server/archive/546895a93a29062bb178367b46c7afb72da9881e.tar.gz
-libdisplaydevice  a2afc0430d44223c25a2ebc598000f78b338aa52  91fd39e946aa876640527ea9e44c2892726764b430d182e7f8f5f4ee0df63a06  https://github.com/LizardByte/libdisplaydevice/archive/a2afc0430d44223c25a2ebc598000f78b338aa52.tar.gz
 nlohmann-json  3.11.3  d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d  https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+libdisplaydevice  a2afc0430d44223c25a2ebc598000f78b338aa52  91fd39e946aa876640527ea9e44c2892726764b430d182e7f8f5f4ee0df63a06  https://github.com/LizardByte/libdisplaydevice/archive/a2afc0430d44223c25a2ebc598000f78b338aa52.tar.gz
 openssl  3.5.9  603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a  https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz
 opus  1.6.1  6ffcb593207be92584df15b32466ed64bbec99109f007c82205f0194572411a1  https://downloads.xiph.org/releases/opus/opus-1.6.1.tar.gz
 boost  1.92.0  9bed76128d4e46755dbe818487788c6fceb6f72b378f4daa49b7e1e600d9088d  https://github.com/boostorg/boost/releases/download/boost-1.92.0/boost-1.92.0-cmake.tar.xz
