@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Builds the SDK image, runs the portable tests under sanitizers, builds the host and probes, and
-# uploads the ELFs. Third-party builds (out/deps) are cached by the pinned sources and build scripts.
+# uploads the release archive. Third-party builds (out/deps) are cached by the pinned sources and build scripts.
 name: build
 
 on:
@@ -38,15 +38,10 @@ jobs:
       - name: Build host and probes
         run: docker run --rm --mount type=bind,source="$PWD",target=/repo prosperosunshine-sdk:v0.45 bash scripts/build.sh
 
-      - name: Collect licences
-        run: |
-          mkdir -p dist/licenses
-          cp out/*.elf dist/
-          cp out/deps/licenses/* dist/licenses/
-          cp LICENSE dist/licenses/prosperosunshine.txt
-          cp -r licenses/ps5-payload-sdk-runtime dist/licenses/
+      - name: Package
+        run: bash scripts/package.sh "${GITHUB_REF_NAME//\//-}-${GITHUB_SHA::8}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: prosperosunshine-${{ github.sha }}
-          path: dist/
+          path: dist/*.tar.gz

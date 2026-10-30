@@ -41,7 +41,8 @@ terminated the stream with an error. A failed connection reports the failing sta
 
 `av_sync.py` measures how far apart picture and sound arrive at the client for one real event, and the long-term drift.
 The PS5 home menu moves its focus highlight and plays a navigation click when D-pad left/right is pressed; that is the
-simultaneous picture+sound event. The home screen must be in front (the script does not launch titles).
+simultaneous picture+sound event. The home screen must be in front (the script does not launch titles, and it passes
+`--no-script` because the scripted startup input presses A, which would start the focused tile).
 
 ```sh
 py -3 tools/moonlight/av_sync.py --host <console-ip> --duration 60 --ticks 30     # capture (run_smoke.sh) + analysis

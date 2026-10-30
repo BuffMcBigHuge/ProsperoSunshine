@@ -467,8 +467,7 @@ int main(int argc, char **argv) {
       }
       // scripted input
       if (no_script && !sent_arrival && el >= 2.0) {
-        // --no-script: only attach the virtual pad, press nothing (plus A so the "Who's using this controller?"
-        // prompt is answered if it is up), then wait for the UI ticks.
+        // --no-script: only attach the virtual pad, press nothing, then wait for the UI ticks.
         int r = LiSendControllerArrivalEvent(0, 0x1, LI_CTYPE_PS, 0x3FFFF | 0, LI_CCAP_ANALOG_TRIGGERS | LI_CCAP_RUMBLE);
         tlog("input: controller arrival (pad 0, PS) -> %d\n", r);
         sent_arrival = 1;

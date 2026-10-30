@@ -1,7 +1,7 @@
 # Third-party notices for the release archive (ROADMAP P7.2)
 
-This file describes what the release step (P7.4) must bundle with `prospero_sunshine.elf`. It is the specification
-for a `THIRD_PARTY` notice in the archive; no build script produces it yet. Licence analysis: `docs/licenses.md`.
+This file describes what the release step (P7.4) must bundle with `prospero_sunshine.elf`; `scripts/package.sh` builds
+that archive and fails if a licence text is missing. Licence analysis: `docs/licenses.md`.
 
 ## Archive layout
 
@@ -10,41 +10,21 @@ prospero_sunshine.elf
 SHA256SUMS
 CHANGELOG.md
 LICENSE                      GPL-3.0 text of ProsperoSunshine (repository file LICENSE)
-THIRD_PARTY.md               the notice below
+THIRD_PARTY.md               the notice, repository file licenses/THIRD_PARTY.md
 licenses/
-  prosperosunshine.txt       copy of LICENSE (the CI workflow already does this)
+  prosperosunshine.txt       copy of LICENSE
   sunshine.txt  moonlight-common-c.txt  enet.txt  nanors.txt  simple-web-server.txt
   nlohmann-json.txt  libdisplaydevice.txt  boost.txt  openssl.txt  opus.txt  ffmpeg.txt
-                             all produced by scripts/deps.sh into out/deps/licenses/ (already collected by CI)
+                             all produced by scripts/deps.sh into out/deps/licenses/
   ps5-payload-sdk-runtime/   from this repository, see below
 ```
 
 Also state in the release notes the tag that contains the corresponding source (`deps.lock`, `patches/`, scripts).
 
-## Notice text (put in `THIRD_PARTY.md` of the archive)
-
-ProsperoSunshine is free software under GPL-3.0-only. It contains or statically links the following components; their
-licence texts are in `licenses/`. Versions and SHA256 of the exact sources: `deps.lock` in the source tag.
-
-| Component | Licence | File in `licenses/` |
-| --- | --- | --- |
-| Sunshine (LizardByte), patched | GPL-3.0 | `sunshine.txt` |
-| moonlight-common-c | GPL-3.0 | `moonlight-common-c.txt` |
-| ENet (Moonlight fork) | MIT | `enet.txt` |
-| nanors | MIT | `nanors.txt` |
-| Simple-Web-Server | MIT | `simple-web-server.txt` |
-| nlohmann/json | MIT | `nlohmann-json.txt` |
-| libdisplaydevice (common) | MIT | `libdisplaydevice.txt` |
-| Boost | BSL-1.0 | `boost.txt` |
-| OpenSSL | Apache-2.0 | `openssl.txt` |
-| Opus | BSD-3-Clause | `opus.txt` |
-| FFmpeg libavcodec/libavutil/libswscale | LGPL-2.1-or-later | `ffmpeg.txt` |
-| PS5 Payload SDK runtime (libc, libc++, libc++abi, libunwind, start files) | BSD (FreeBSD libc), Apache-2.0 with LLVM exception | `ps5-payload-sdk-runtime/` |
-
 ## SDK runtime
 
 The SDK zip (v0.45) ships no licence file, so the texts are kept in this repository under
-`licenses/ps5-payload-sdk-runtime/`; CI and `app/build.sh` copy that directory into their output.
+`licenses/ps5-payload-sdk-runtime/`; `scripts/package.sh` and `app/build.sh` copy that directory into their output.
 
 | File | Source | Covers |
 | --- | --- | --- |

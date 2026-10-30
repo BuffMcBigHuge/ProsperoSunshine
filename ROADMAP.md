@@ -6,7 +6,7 @@ Stand: 28. Oktober 2026. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN
 
 Erledigt und live belegt (Details in `STATUS.md`): Phase 0 komplett, Spikes R1–R5 positiv (R6 ohne mDNS), Phase 1 bis auf Spiele als Bildquelle, P2.1–P2.4, P3.1–P3.4, P4.1–P4.2, P5.1, aus P6 die 30-Minuten-Sitzung und zehn Wiederverbindungen, P6.4 (automatischer Testclient in `tools/moonlight/`), P4.3 geprüft (Pad wird nach Abbruch neutral, ≈ 5,6 s Nachlauf), P6.2 Paketverlust (10 % ohne Abbruch), P7.1 (CI-Workflow, noch nicht auf GitHub gelaufen). Ende-zu-Ende-Stream mit einem moonlight-common-c-Client funktioniert.
 
-P7.2 (Lizenzübersicht `docs/licenses.md`) und P7.3 (englische README mit Voraussetzungen, Ablauf und Grenzen) sind erledigt.
+P7.2 (Lizenzübersicht `docs/licenses.md`) und P7.3 (englische README mit Voraussetzungen, Ablauf und Grenzen) sind erledigt. Das Archiv für P7.4 baut `scripts/package.sh` (mit Prüfsummen, `CHANGELOG.md` und `THIRD_PARTY.md`); Tag und Upload stehen aus.
 
 Inzwischen außerdem: echte Moonlight-Clients (Web und PC) gepairt und gestreamt, Spiele als Bildquelle (P1.4), automatischer Wiederanlauf bei Ressourcenentzug durch Spielstart/-ende, Begrenzung auf eine Sitzung, App-Cover.
 

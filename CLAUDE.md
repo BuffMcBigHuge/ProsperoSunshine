@@ -24,6 +24,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1   # host +
 docker run --rm --mount type=bind,source="$PWD",target=/repo prosperosunshine-sdk:v0.45 bash scripts/test.sh
 ```
 
+Release archive from an existing build: `bash scripts/package.sh [version]` (on the host) -> `dist/`.
+
 Toolchain: PS5 Payload SDK v0.45 in the Docker image `prosperosunshine-sdk:v0.45` (clang 18, target
 `x86_64-sie-ps5`). Dependencies build once into `out/deps` via `scripts/deps.sh`.
 

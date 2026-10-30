@@ -131,7 +131,6 @@ def main():
     ap.add_argument("--interval-ms", type=int, default=1500)
     ap.add_argument("--kind", choices=["dpad", "ps"], default="dpad", help="event: D-pad R/L, or PS button toggling the control centre")
     ap.add_argument("--tick-start", type=float, default=None, help="seconds into the stream of the first press (stream_test default 9)")
-    ap.add_argument("--no-script", action="store_true", help="skip the scripted startup input (stream_test --no-script)")
     ap.add_argument("--roi", default="0,0,1,1", help="x0,y0,x1,y1 as fractions of the frame for the picture detector")
     ap.add_argument("--video-k", type=float, default=8.0, help="video threshold = median + k*MAD of the per-frame difference")
     ap.add_argument("--video-floor", type=float, default=0.15, help="minimum threshold above the median (8-bit luma units)")
@@ -149,11 +148,10 @@ def main():
     timing = REPO / a.timing
     csv_path = REPO / (a.csv or f"out/av_sync_events{a.tag}.csv")
     if not a.analyze_only:
-        sa = f"--ui-ticks {a.ticks} --tick-interval-ms {a.interval_ms} --tick-kind {a.kind} --timing-log {a.timing}"
+        # --no-script: the scripted startup input presses A, which would start the focused home-screen tile.
+        sa = f"--ui-ticks {a.ticks} --tick-interval-ms {a.interval_ms} --tick-kind {a.kind} --timing-log {a.timing} --no-script"
         if a.tick_start is not None:
             sa += f" --tick-start {a.tick_start}"
-        if a.no_script:
-            sa += " --no-script"
         env = dict(os.environ, STREAM_ARGS=sa)
         r = subprocess.run([bash_exe(), "tools/moonlight/run_smoke.sh", a.host, str(a.duration)], cwd=REPO, env=env)
         if r.returncode != 0:
