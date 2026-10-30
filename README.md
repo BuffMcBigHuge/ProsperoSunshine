@@ -1,5 +1,7 @@
 # ProsperoSunshine
 
+![ProsperoSunshine](docs/images/banner.jpg)
+
 A native, Sunshine-compatible game-stream host for the PlayStation 5. Add your console to Moonlight and stream
 the PS5 screen, game audio and controller input over your LAN.
 
@@ -33,6 +35,10 @@ reverse-engineering notes: `docs/` (German).
 **Option A: the PS5 app "ProsperoSunshine" (`PPSA47989`).** The app carries the host and offers start/stop,
 autoload through the Payload Manager, settings and PIN entry. Install it from ProsperoStore, or copy the folder from
 `PPSA47989.zip` (GitHub release) to `/data/homebrew/`. Details: `app/README.md`.
+
+| Home | Settings |
+| --- | --- |
+| ![Host status, start and stop, pairing](docs/images/app-home.jpg) | ![Host settings](docs/images/app-settings.jpg) |
 
 **Option B: send the ELF manually.** Send `prospero_sunshine.elf` (from a release, or `out/` after building) to your
 ELF loader. The host keeps its state (identity, paired clients, `sunshine.conf`) in `/data/prosperosunshine/`.
