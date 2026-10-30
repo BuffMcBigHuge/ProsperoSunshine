@@ -9,7 +9,7 @@ verified state with evidence: `STATUS.md` (both German).
 - `src/platform/ps5/` – Avcap2 capture (`capture.c`), `SharedCapture`, backend glue.
 - `src/capture/`, `src/video/` – portable logic with unit tests in `tests/`.
 - `patches/<dep>/` – patches applied on top of pinned sources; `deps.lock` pins every source by SHA256.
-- `app/` (on the app branch) – the PS5 settings app `PPSA47989` (ps5-homebrew-ui, ShadowMountPlus title folder).
+- `app/` – the PS5 settings app `PPSA47989` (ps5-homebrew-ui, ShadowMountPlus title folder).
 - `tools/moonlight/` – automated Moonlight test client (pairing, smoke, reconnect, loss, A/V sync).
 - `docs/` – reverse-engineering notes (German), ADRs.
 - `assets/app/` – sources for the app icon (`icon0.png` 512²) and home-screen background (`pic0.png` 1920×1080).
@@ -41,7 +41,8 @@ Toolchain: PS5 Payload SDK v0.45 in the Docker image `prosperosunshine-sdk:v0.45
 ## Working on the console
 
 - The host is an ELF payload (ELF loader on port 9021); state lives in `/data/prosperosunshine/`.
-  Control socket on TCP 47995: `STATUS`, `PAIRINGS`, `PIN [<id>] <pin> [name]`, `QUIT` (one client at a time).
+  Control socket on TCP 47995, 127.0.0.1 only (the empty file `control_lan` there opens it to the LAN):
+  `STATUS`, `PAIRINGS`, `PIN [<id>] <pin> [name]`, `QUIT` (one client at a time).
 - Autoload through the Payload Manager: `/data/pldmgr/autoload.txt`, slot `local/prospero-sunshine`.
 - The app is installed at `/data/homebrew/PPSA47989`. A ShadowMountPlus scan does **not** pick up changes to
   `sce_sys` (param.json, icon, background) of an already registered title. Re-register it:

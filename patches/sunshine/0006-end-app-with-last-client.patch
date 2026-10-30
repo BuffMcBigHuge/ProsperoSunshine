@@ -1,0 +1,19 @@
+ProsperoSunshine: end the session app with the last client on the PS5
+
+Upstream keeps the app and its gamepads for a later resume. On the PS5 the virtual pads would keep
+taking over the console user's input with no client connected.
+
+--- a/src/stream.cpp
++++ b/src/stream.cpp
+@@ -2251,6 +2251,11 @@
+ 
+       // If this is the last session, invoke the platform callbacks
+       if (--running_sessions == 0) {
++#ifdef __SCE__
++        // "PS5 Screen" has nothing to pause: the console keeps running without a client. Ending it here
++        // also removes the virtual pads, which would otherwise take over the console user's input.
++        proc::proc.terminate();
++#endif
+         bool revert_display_config {config::video.dd.config_revert_on_disconnect};
+         if (proc::proc.running()) {
+ #if defined SUNSHINE_TRAY && SUNSHINE_TRAY >= 1
