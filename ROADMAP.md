@@ -173,7 +173,7 @@ Eine Homebrew-App auf der Konsole (Vorbild: PS5SD) macht den Host ohne PC bedien
 
 **Abnahme Phase 8:** Ein Nutzer ohne PC kann den Host einrichten, Moonlight pairen und Autoload festlegen.
 
-Stand: P8.1, P8.3, P8.4 und P8.5 live geprüft (Branch `claude/ps5-settings-app-b5c39b`, Commit `8dc11eb`); P8.2 ebenfalls live geprüft. P8.6 läuft in der App-Session. P8.7 live geprüft (2026-10-29): Die App steht im Media-Tab (`applicationCategoryType` 65536, `contentBadgeType` 1, `launchActivity`) und startet von dort; der `amm`-Block musste dafür aus `param.json` raus, mit ihm scheitert der Start mit 0x80020016. Für P8.8 wurde am 2026-10-29 geprüft: `PPSA47989` kommt im Store-Katalog (156 Apps, Stand 2026-10-28) nicht vor.
+Stand: P8.1, P8.3, P8.4 und P8.5 live geprüft; P8.2 ebenfalls live geprüft. P8.6 läuft in der App-Session. P8.7 live geprüft (2026-10-29): Die App steht im Media-Tab (`applicationCategoryType` 65536, `contentBadgeType` 1, `launchActivity`) und startet von dort; der `amm`-Block musste dafür aus `param.json` raus, mit ihm scheitert der Start mit 0x80020016. Für P8.8 wurde am 2026-10-29 geprüft: `PPSA47989` kommt im Store-Katalog (156 Apps, Stand 2026-10-28) nicht vor.
 
 ## Phase 9: Feinschliff vor dem Release (nach dem ersten Handy-Test)
 

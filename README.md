@@ -31,7 +31,8 @@ reverse-engineering notes: `docs/` (German).
 ## Install
 
 **Option A: the PS5 app "ProsperoSunshine" (`PPSA47989`).** The app carries the host and offers start/stop,
-autoload through the Payload Manager, settings and PIN entry. See `app/README.md` on the app branch.
+autoload through the Payload Manager, settings and PIN entry. Install it from ProsperoStore, or copy the folder from
+`PPSA47989.zip` (GitHub release) to `/data/homebrew/`. Details: `app/README.md`.
 
 **Option B: send the ELF manually.** Send `prospero_sunshine.elf` (from a release, or `out/` after building) to your
 ELF loader. The host keeps its state (identity, paired clients, `sunshine.conf`) in `/data/prosperosunshine/`.
