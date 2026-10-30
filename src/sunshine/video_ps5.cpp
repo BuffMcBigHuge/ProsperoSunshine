@@ -2,6 +2,7 @@
 // Replaces Sunshine's video.cpp. Avcap2 already delivers H.264, so there is no encoder, display or
 // colour conversion: frames from CaptureSession go straight into the stream's packet queue.
 #include "capture/capture_session.hpp"
+#include "platform/ps5/capture.h"
 #include "src/globals.h"
 #include "src/input.h"
 #include "src/logging.h"
@@ -65,8 +66,10 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     auto touch_port_event = mail->event<input::touch_port_t>(mail::touch_port);
     auto hdr_event = mail->event<hdr_info_t>(mail::hdr);
 
+    // Avcap2 encodes 1080p at 30 or 60 fps; other resolutions do not start (mode_spike, STATUS.md).
+    const bool low_rate = config.framerate > 0 && config.framerate <= 30;
     BOOST_LOG(info) << "PS5 capture requested "sv << config.width << 'x' << config.height << '@' << config.framerate
-                    << ", delivering "sv << width << 'x' << height << "@60"sv;
+                    << ", delivering "sv << width << 'x' << height << '@' << (low_rate ? 30 : 60);
     input::touch_port_t port{};
     port.width = port.logical_width = width;
     port.height = port.logical_height = height;
@@ -84,6 +87,7 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     }
     const auto release = util::fail_guard([] { streaming = false; });
 
+    ps_capture_set_video_mode(4, low_rate ? 0 : 1);
     prospero::CaptureSession session(prospero::make_ps5_capture_backend());
     if (const int rc = session.start()) {
         BOOST_LOG(error) << "PS5 capture failed to start: "sv << rc;

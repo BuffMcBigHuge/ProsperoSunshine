@@ -68,6 +68,19 @@ static uint32_t module(load_fn load, const char *name)
 static void u32(uint8_t *p, size_t at, uint32_t value) { memcpy(p + at, &value, 4); }
 static void u64(uint8_t *p, size_t at, uint64_t value) { memcpy(p + at, &value, 8); }
 
+static _Atomic uint32_t video_resolution = 4, video_timing = 1;
+static _Atomic int last_open_rc = 0;
+
+int ps_capture_last_open_rc(void) { return atomic_load(&last_open_rc); }
+
+int ps_capture_set_video_mode(uint32_t resolution, uint32_t timing)
+{
+    if (resolution < 1 || resolution > 6 || timing > 1) return PS_CAPTURE_ERROR;
+    atomic_store(&video_resolution, resolution);
+    atomic_store(&video_timing, timing);
+    return 0;
+}
+
 static void configure(uint8_t *p, uint32_t mode)
 {
     static const struct { size_t at; uint64_t size; } headers[] = {
@@ -80,8 +93,8 @@ static void configure(uint8_t *p, uint32_t mode)
     for (size_t i = 0; i < sizeof headers / sizeof headers[0]; i++) u64(p, headers[i].at, headers[i].size);
     u32(p, 0x10, 0);
     u32(p, 0x14, 2);
-    u32(p, 0x18, 4);
-    u32(p, 0x1c, 1);
+    u32(p, 0x18, atomic_load(&video_resolution));
+    u32(p, 0x1c, atomic_load(&video_timing));
     u32(p, 0x24, 0);
     u32(p, 0x28, RESOURCE);
     u32(p, 0x94, 30);
@@ -194,6 +207,7 @@ int ps_capture_open(ps_capture **out)
     uint8_t config[0x2e0];
     configure(config, (uint32_t)output);
     rc = open_video(&s->handle, config, 0);
+    atomic_store(&last_open_rc, rc);
     LOG("OpenVideo rc=%#x\n", rc);
     if (rc) goto fail;
     s->opened = 1;
@@ -207,6 +221,15 @@ int ps_capture_open(ps_capture **out)
 fail:
     ps_capture_close(s);
     return error;
+}
+
+int ps_capture_change_scan_in(ps_capture *s, uint32_t resolution)
+{
+    if (!s || !s->started) return PS_CAPTURE_ERROR;
+    uint32_t h = 0;
+    if (kernel_dynlib_handle(-1, "libSceAvcap2.sprx", &h) || !h) return PS_CAPTURE_ERROR;
+    int (*change)(intptr_t, uint32_t) = (void *)kernel_dynlib_dlsym(-1, h, "sceAvcap2ChangeScanInResolution");
+    return change ? change(s->handle, resolution) : PS_CAPTURE_ERROR;
 }
 
 int ps_capture_headers(ps_capture *s, void *destination, size_t capacity)

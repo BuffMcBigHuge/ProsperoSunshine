@@ -16,7 +16,13 @@ enum ps_capture_error {
     PS_CAPTURE_REVOKED = -5
 };
 
-// One session per process. Fixed, measured FW 13.00 / AVC / 1080p / SDR configuration.
+// Mode for the next ps_capture_open. resolution: 1 = 640x360, 2 = 960x540, 3 = 1280x720,
+// 4 = 1920x1080 (default), 5 = 2560x1440, 6 = 3840x2160; timing: 0 = 30 fps, 1 = 60 fps (default).
+int ps_capture_set_video_mode(uint32_t resolution, uint32_t timing);
+// Research: raw result of the last sceAvcap2OpenVideo, and sceAvcap2ChangeScanInResolution at runtime.
+int ps_capture_last_open_rc(void);
+int ps_capture_change_scan_in(ps_capture *session, uint32_t resolution);
+// One session per process. Measured FW 13.00 / AVC / SDR configuration.
 // On failure *out is NULL and any acquired resources have had cleanup attempted.
 int ps_capture_open(ps_capture **out);
 // Annex-B parameter sets; returns bytes written or a negative error.

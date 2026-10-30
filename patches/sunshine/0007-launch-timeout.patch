@@ -1,0 +1,41 @@
+ProsperoSunshine: separate launch timeout from ping_timeout on the PS5
+
+main_ps5.cpp lowers ping_timeout to 2 s to notice a lost client quickly. Upstream also uses it for
+the time a client may take from /launch to the RTSP handshake, so slow clients were refused. An
+expired launch also ends the session app, as nothing else would.
+
+--- a/src/rtsp.cpp
++++ b/src/rtsp.cpp
+@@ -28,6 +28,7 @@
+ #include "logging.h"
+ #include "network.h"
+ #include "rtsp.h"
++#include "process.h"
+ #include "stream.h"
+ #include "sync.h"
+ #include "video.h"
+@@ -552,12 +553,24 @@
+       launch_event.raise(std::move(launch_session));
+ 
+       // Arm the timer to expire this launch session if the client times out
++#ifdef __SCE__
++      // ping_timeout is short here to notice a lost client quickly; a client that is still setting up
++      // gets the upstream default.
++      raised_timer.expires_after(10s);
++#else
+       raised_timer.expires_after(config::stream.ping_timeout);
++#endif
+       raised_timer.async_wait([this](const boost::system::error_code &ec) {
+         if (!ec) {
+           auto discarded = launch_event.pop(0s);
+           if (discarded) {
+             BOOST_LOG(debug) << "Event timeout: "sv << discarded->unique_id;
++#ifdef __SCE__
++            // No client came: nothing else would end the session app on the PS5.
++            if (session_count() == 0) {
++              proc::proc.terminate();
++            }
++#endif
+           }
+         }
+       });

@@ -59,11 +59,13 @@ Live auf der Konsole geprüft mit dem aktuellen Host (Testclient vom PC):
 - **mDNS im echten Host:** `tools/mdns_query.py` sieht `PS5._nvstream._tcp.local` mit PTR, SRV (Port 47989), TXT und A. Ob Moonlight die PS5 von selbst listet, ist noch nicht gesehen.
 - **NID-Auflösung im Host:** Bildaufnahme öffnet sich auf 13.00, Stream 15 s: 895 Frames, 0 Lücken, 0 Audiofehler, fehlerfrei decodierbar.
 - **Client-Abbruch (behebt P9.8):** Client hart beendet ohne `/cancel`: Ping-Timeout, 0,2 s später `Session app stopped` und `virtual pad 0 detached (0)`. Danach `currentgame = 0`, ein neuer Client startet direkt, und die App bekommt sofort wieder Eingaben (RemoteEye). Vorher blieb das Pad angemeldet und nahm der App die Eingaben (Sunshine-Patch 0006).
+- **Bildrate:** 720p30 angefordert: 298 Frames in 10 s, geliefert als 1080p; 1080p30: 297 Frames; 1080p60: 598 Frames. Jeweils 0 Lücken, 0 Audiofehler, fehlerfrei decodierbar.
+- **Verbindungsaufbau:** Der auf 2 s gesenkte `ping_timeout` galt in Sunshine auch für die Zeit von `/launch` bis RTSP; Clients, die länger brauchten, scheiterten mit „RTSP OPTIONS -1“ (reproduziert mit dem Docker-Testclient, ≈ 3 s). Jetzt 10 s für den Aufbau, 2 s bleiben für die Abbruch-Erkennung (Patch 0007). Kommt kein Client, endet auch „PS5 Screen“.
 - **App mit aktuellem Host:** App neu gebaut und installiert (`01.000.001`), sie kopiert ihren Host beim Start; „Restart host“ startet ihn neu („The host restarted with the saved settings“).
 
 Noch offen:
 
-1. **Auflösung/Bildrate (P9.3):** Der Host liefert immer 1080p60, auch wenn das Handy 720p30 will. Spike mit Avcap2 offen.
+1. **Auflösung (P9.3):** Avcap2 liefert in der jetzigen Konfiguration nur 1080p (`src/mode_spike.cpp`): 30 und 60 fps gehen (90 bzw. 180 Frames in 3 s, fehlerfrei decodierbar), mit 360p, 540p, 720p, 1440p und 4K scheitert das Öffnen, und `sceAvcap2ChangeScanInResolution` lehnt ab (`0x81950001`, `0x8195000A`). Der Host beachtet daher nur die Bildrate (bis 30 fps gewünscht: 30 fps); Moonlight skaliert 1080p selbst herunter.
 2. **av_sync-Auffälligkeit (P9.4):** Die Drift ist sauber gemessen (−0,01 ms/min über 10 Minuten), aber der Klickton wurde nicht erkannt (0/380) und die Bildreaktion lag bei 265 ms statt früher 23–25 ms. Ursache ungeklärt.
 3. **Payload-Manager-Fenster:** Ein offenes Fenster des Payload Managers liegt über Apps und nimmt Eingaben an sich, auch wenn es nicht reagiert. In dem Zustand lässt es sich nur am echten Controller schließen. Beim Fernsteuern vorher prüfen.
 4. **Eigene Werkzeuge vom PC:** `PIN`/`QUIT` und `pair.py status` über den Steuer-Socket gehen vom PC aus nur noch mit der leeren Datei `/data/prosperosunshine/control_lan` (danach Host neu starten). Sonst geht der Host-Neustart über die App.
