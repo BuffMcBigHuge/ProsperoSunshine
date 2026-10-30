@@ -65,6 +65,11 @@ and sound minus picture; median/min/max/sd and the trend over the run; and, with
 streams' arrival times against their own timeline (video `presentationTimeUs`, audio 5 ms per packet), which is the
 clock drift of the host streams against the client clock. Events with no detectable change are listed and excluded.
 
+The picture detector skips keyframes (once a second) and the frame after them, since a keyframe changes the whole
+picture a little. Disconnect other virtual pads first (`ps5_detach` for RemoteEye): the console's own UI takes input
+from every pad, but the app was seen to read only the one connected first. To measure inside the app, limit `--roi` to
+the region that changes.
+
 Caveats: times are client arrival times, not presentation times. Video is quantised to the 16.7 ms frame interval; the
 host sends audio in FEC blocks of 4 x 5 ms packets, so audio arrives in bursts every ~20 ms (the script also prints a
 burst-aligned estimate that subtracts 5 ms per packet still to come in the burst). The press time is when

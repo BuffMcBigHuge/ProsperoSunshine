@@ -128,7 +128,7 @@ def main():
     ap.add_argument("--host", default=os.environ.get("PS5_HOST"), required="PS5_HOST" not in os.environ)
     ap.add_argument("--duration", type=int, default=60)
     ap.add_argument("--ticks", type=int, default=30)
-    ap.add_argument("--interval-ms", type=int, default=1500)
+    ap.add_argument("--interval-ms", type=int, default=1537, help="uneven on purpose: a multiple of the frame time always hits the same phase of periodic screen changes")
     ap.add_argument("--kind", choices=["dpad", "ps"], default="dpad", help="event: D-pad R/L, or PS button toggling the control centre")
     ap.add_argument("--tick-start", type=float, default=None, help="seconds into the stream of the first press (stream_test default 9)")
     ap.add_argument("--roi", default="0,0,1,1", help="x0,y0,x1,y1 as fractions of the frame for the picture detector")
@@ -229,6 +229,9 @@ def main():
                 continue
             if vt[i] > p + a.window_ms * 1000:
                 return None
+            # The encoder's keyframe once a second changes the whole picture a little; that is no reaction to the press.
+            if video[i]["idr"] or (i > 0 and video[i - 1]["idr"]):
+                continue
             if vm[i] > vthr:
                 return i
         return None

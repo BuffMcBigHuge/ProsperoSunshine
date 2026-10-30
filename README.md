@@ -65,6 +65,9 @@ inside the stream; answer it with your Moonlight controller.
   for less gets 1080p and scales it. The frame rate follows the client: 30 or 60 fps.
 - The bitrate is capped at 15 Mbit/s (the console encoder stops above that).
 - One streaming session at a time. More than one controller is untested.
+- If another controller is connected to the same user, an app may read only that one and ignore Moonlight, while the
+  console's home screen still reacts. Seen with a second virtual pad; a real DualSense is not tested yet. If the stream
+  controller does nothing, turn the other controller off.
 - No HDR, HEVC, 4K, mouse, keyboard, touch, rumble or microphone.
 - No Wake-on-LAN (the console MAC address is not available to the host).
 - Starting or quitting a game briefly takes the capture resource away: video and audio pause for about 2 seconds
@@ -79,6 +82,8 @@ inside the stream; answer it with your Moonlight controller.
   client and the console (client or router firewall).
 - **iPhone:** works. An earlier bug (sound but no picture, because the host announced HEVC) is fixed.
 - **Black or paused picture for a moment:** expected when a game starts or exits (see limits).
+- **Controller works on the home screen but not in an app:** turn off other controllers connected to the console (see
+  limits).
 - **Wrong firmware:** only 13.00 is supported. On other versions capture is refused unless the system-library
   lookups succeed, and even then it is unverified; the kernel log says which case applies.
 - **Diagnosis:** set `min_log_level = debug` in `/data/prosperosunshine/sunshine.conf`; messages go to the kernel log.
