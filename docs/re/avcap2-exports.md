@@ -269,7 +269,9 @@ und Server `0x39E0`: Feld `+8` → Rate-Control `+8` (= `cfg+0xC8`), Feld `+0xC`
   `cfg+0x130` (nur wenn `cfg[0x128] == 1`). Die eigentliche Rate hängt am Open-Parameter `cfg+0x1C` (0 = 30, 1 = 60 fps).
   → Ein Framerate-Wechsel erfordert wahrscheinlich Close/Reopen (**Vermutung**).
 
-### `cfg+0x94` (Vermutung)
+### `cfg+0x94` (belegt: IDR-Abstand in Bildern, Messung in `docs/re/hevc.md`)
+
+Der folgende Text ist der Stand vor der Messung.
 
 `SceRemotePlay` setzt `cfg+0x94 = N · fps` (`N = this[0x2003D8]`, Setter `0x718A0`, gespeist über `0x6DB80/0x6DC00`) und
 `cfg+0x98 = !cfg[0xE8]`. Das passt zu „IDR-/GOP-Intervall in Frames (N Sekunden)“, ist aber **nicht belegt**: Im Server wird

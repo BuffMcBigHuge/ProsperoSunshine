@@ -36,7 +36,9 @@ docker run --rm --mount type=bind,source="$PWD",target=/repo prosperosunshine-ap
 
 Stream test against the console, from Git Bash: build the client once with `bash tools/moonlight/build.sh`, then
 `STREAM_ARGS="--no-script" [VIDEO_FORMAT=hevc] bash tools/moonlight/run_smoke.sh <console> <seconds>`. `--no-script`
-presses nothing; without it the client presses buttons on the console.
+presses nothing; without it the client presses buttons on the console. For anything about loss or high bitrates, build
+`tools/moonlight/build_windows.sh` once and add `NATIVE=1`: Docker's network drops large bursts. The home screen is too
+quiet to load the encoder; the Mario 64 demo moves without input.
 
 Release archive from an existing build: `bash scripts/package.sh [version]` (on the host) -> `dist/`.
 

@@ -108,6 +108,9 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     }
     BOOST_LOG(info) << "PS5 capture "sv << (hevc ? "HEVC"sv : "H.264"sv) << " bitrate "sv << average / 1000 << " kbit/s (requested "sv
                     << requested / 1000 << ')';
+    // The audio thread may have opened the channel earlier, and the next periodic IDR can be ten seconds away.
+    if (session.request_keyframe())
+        BOOST_LOG(warning) << "PS5 capture: first keyframe request failed"sv;
     prospero::EncodedFrame frame;
     prospero::CaptureSession::Descriptor desc{};
     // Moonlight asks for an IDR after loss; Avcap2 delivers one within 2-3 frames (R1).
@@ -115,7 +118,7 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
         if (idr_events->peek()) {
             idr_events->pop();
             if (session.request_keyframe())
-                BOOST_LOG(warning) << "PS5 capture: keyframe request failed, next periodic IDR within one second"sv;
+                BOOST_LOG(warning) << "PS5 capture: keyframe request failed, next periodic IDR within ten seconds"sv;
         }
         const auto status = session.read(frame, 100ms, {}, &desc);
         if (status == prospero::CaptureStatus::timeout) continue;

@@ -136,9 +136,11 @@ static void configure(uint8_t *p, uint32_t mode)
     u32(p, 0x1c, atomic_load(&video_timing));
     u32(p, 0x24, atomic_load(&video_codec));
     u32(p, 0x28, RESOURCE);
-    u32(p, 0x94, 30);
-    // Rate fields as SceRemotePlay 0x70130 computes them: average, peak, bits per frame.
     const uint64_t peak = atomic_load(&opening_peak), fps = atomic_load(&video_timing) ? 60 : 30;
+    // Frames between periodic IDRs. Clients ask for one after a loss, so these are only a safety net, and each one
+    // costs bits and, with HEVC, skipped frames (docs/re/hevc.md).
+    u32(p, 0x94, (uint32_t)(fps * 10));
+    // Rate fields as SceRemotePlay 0x70130 computes them: average, peak, bits per frame.
     u32(p, 0xc8, atomic_load(&opening_average));
     u32(p, 0xcc, (uint32_t)peak);
     u32(p, 0xd0, (uint32_t)(peak * 1001 / (fps * 1000)));

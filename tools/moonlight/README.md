@@ -6,7 +6,9 @@ Automated, Moonlight-compatible client for checking a ProsperoSunshine host on a
 - `pair.py` - GameStream pairing and HTTPS client (Python 3, `cryptography`). Follows moonlight-qt's `nvpairingmanager.cpp`.
 - `stream_test.c` - streaming smoke test on top of moonlight-common-c (RTSP, video, audio, control, input).
 - `build.sh` - builds moonlight-common-c (pinned source in `.cache/deps/src`) and `stream_test` in the SDK container.
+- `build_windows.sh` - cross-compiles `stream_test.exe` in the same container, statically, from the same pinned sources.
 - `run_smoke.sh` - one command: `/launch`, run `stream_test`, verify with ffmpeg, `/cancel`.
+- `start_series.sh` - many short streams in a row, to catch rare failed starts.
 
 The host must be running (ELF loaded) and the dev control socket (TCP 47995) reachable. Pass the console address as the first argument or set `PS5_HOST`.
 The client identity (key, certificate, unique id, pinned server certificate) is kept in `out/moonlight-client/`.
@@ -52,9 +54,14 @@ py -3 tools/moonlight/av_sync.py --kind ps ...                                  
 
 HEVC: `STREAM_ARGS="--hevc" VIDEO_FORMAT=hevc tools/moonlight/run_smoke.sh`. The output file keeps its `.h264` name.
 
+Without Docker: run `bash tools/moonlight/build_windows.sh` once, then `NATIVE=1 bash tools/moonlight/run_smoke.sh ...`.
+The ffmpeg check still runs in the container, `DOCKER_ARGS` and `PRE_CMD` do not apply. Scripts that shape packets inside
+the container, such as `loss_test.sh`, keep using the Linux client.
+
 **Limit of this client in Docker:** Docker Desktop's network drops large bursts. Frames above about 70–85 packets arrive
 incomplete, so the stream stalls at bitrates above roughly 30 Mbit/s with motion, although the console sends them
 correctly. `udp_burst.py` measures it against `udp_burst_spike.elf`; run it natively and in the container to compare.
+Use the Windows client for anything about loss or high bitrates.
 
 `stream_test` gained `--ui-ticks N [--tick-interval-ms 1500] [--tick-hold-ms 120] [--tick-kind dpad|ps|back] [--tick-seq left,cross,...] [--tick-start S] [--no-script]` and
 `--timing-log <csv>`. Without them nothing changes. The log has one line per received video frame

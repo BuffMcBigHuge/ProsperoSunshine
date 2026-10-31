@@ -41,6 +41,21 @@ Das Ressourcen-Profil ist nicht die Ursache: 175, 177, 180, 182 und 185 scheiter
 * **Last nur begrenzt gemessen:** Getestet mit dem Home-Bildschirm und der Demo von Mario 64. Mario erzeugte bei 100 Mbit/s
   nur rund 33 Mbit/s. Ob der Encoder 100 Mbit/s in einem aufwendigen Spiel hält, ist offen; der Host klemmt daher auf 50 Mbit/s.
 
+## Schlüsselbild-Abstand und ausgelassene Bilder
+
+`cfg+0x94` ist der Abstand periodischer IDR in Bildern. Gemessen mit einem Spike, der das Feld überschrieb (je Kanal 8 oder 45 s
+Home-Bildschirm, in der Mitte ein `RequestKeyFrame`): 120 ergibt 120, 600 ergibt 600. 30 ergibt 60, also den bisherigen Takt von
+einer Sekunde. Bei 0 und 3600 kam im Messfenster kein periodisches IDR. `RequestKeyFrame` wird bei jedem Wert nach 1–3 Bildern bedient.
+
+Der HEVC-Encoder lässt nach einem IDR Bilder aus, um dessen Bytes auszugleichen; die Bildnummern laufen dabei lückenlos weiter.
+Mit dem alten Abstand von einer Sekunde, gemessen über die Zeitstempel am Client: bei 15 und 20 Mbit/s ein Bild je IDR (Abstand
+33 ms, 59 statt 60 fps), bei 5 Mbit/s fünf Bilder (100 ms, 54 fps). H.264 lässt keine aus. Das Überschreiben von `cfg+0x10c`
+(Byte je Bild) mit dem Vierfachen beseitigte die Lücken im selben Spike, auch bei 5 Mbit/s, ebenso `cfg+0xd4 = 51` bei 15, nicht
+bei 5 Mbit/s; beide bleiben ungenutzt, weil die Wirkung auf Bilder in Bewegung nicht gemessen ist.
+
+Der Host setzt deshalb `cfg+0x94` auf zehn Sekunden (`fps * 10`), für beide Codecs, und fordert zu Beginn des Streams ein IDR an, weil
+der Tonkanal den Kanal schon früher geöffnet haben kann. Clients fordern nach Verlust ohnehin selbst eines an.
+
 ## H.264
 
 Das Öffnen mit der Bitrate in `cfg+0xc8/0xcc/0xd0` hilft auch H.264: 20, 30 und 50 Mbit/s liefen im Spike ohne Fehler, während

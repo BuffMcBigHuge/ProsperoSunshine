@@ -26,7 +26,7 @@ Stand: 28. Oktober 2026. Gemessen mit `src/capture_soak.cpp` (fünf 5-s-Zyklen u
 ## Gemessene Eigenschaften des Streams (Home-Menü)
 
 - 60 fps (59,9 bis 60,2 je Zyklus), Leseabstand 14,4 bis 19,3 ms.
-- IDR exakt alle 60 Frames, also einmal pro Sekunde.
+- IDR exakt alle 60 Frames, also einmal pro Sekunde (mit `cfg+0x94 = 30`; der Host setzt inzwischen zehn Sekunden, `docs/re/hevc.md`).
 - 1,2 bis 1,3 Mbit/s bei statischem Bild (konfiguriert sind 6 Mbit/s in `0xC8`).
 - Öffnen dauert 63 bis 80 ms; fünf Start/Stop-Zyklen ohne Fehler und mit vollständiger Freigabe.
 - Speicher des Payloads stabil bei 12,8 MB (max RSS).

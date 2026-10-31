@@ -8,6 +8,7 @@
 #   VIDEO_FORMAT=hevc checks the output as HEVC (with STREAM_ARGS="--hevc").
 #   DOCKER_ARGS="--cap-add NET_ADMIN" and PRE_CMD="<shell>" run the client container with extra
 #   rights and a setup command first, e.g. to inject packet loss (see loss_test.sh).
+#   NATIVE=1 runs the Windows client from build_windows.sh instead, without Docker's network in between.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 HOST=${1:-${PS5_HOST:?pass the console address or set PS5_HOST}}
@@ -22,7 +23,11 @@ mkdir -p "$OUTDIR" out/moonlight-client
 KEEP_TLS=""
 dock() { MSYS_NO_PATHCONV=1 docker run --rm ${DOCKER_ARGS:-} --mount "type=bind,source=$REPO_WIN,target=/repo" "$IMAGE" bash -c "$1"; }
 
-[ -f "$OUTDIR/stream_test" ] || { echo "build first: tools/moonlight/build.sh"; exit 2; }
+if [ "${NATIVE:-}" = 1 ]; then
+  [ -f "$OUTDIR/stream_test.exe" ] || { echo "build first: tools/moonlight/build_windows.sh"; exit 2; }
+else
+  [ -f "$OUTDIR/stream_test" ] || { echo "build first: tools/moonlight/build.sh"; exit 2; }
+fi
 
 "${PY[@]}" tools/moonlight/pair.py --host "$HOST" info >"$OUTDIR/serverinfo.txt" || { cat "$OUTDIR/serverinfo.txt"; exit 1; }
 LJ=$("${PY[@]}" tools/moonlight/pair.py --host "$HOST" launch "${LAUNCH_ARGS[@]}") || { echo "launch failed"; exit 1; }
@@ -32,7 +37,15 @@ RTSP=$(getj sessionUrl0); RIKEY=$(getj rikey); RIKEYID=$(getj rikeyid)
 APPVER=$(getj appversion); GFE=$(getj gfe); CODEC=$(getj codec_mode)
 
 rm -f "$OUTDIR/moonlight-test.h264"
-dock "cd /repo && ${PRE_CMD:-true} && timeout $((DUR+60)) out/moonlight/stream_test --addr $HOST --rtsp-url '$RTSP' --rikey $RIKEY --rikeyid $RIKEYID --appversion '$APPVER' --gfe '$GFE' --codec-mode $CODEC --out out/moonlight-test.h264 --audio-out out/moonlight-test.s16 --duration $DUR ${STREAM_ARGS:-}" 2>&1 | tee "$OUTDIR/stream_test.log"
+CLIENT_ARGS="--addr $HOST --rtsp-url '$RTSP' --rikey $RIKEY --rikeyid $RIKEYID --appversion '$APPVER' --gfe '$GFE' --codec-mode $CODEC --out out/moonlight-test.h264 --audio-out out/moonlight-test.s16 --duration $DUR ${STREAM_ARGS:-}"
+run_client() {
+  if [ "${NATIVE:-}" = 1 ]; then
+    eval "MSYS_NO_PATHCONV=1 timeout $((DUR+60)) out/moonlight/stream_test.exe $CLIENT_ARGS"
+  else
+    dock "cd /repo && ${PRE_CMD:-true} && timeout $((DUR+60)) out/moonlight/stream_test $CLIENT_ARGS"
+  fi
+}
+run_client 2>&1 | tee "$OUTDIR/stream_test.log"
 RC=${PIPESTATUS[0]}
 echo "stream_test exit code: $RC"
 "${PY[@]}" tools/moonlight/pair.py --host "$HOST" cancel
