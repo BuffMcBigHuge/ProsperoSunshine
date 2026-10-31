@@ -79,6 +79,8 @@ Live auf der Konsole geprüft mit dem aktuellen Host (Testclient vom PC):
 
 **Release 0.1.1:** App aus dem Release-Build installiert (`01.000.002`, in der App angezeigt), „Restart host“ ausgelöst, danach Stream 27 s: 1614 Frames, fehlerfrei decodierbar; 700 ms Select öffnet das Kontrollzentrum über der App, der zweite Druck schließt es. Das Archiv prüft `sha256sum -c` ohne Fehler, im ELF stehen keine lokalen Pfade oder Konsolenadresse (per `grep -a`).
 
+**Rumble (P9.10, 2026-10-31):** Der Host liest die Motorwerte des virtuellen Pads wie Remote Play und schickt Änderungen an den Client (`docs/re/pad-output.md`). Gemessen mit Homebrew UI Lab im Vordergrund und `stream_test --tick-seq left,...`, nur das Stream-Pad verbunden: 8 von 8 Abweisungen kamen als `rumble low=0 high=16191` (Stärke 0,25 auf dem kleinen Motor) und danach als Stopp an. Der Start lag 6–22 ms nach dem Absenden des Drucks, der Stopp 30–50 ms nach dem Start; alles am Client-Log abgelesen, 19 s Stream fehlerfrei decodierbar. Vor Patch 0008 kam von denselben Pulsen nur der Stopp an, also vibrierte nichts.
+
 Noch offen:
 
 1. **Auflösung (P9.3):** Avcap2 liefert in der jetzigen Konfiguration nur 1080p (`src/mode_spike.cpp`): 30 und 60 fps gehen (90 bzw. 180 Frames in 3 s, fehlerfrei decodierbar), mit 360p, 540p, 720p, 1440p und 4K scheitert das Öffnen, und `sceAvcap2ChangeScanInResolution` lehnt ab (`0x81950001`, `0x8195000A`). Der Host beachtet daher nur die Bildrate (bis 30 fps gewünscht: 30 fps); Moonlight skaliert 1080p selbst herunter.
@@ -86,8 +88,9 @@ Noch offen:
 3. **Payload-Manager-Fenster:** Ein offenes Fenster des Payload Managers liegt über Apps und nimmt Eingaben an sich, auch wenn es nicht reagiert. In dem Zustand lässt es sich nur am echten Controller schließen. Beim Fernsteuern vorher prüfen.
 4. **Eigene Werkzeuge vom PC:** `PIN`/`QUIT` und `pair.py status` über den Steuer-Socket gehen vom PC aus nur noch mit der leeren Datei `/data/prosperosunshine/control_lan` (danach Host neu starten). Sonst geht der Host-Neustart über die App.
 5. **Store-Installation (P8.9):** Die Installation aus dem ProsperoStore klappt (Nutzerbericht, 2026-10-31).
-6. **PS-Taste abschalten:** `back_button_timeout = -1` ist nur im Code nachgelesen, nicht live geprüft.
-7. **Einmaliger Fehlstart:** Ein Stream direkt nach dem Schließen des ProsperoStore scheiterte (`stream_test` Exit 3: `Failed to establish ENet connection on UDP port 47999`, Fehler 11; im Host-Log `Ping Timeout` und `Initial Ping Timeout`). Der Host blieb betriebsbereit, die Wiederholung lief fehlerfrei. Die Ursache ist nicht geklärt.
+6. **Rumble in echten Spielen:** Geprüft ist es nur mit dem Puls der UI-Bibliothek und am Log des Test-Clients, weder mit einem Spiel noch mit einem Controller, der wirklich vibriert. Welche Spiele den klassischen Modus nutzen, ist offen.
+7. **PS-Taste abschalten:** `back_button_timeout = -1` ist nur im Code nachgelesen, nicht live geprüft.
+8. **Einmaliger Fehlstart:** Ein Stream direkt nach dem Schließen des ProsperoStore scheiterte (`stream_test` Exit 3: `Failed to establish ENet connection on UDP port 47999`, Fehler 11; im Host-Log `Ping Timeout` und `Initial Ping Timeout`). Der Host blieb betriebsbereit, die Wiederholung lief fehlerfrei. Die Ursache ist nicht geklärt.
 6. **Weiter offen wie bisher:** Ruhemodus (nur mit Rückfrage testen), Android/TV-Clients, andere Firmwares (Checkliste in `docs/firmware-porting.md`), MAC-Adresse 0 (kein Wake-on-LAN).
 
 - **MAC-Adresse** in `/serverinfo` ist 0: weder `getifaddrs` noch `sceNetGetMacAddress` liefern sie im Payload. Betrifft nur Wake-on-LAN.
@@ -99,7 +102,8 @@ Noch offen:
 - **Avcap2-Symbolauflösung war nicht threadsicher:** `kernel_dynlib_dlsym` aus mehreren Threads gleichzeitig ließ Ton und Keyframe-Anforderung scheitern; alle Funktionen werden jetzt einmal beim Öffnen aufgelöst.
 - **Log-Stufe:** `min_log_level` in `/data/prosperosunshine/sunshine.conf` gilt auch für das Kernel-Log (z. B. `min_log_level = debug` für Diagnose).
 - **Steuer-Socket** ist im LAN offen und nur für Entwicklung gedacht; die Host-API für die PS5-App (P2.5) ist noch nicht abgestimmt.
-- **Kein HDR/HEVC, keine Maus/Tastatur, kein Rumble** (v1.0-Umfang).
+- **Kein HDR/HEVC, keine Maus/Tastatur** (v1.0-Umfang).
+- **Rumble nur klassisch:** Haptik und adaptive Trigger des DualSense kommen nicht an (`docs/re/pad-output.md`).
 
 ## Bauen und testen
 

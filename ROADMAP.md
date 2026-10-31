@@ -186,6 +186,7 @@ Stand: P8.1, P8.3, P8.4 und P8.5 live geprüft; P8.2 ebenfalls live geprüft. P8
 | P9.5 | Firmware-Porting vorbereiten: ResourceArbitrator-Funktionen per NID statt fester Adressen, Anleitung `docs/firmware-porting.md` | M | NID-Suche findet auf 13.00 die bekannten Adressen |
 | P9.6 | Weitere Clients: Android, TV/Shield, Steam Deck | S | Je ein Stream mit Bild, Ton und Eingabe |
 | P9.7 | Spike: HEVC über den PS5-Encoder | M | Ergebnis dokumentiert |
+| P9.10 | Rumble: Motorwerte des virtuellen Pads an den Client; offen sind echte Spiele, danach Lichtleiste und adaptive Trigger (Felder lesbar, `docs/re/pad-output.md`) | M | Controller am Client vibriert im Spiel |
 | P9.9 | PS-Taste für Clients ohne diese Taste: Select halten sendet PS, kurzer Druck Create | S | Kontrollzentrum und Create-Menü öffnen sich im Stream; Test in Moonlight am Handy |
 | P9.8 | Virtuelles Pad nach Sitzungsende: Laut App-Session bekam die App nach einem Handy-Stream (App blieb „running“, kein Client) keine Eingaben vom RemoteEye-Test-Pad, erst nach Host-Neustart. Prüfen, ob `free_gamepad` läuft (Log „detached“) oder ob sich Host-Pad und RemoteEye-Pad stören; ggf. „PS5 Screen“ nach Client-Abbruch beenden | S | Nach Streamende erreichen Eingaben wieder Apps, ohne Host-Neustart |
 

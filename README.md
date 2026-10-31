@@ -75,7 +75,9 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   round, a controller that is already connected and not disconnected (seen with a second virtual pad) keeps the app, and
   only the console's home screen still reacts to Moonlight. If the stream controller does nothing in an app, turn the
   other controller off.
-- No HDR, HEVC, 4K, mouse, keyboard, touch, rumble or microphone.
+- No HDR, HEVC, 4K, mouse, keyboard, touch or microphone.
+- Rumble is the classic two-motor kind only. Games that drive the DualSense's haptics or adaptive triggers probably send
+  nothing to your controller. Whether your device vibrates also depends on the Moonlight client.
 - No Wake-on-LAN (the console MAC address is not available to the host).
 - Starting or quitting a game briefly takes the capture resource away: video and audio pause for about 2 seconds
   and then resume on their own.

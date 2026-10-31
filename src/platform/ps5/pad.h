@@ -25,6 +25,18 @@ typedef struct {
     uint8_t l2, r2;          // 0..255 analog triggers
 } ps_pad_state;
 
+// What the system wants from a controller, the way Remote Play reads it. Field meanings beyond the
+// motors are what the code that consumes them suggests; see docs/re/pad-output.md.
+typedef struct {
+    uint32_t flag_a;
+    uint8_t flags[2];
+    uint8_t motors[2];
+    uint8_t color[3];
+    uint8_t triggers[24];
+    uint32_t values[6];
+    uint32_t flag_b;
+} ps_pad_output;
+
 typedef struct ps_pad ps_pad;
 
 // The signed-in user owning the first home folder, or 0 if none could be found.
@@ -34,6 +46,8 @@ uint32_t ps_pad_default_user(void);
 int ps_pad_open(uint32_t user_id, ps_pad **out);
 // Feeds one state; it stays in effect until the next one.
 int ps_pad_send(ps_pad *pad, const ps_pad_state *state);
+// Reads the current output state. Remote Play polls this every 10 ms.
+int ps_pad_read_output(ps_pad *pad, ps_pad_output *output);
 // Releases every button and centres both sticks.
 int ps_pad_neutral(ps_pad *pad);
 // Sends a neutral state, removes the controller and frees the handle. NULL is harmless.

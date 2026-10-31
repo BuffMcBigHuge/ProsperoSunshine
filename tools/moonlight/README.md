@@ -50,7 +50,7 @@ py -3 tools/moonlight/av_sync.py --analyze-only                                 
 py -3 tools/moonlight/av_sync.py --kind ps ...                                     # PS button (control centre) instead of D-pad
 ```
 
-`stream_test` gained `--ui-ticks N [--tick-interval-ms 1500] [--tick-hold-ms 120] [--tick-kind dpad|ps|back] [--tick-start S] [--no-script]` and
+`stream_test` gained `--ui-ticks N [--tick-interval-ms 1500] [--tick-hold-ms 120] [--tick-kind dpad|ps|back] [--tick-seq left,cross,...] [--tick-start S] [--no-script]` and
 `--timing-log <csv>`. Without them nothing changes. The log has one line per received video frame
 (`V,frame,idr,arrival_us,presentationTimeUs,bytes`), audio packet (`A,index,arrival_us,rms,peak`) and press
 (`P,tick,action,sent_us`) on a single CLOCK_MONOTONIC microsecond clock (arrival = when the moonlight-common-c callback

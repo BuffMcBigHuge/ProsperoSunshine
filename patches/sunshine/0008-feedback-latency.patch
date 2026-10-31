@@ -1,0 +1,20 @@
+ProsperoSunshine: send controller feedback without waiting for the next control event
+
+The control loop only looks at the feedback queue between events, and with a 150 ms timeout that means
+every ping, about 100 ms apart. moonlight-common-c keeps only the newest of the rumble messages it finds
+queued, so a shorter pulse arrived as its stop alone and the client never rumbled.
+
+--- a/src/stream.cpp
++++ b/src/stream.cpp
+@@ -1392,7 +1392,11 @@
+         break;
+       }
+ 
++#ifdef __SCE__
++      server->iterate(5ms);
++#else
+       server->iterate(150ms);
++#endif
+     }
+ 
+     // Let all remaining connections know the server is shutting down

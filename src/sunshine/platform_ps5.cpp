@@ -337,11 +337,49 @@ struct input_raw_t {
     std::array<bool, MAX_GAMEPADS> active{};  // last state had something pressed or deflected
     std::array<bool, MAX_GAMEPADS> back{};    // Select is down
     std::array<std::chrono::steady_clock::time_point, MAX_GAMEPADS> back_since{};
+    std::array<feedback_queue_t, MAX_GAMEPADS> feedback{};
+    std::array<uint8_t, MAX_GAMEPADS> client_index{};
+    std::array<std::array<uint8_t, 2>, MAX_GAMEPADS> motors{};
     uint32_t user = 0;
+    std::jthread output_thread;
 };
+
+static void set_motors(input_raw_t &input, int nr, uint8_t large, uint8_t small) {
+    if (input.motors[nr] == std::array<uint8_t, 2>{large, small}) return;
+    input.motors[nr] = {large, small};
+    BOOST_LOG(debug) << "PS5 virtual pad "sv << nr << " motors "sv << int(large) << ',' << int(small);
+    if (input.feedback[nr]) input.feedback[nr]->raise(gamepad_feedback_msg_t::make_rumble(input.client_index[nr], large * 257, small * 257));
+}
+
+// Reads what the system wants from each pad at the cadence of Remote Play's own reader and passes on
+// changes of the motors. Only titles using the classic two-motor rumble set them; see docs/re/pad-output.md.
+static void poll_pad_output(std::stop_token stop, input_raw_t *input) {
+    std::array<bool, MAX_GAMEPADS> failed{};
+    while (!stop.stop_requested()) {
+        {
+            std::lock_guard lock(input->mutex);
+            for (int nr = 0; nr < MAX_GAMEPADS; ++nr) {
+                if (!input->pads[nr]) {
+                    failed[nr] = false;
+                    continue;
+                }
+                ps_pad_output output{};
+                if (const int rc = ps_pad_read_output(input->pads[nr], &output); rc) {
+                    if (!failed[nr]) BOOST_LOG(warning) << "PS5 virtual pad "sv << nr << " output read failed: "sv << rc;
+                    failed[nr] = true;
+                    continue;
+                }
+                set_motors(*input, nr, output.motors[0], output.motors[1]);
+            }
+        }
+        std::this_thread::sleep_for(10ms);
+    }
+}
 
 void freeInput(input_raw_t *input) {
     if (!input) return;
+    input->output_thread.request_stop();
+    if (input->output_thread.joinable()) input->output_thread.join();
     for (auto *&pad : input->pads) {
         ps_pad_close(pad);
         pad = nullptr;
@@ -353,12 +391,15 @@ input_t input() {
     auto *raw = new input_raw_t;
     raw->user = ps_pad_default_user();
     BOOST_LOG(info) << "PS5 input: virtual pads for user "sv << std::hex << raw->user << std::dec;
+    raw->output_thread = std::jthread(poll_pad_output, raw);
     return input_t{raw};
 }
 
-int alloc_gamepad(input_t &input, const gamepad_id_t &id, const gamepad_arrival_t &, feedback_queue_t) {
+int alloc_gamepad(input_t &input, const gamepad_id_t &id, const gamepad_arrival_t &, feedback_queue_t feedback) {
     if (id.globalIndex < 0 || id.globalIndex >= MAX_GAMEPADS) return -1;
     std::lock_guard lock(input->mutex);
+    input->feedback[id.globalIndex] = std::move(feedback);
+    input->client_index[id.globalIndex] = id.clientRelativeIndex;
     auto *&pad = input->pads[id.globalIndex];
     if (pad) return 0;
     const int rc = ps_pad_open(input->user, &pad);
@@ -371,12 +412,19 @@ int alloc_gamepad(input_t &input, const gamepad_id_t &id, const gamepad_arrival_
     return 0;
 }
 
-int rebind_gamepad(input_t &, const gamepad_id_t &, feedback_queue_t) { return 0; }
+int rebind_gamepad(input_t &input, const gamepad_id_t &id, feedback_queue_t feedback) {
+    if (id.globalIndex < 0 || id.globalIndex >= MAX_GAMEPADS) return -1;
+    std::lock_guard lock(input->mutex);
+    input->feedback[id.globalIndex] = std::move(feedback);
+    input->client_index[id.globalIndex] = id.clientRelativeIndex;
+    return 0;
+}
 
 void free_gamepad(input_t &input, int nr) {
     if (nr < 0 || nr >= MAX_GAMEPADS) return;
     std::lock_guard lock(input->mutex);
     if (!input->pads[nr]) return;
+    set_motors(*input, nr, 0, 0);
     const int rc = ps_pad_close(input->pads[nr]);  // sends a neutral state before removal
     input->pads[nr] = nullptr;
     input->back[nr] = false;
