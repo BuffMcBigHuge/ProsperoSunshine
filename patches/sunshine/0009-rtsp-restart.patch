@@ -1,0 +1,32 @@
+ProsperoSunshine: let the RTSP server start again on the PS5
+
+Rest mode takes the listening sockets while the process runs on. main_ps5.cpp then stops and starts the
+services again, which the singleton server did not allow: its context stayed stopped, and closing the
+lost acceptor could throw.
+
+--- a/src/rtsp.cpp
++++ b/src/rtsp.cpp
+@@ -435,6 +435,10 @@
+      */
+     int bind(net::af_e af, std::uint16_t port, boost::system::error_code &ec) {
+       af = net::get_effective_address_family(af);
++#ifdef __SCE__
++      // start() runs again after rest mode took the sockets (main_ps5.cpp); stop() has stopped the context.
++      io_context.restart();
++#endif
+       acceptor.open(af == net::IPV4 ? tcp::v4() : tcp::v6(), ec);
+       if (ec) {
+         return -1;
+@@ -683,7 +687,12 @@
+      * @brief Stop the RTSP server.
+      */
+     void stop() {
++#ifdef __SCE__
++      boost::system::error_code close_error;  // rest mode may have taken the socket
++      acceptor.close(close_error);
++#else
+       acceptor.close();
++#endif
+       io_context.stop();
+       clear();
+     }

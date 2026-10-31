@@ -14,6 +14,7 @@
 #include <poll.h>
 #include <sstream>
 #include <sys/socket.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -100,7 +101,10 @@ void ControlServer::run_report(std::stop_token stop) {
         pollfd pfd{listener, POLLIN, 0};
         if (poll(&pfd, 1, 250) <= 0) continue;
         const int client = accept(listener, nullptr, nullptr);
-        if (client < 0) continue;
+        if (client < 0) {
+            std::this_thread::sleep_for(100ms);  // no busy loop on a socket lost to rest mode
+            continue;
+        }
         if (std::chrono::steady_clock::now().time_since_epoch().count() < report_until_) {
             setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
             // The request does not matter; reading it keeps the close from resetting the answer.
@@ -146,7 +150,10 @@ void ControlServer::run(std::stop_token stop) {
         pollfd pfd{listener, POLLIN, 0};
         if (poll(&pfd, 1, 250) <= 0) continue;
         const int client = accept(listener, nullptr, nullptr);
-        if (client < 0) continue;
+        if (client < 0) {
+            std::this_thread::sleep_for(100ms);
+            continue;
+        }
         std::string buffer;
         char chunk[256];
         // One client at a time; requests are short and rare.

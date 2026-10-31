@@ -3,6 +3,7 @@
 // and RTSP services with the PS5 platform layer and offers a small line-based control socket for
 // development (ROADMAP P2.3): pairing PIN, status and shutdown.
 #include "control/control_server.hpp"
+#include "control/listener_watch.hpp"
 #include "platform/ps5/mdns_responder.hpp"
 #include "src/config.h"
 #include "src/globals.h"
@@ -15,6 +16,8 @@
 #include "src/process.h"
 #include "src/rtsp.h"
 #include "src/video.h"
+#include <algorithm>
+#include <array>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -50,6 +53,24 @@ boost::shared_ptr<klog_sink> add_klog_sink() {
     sink->set_filter(expr::attr<int>("Severity") >= 2);  // info and above until the config is read
     boost::log::core::get()->add_sink(sink);
     return sink;
+}
+
+using Ports = std::array<uint16_t, 3>;
+
+// Returns false when the host was told to stop, true when rest mode has taken its ports: the process runs on, but
+// nothing answers until the services start anew (STATUS.md).
+bool wait_or_ports_lost(const std::shared_ptr<safe::event_t<bool>> &shutdown_event, const Ports &ports) {
+    bool up = false;
+    int refused = 0;
+    while (!shutdown_event->view(5s)) {
+        if (std::none_of(ports.begin(), ports.end(), prospero::port_refused)) {
+            up = true;
+            refused = 0;
+        } else if (up && ++refused >= 2) {
+            return true;
+        }
+    }
+    return false;
 }
 }
 
@@ -105,26 +126,42 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    std::jthread http_thread{nvhttp::start};
-    std::jthread rtsp_thread{rtsp_stream::start};
+    const Ports ports{net::map_port(nvhttp::PORT_HTTP), net::map_port(nvhttp::PORT_HTTPS),
+                      net::map_port(rtsp_stream::RTSP_SETUP_PORT)};
     prospero::ControlServer control(shutdown_event);
-    std::jthread control_thread([&](std::stop_token stop) { control.run(stop); });
-    std::jthread report_thread([&](std::stop_token stop) { control.run_report(stop); });
-    // Moonlight discovery (P9.2); on any socket problem the responder logs and ends, the host runs on.
-    std::jthread mdns_thread([name = config::nvhttp.sunshine_name](std::stop_token stop) {
-        prospero::mdns::run_responder(stop, name, net::map_port(nvhttp::PORT_HTTP));
-    });
-    ps_diag_log("ProsperoSunshine: host ready control_port=%u\n", prospero::ControlServer::port);
+    for (bool again = true; again;) {
+        std::jthread http_thread{nvhttp::start};
+        std::jthread rtsp_thread{rtsp_stream::start};
+        std::jthread control_thread([&](std::stop_token stop) { control.run(stop); });
+        std::jthread report_thread([&](std::stop_token stop) { control.run_report(stop); });
+        // Moonlight discovery (P9.2); on any socket problem the responder logs and ends, the host runs on.
+        std::jthread mdns_thread([name = config::nvhttp.sunshine_name](std::stop_token stop) {
+            prospero::mdns::run_responder(stop, name, net::map_port(nvhttp::PORT_HTTP));
+        });
+        ps_diag_log("ProsperoSunshine: host ready control_port=%u\n", prospero::ControlServer::port);
 
-    shutdown_event->view();
-    BOOST_LOG(info) << "ProsperoSunshine host shutting down"sv;
-    control_thread.request_stop();
-    report_thread.request_stop();
-    mdns_thread.request_stop();
-    proc::proc.terminate();
-    mdns_thread.join();
-    http_thread.join();
-    rtsp_thread.join();
+        again = wait_or_ports_lost(shutdown_event, ports);
+        if (again) {
+            ps_diag_log("ProsperoSunshine: host lost its ports, starting the services anew\n");
+            BOOST_LOG(warning) << "The ports stopped answering, starting the services anew"sv;
+            shutdown_event->raise(true);
+        } else {
+            BOOST_LOG(info) << "ProsperoSunshine host shutting down"sv;
+        }
+        control_thread.request_stop();
+        report_thread.request_stop();
+        mdns_thread.request_stop();
+        proc::proc.terminate();
+        mdns_thread.join();
+        http_thread.join();
+        rtsp_thread.join();
+        control_thread.join();
+        report_thread.join();
+        if (again) {
+            shutdown_event->reset();
+            while (!std::all_of(ports.begin(), ports.end(), prospero::port_free)) std::this_thread::sleep_for(2s);
+        }
+    }
     task_pool.stop();
     task_pool.join();
     ps_diag_log("ProsperoSunshine: host stopped\n");
