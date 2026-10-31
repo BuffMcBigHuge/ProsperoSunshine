@@ -98,7 +98,7 @@ Signaturen aus den Wrappern abgeleitet; Argumente, die nur als 4/8-Byte-Puffer s
 | `88YEF+XHfRY` | 0x1970 | unbekannt | 0xa70010 | `(h, out*0x10)` unbekannt |
 | `Dht3tcbRoEY` | 0x1A10 | unbekannt | 0xa70011 | `(in*0x90, out u64 + ?)` unbekannt |
 | `CYgd06bO5q0` | 0x1AB0 | `sceAvcap2AllocateVideoEncoderMemory` | 0xa70012 | `(u64, ...,out*0x20)` Venc-Speicher reservieren (nur Memory-Mode 1/2) |
-| `yN0w4tWivqs` | 0x1B90 | unbekannt | 0xa70013 | `(in*0x90, u16, out*0x20 ...)` vermutlich Speicherbedarf des Encoders; RemotePlay ruft vor GetVideoOutMode |
+| `yN0w4tWivqs` | 0x1B90 | unbekannt | 0xa70013 | `(in*0x90, out*0x20, out*0x20)` reserviert den Encoder-Speicher vor `OpenVideo` (Memory Mode 1), nötig für HEVC (`docs/re/hevc.md`) |
 | `96UQhNnBlxc` | 0x1C60 | `sceAvcap2FreeEncoderVideoMemory` | 0xa70014 | `(buf*0x20, buf*0x20)` Venc-Speicher freigeben (Teardown vor Terminate) |
 | `B+6003nL0AI` | 0x1D30 | unbekannt | 0xa70015 | `(h, u32 0 oder 1)` Server: sceVencSetPictureConfig{type 0, Wert 1 oder 2} |
 | `j7ClJpPRVQI` | 0x1DC0 | `sceAvcap2GetImagePasteMemory` | - | `(h, void** addr, size_t* len)` mapped Bereich, kein IPC |
@@ -373,3 +373,5 @@ bei fehlender Grant sinnlos; sie hilft nur, wenn die Grant-Callback-Antwort noch
   (2) Kanal mit hohem Anfangswert öffnen (`cfg+0xC8/0xCC` = 20 000 000 / 22 400 000) und prüfen, ob das Open selbst scheitert oder der Stream läuft;
   (3) Wiederholung der 20 M-Stufe mit Ratio 1,12 und `peak = 0` (nur avg). Produktiv: Obergrenze fest klemmen (z. B. ≤ Anfangsbitrate des Opens) und bei `ReadVideo`-Fehlern
   `0x80Cxxxxx` den Kanal schließen/neu öffnen, statt weiterzulesen.
+
+**Nachtrag (HEVC-Spike, `docs/re/hevc.md`):** Hypothese (b) trifft für HEVC zu: Ein Kanal, der mit der Bitrate in `cfg+0xC8/0xCC` geöffnet wird, läuft bis 100 Mbit/s fehlerfrei, und nur `SetVideoBitrate` über den Anfangswert hinaus führt zu `0x80C78000`. Für H.264 ist das nicht getestet. `libSceVenc` liegt inzwischen unter `.cache/re/`.

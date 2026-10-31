@@ -26,6 +26,7 @@ struct ps_capture {
     handle_fn stop, close;
     int (*headers)(intptr_t, void *);
     int (*read)(intptr_t, void *, size_t, void *, uint32_t);
+    int (*read2)(intptr_t, void *, size_t, void *, uint32_t);
     // Optional calls (docs/re/avcap2-exports.md), resolved once at open: kernel_dynlib_dlsym is not
     // safe to call from several threads at once, and the video, audio and control threads all use these.
     handle_fn request_keyframe, start;
@@ -35,6 +36,10 @@ struct ps_capture {
     // Audio channel (docs/re/avcap2-exports.md, R2); shares the video session's resource grant.
     intptr_t audio;
     int audio_opened, audio_started;
+    // HEVC only: encoder memory reserved like Remote Play does.
+    int (*free_memory)(void *, void *);
+    uint8_t memory[0x40];
+    int has_memory;
 };
 
 // Callback ABI currently has no verified instance context, so resource ownership
@@ -68,8 +73,23 @@ static uint32_t module(load_fn load, const char *name)
 static void u32(uint8_t *p, size_t at, uint32_t value) { memcpy(p + at, &value, 4); }
 static void u64(uint8_t *p, size_t at, uint64_t value) { memcpy(p + at, &value, 8); }
 
-static _Atomic uint32_t video_resolution = 4, video_timing = 1;
+static _Atomic uint32_t video_resolution = 4, video_timing = 1, video_codec = 0;
 static _Atomic int last_open_rc = 0;
+
+static _Atomic uint32_t hevc_average = 6000000, hevc_peak = 6600000;
+
+void ps_capture_set_hevc_bitrate(uint32_t average, uint32_t peak)
+{
+    atomic_store(&hevc_average, average);
+    atomic_store(&hevc_peak, peak);
+}
+
+int ps_capture_set_codec(uint32_t codec)
+{
+    if (codec > 1) return PS_CAPTURE_ERROR;
+    atomic_store(&video_codec, codec);
+    return 0;
+}
 
 int ps_capture_last_open_rc(void) { return atomic_load(&last_open_rc); }
 
@@ -95,7 +115,7 @@ static void configure(uint8_t *p, uint32_t mode)
     u32(p, 0x14, 2);
     u32(p, 0x18, atomic_load(&video_resolution));
     u32(p, 0x1c, atomic_load(&video_timing));
-    u32(p, 0x24, 0);
+    u32(p, 0x24, atomic_load(&video_codec));
     u32(p, 0x28, RESOURCE);
     u32(p, 0x94, 30);
     u32(p, 0xc8, 6000000);
@@ -103,6 +123,34 @@ static void configure(uint8_t *p, uint32_t mode)
     u32(p, 0x2a4, 2); // composited screen, including home menu
     u32(p, 0x2b0, 1);
     p[0x2b4] = 1;
+    if (atomic_load(&video_codec) == 1) {
+        // Remote Play's values (SceRemotePlay 0x6f7f0, rate fields 0x70130). With only the fields it sets for
+        // HEVC alone, sceAvcap2Start returns 0x80c78000. The set is not minimised.
+        const uint64_t peak = atomic_load(&hevc_peak), fps = atomic_load(&video_timing) ? 60 : 30;
+        u32(p, 0x44, 1);
+        u32(p, 0x48, 1);
+        p[0x58] = 1;
+        u32(p, 0x5c, 9);
+        u64(p, 0x60, 0x18);
+        p[0x68] = 1;
+        u32(p, 0x98, 1);
+        u32(p, 0xc8, atomic_load(&hevc_average));
+        u32(p, 0xcc, (uint32_t)peak);
+        u32(p, 0xd0, (uint32_t)(peak * 1001 / (fps * 1000))); // bits per frame
+        u32(p, 0xd4, 35);
+        u32(p, 0xd8, 0x33);
+        p[0x108] = 1;
+        u32(p, 0x10c, (uint32_t)(peak * 1001 / (fps * 1000) / 8)); // bytes per frame
+        p[0x128] = 1;
+        u32(p, 0x12c, 0x19);
+        u64(p, 0x188, 0x10);
+        p[0x190] = 1;
+        u32(p, 0x194, 1);
+        memset(p + 0x220, 0xff, 0x80);
+        u64(p, 0x2b8, 0x10);
+        u32(p, 0x2c0, 1);
+        u32(p, 0x2c4, 0x6e);
+    }
 }
 
 int ps_capture_close(ps_capture *s)
@@ -115,6 +163,7 @@ int ps_capture_close(ps_capture *s)
     if (ps_capture_audio_close(s)) failed = 1;
     CLEANUP(s->started, s->stop(s->handle), "Stop");
     CLEANUP(s->opened, s->close(s->handle), "Close");
+    CLEANUP(s->has_memory, s->free_memory(s->memory, s->memory + 0x20), "free encoder memory");
     CLEANUP(s->initialized, s->terminate(), "Terminate");
     CLEANUP(s->requested, s->request(RESOURCE, "STOP", NULL, getpid()), "STOP");
     int unregistered = 1;
@@ -180,6 +229,7 @@ int ps_capture_open(ps_capture **out)
     s->close = (void *)SYM("sceAvcap2Close");
     s->headers = (void *)SYM("sceAvcap2GetNonVclNalUnitStream");
     s->read = (void *)SYM("sceAvcap2ReadVideo");
+    s->read2 = (void *)SYM("sceAvcap2ReadVideo2");
     s->request_keyframe = (void *)SYM("sceAvcap2RequestKeyFrame");
     s->set_bitrate = (void *)SYM("sceAvcap2SetVideoBitrate");
     s->open_audio = (void *)SYM("sceAvcap2OpenAudio");
@@ -206,6 +256,23 @@ int ps_capture_open(ps_capture **out)
     if (output & 3) { error = PS_CAPTURE_HDR; goto fail; }
     uint8_t config[0x2e0];
     configure(config, (uint32_t)output);
+    if (atomic_load(&video_codec) == 1) {
+        // Memory Mode 1 as Remote Play sets it up (SceRemotePlay 0x6fb83..0x6fc65).
+        int (*reserve)(const void *, void *, void *) = (void *)kernel_dynlib_resolve(-1, av, "yN0w4tWivqs");
+        s->free_memory = (void *)kernel_dynlib_resolve(-1, av, "96UQhNnBlxc");
+        if (!reserve || !s->free_memory) goto fail;
+        uint8_t request[0x90] = {0};
+        u64(request, 0, sizeof request);
+        memcpy(request + 8, config + 8, 0x28);
+        memcpy(request + 0x30, config + 0x30, 0x58);
+        u64(config, 0x198, 0x50);
+        u32(config, 0x1a0, 1);
+        rc = reserve(request, config + 0x1a8, config + 0x1c8);
+        LOG("encoder memory rc=%#x\n", rc);
+        if (rc) { atomic_store(&last_open_rc, rc); goto fail; }
+        memcpy(s->memory, config + 0x1a8, sizeof s->memory);
+        s->has_memory = 1;
+    }
     rc = open_video(&s->handle, config, 0);
     atomic_store(&last_open_rc, rc);
     LOG("OpenVideo rc=%#x\n", rc);
@@ -262,6 +329,18 @@ int ps_capture_read(ps_capture *s, void *destination, size_t capacity, uint8_t d
     int rc = s->read(s->handle, destination, capacity, descriptor, 1);
     if (rc == AGAIN || rc == 0) return 0;
     if (rc < 0 || (size_t)rc > capacity) { LOG("ReadVideo rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
+    return rc;
+}
+
+int ps_capture_read2(ps_capture *s, void *destination, size_t capacity, uint8_t descriptor[0x88])
+{
+    if (!s || !destination || !capacity || !descriptor || !s->started || !s->read2) return PS_CAPTURE_ERROR;
+    if (!atomic_load(&granted) || atomic_load(&revoked)) return PS_CAPTURE_REVOKED;
+    memset(descriptor, 0, 0x88);
+    u64(descriptor, 0, 0x88);
+    int rc = s->read2(s->handle, destination, capacity, descriptor, 1);
+    if (rc == AGAIN || rc == 0) return 0;
+    if (rc < 0 || (size_t)rc > capacity) { LOG("ReadVideo2 rc=%#x\n", rc); return rc < 0 ? rc : PS_CAPTURE_ERROR; }
     return rc;
 }
 

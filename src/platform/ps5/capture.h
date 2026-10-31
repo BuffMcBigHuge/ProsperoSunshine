@@ -19,6 +19,11 @@ enum ps_capture_error {
 // Mode for the next ps_capture_open. resolution: 1 = 640x360, 2 = 960x540, 3 = 1280x720,
 // 4 = 1920x1080 (default), 5 = 2560x1440, 6 = 3840x2160; timing: 0 = 30 fps, 1 = 60 fps (default).
 int ps_capture_set_video_mode(uint32_t resolution, uint32_t timing);
+// Codec for the next ps_capture_open: 0 = H.264 (default), 1 = HEVC.
+int ps_capture_set_codec(uint32_t codec);
+// HEVC only: bitrate in the config of the next open, in bit/s. Raising it above this at runtime kills the
+// channel (0x80c78000 on the next read). Default 6 / 6.6 Mbit/s.
+void ps_capture_set_hevc_bitrate(uint32_t average, uint32_t peak);
 // Research: raw result of the last sceAvcap2OpenVideo, and sceAvcap2ChangeScanInResolution at runtime.
 int ps_capture_last_open_rc(void);
 int ps_capture_change_scan_in(ps_capture *session, uint32_t resolution);
@@ -30,6 +35,8 @@ int ps_capture_headers(ps_capture *session, void *destination, size_t capacity);
 // Nonblocking: >0 encoded bytes, 0 means try again, <0 error/revocation.
 // Descriptor bytes are copied unchanged; their timestamp fields remain unverified.
 int ps_capture_read(ps_capture *session, void *destination, size_t capacity, uint8_t descriptor[0x70]);
+// Same through sceAvcap2ReadVideo2, the only read that accepts HEVC. Its descriptor is laid out differently.
+int ps_capture_read2(ps_capture *session, void *destination, size_t capacity, uint8_t descriptor[0x88]);
 // Stop, close, terminate, STOP, unregister. NULL is harmless; consumes the session.
 int ps_capture_close(ps_capture *session);
 
