@@ -39,6 +39,8 @@ Das Ressourcen-Profil ist nicht die Ursache: 175, 177, 180, 182 und 185 scheiter
   liefert `0x80c78000`. Gemessen: 20 → 40 Mbit/s bricht ab; 30 → 10 → 30 Mbit/s läuft durch.
 * **1440p und 4K:** Schon die Speicher-Reservierung scheitert mit `0x81950003`, auf allen getesteten RA-Profilen (180, 177, 185, 175, 182).
   H.264 öffnet dort mit den Profilen 177 und 182, nicht mit denen für 2K (`docs/re/avcap2-exports.md`, Abschnitt 8.1).
+* **Obergrenze bei extremem Bild:** H.264 hält die Bitrate bei Rauschen über die ganze Fläche nicht ein (1080p 35–39, 4K rund 132 Mbit/s, unabhängig
+  von der Vorgabe); bei Rauschen auf einem Viertel der Fläche folgt sie der Vorgabe. HEVC ist so nicht gemessen.
 * **Last nur begrenzt gemessen:** Getestet mit dem Home-Bildschirm und der Demo von Mario 64. Mario erzeugte bei 100 Mbit/s
   nur rund 33 Mbit/s. Ob der Encoder 100 Mbit/s in einem aufwendigen Spiel hält, ist offen; der Host klemmt daher auf 50 Mbit/s.
 

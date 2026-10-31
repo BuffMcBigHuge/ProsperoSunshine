@@ -1,12 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.1.4 (2026-10-31)
 
 ### Added
 
 - H.264 at 1440p and 4K on firmware 13.00, when the client asks for it. HEVC stays at 1080p. If the console refuses the larger
-  capture, which one title did, the stream runs at 1080p instead of failing, also when that title starts during a stream.
-  Measured on the home screen and in quiet scenes of a game; heavy motion at 4K is not measured yet.
+  capture, which two titles did, the stream runs at 1080p instead of failing, also when such a title starts during a stream.
+  Measured on the home screen, in quiet game scenes and with noise in the console's browser; not yet during active play at 4K.
 
 ### Fixed
 

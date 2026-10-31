@@ -243,7 +243,7 @@ Offen, in dieser Reihenfolge, jeweils mit eigenem Spike: weitere Firmware-Versio
 | --- | --- | --- | --- |
 | 0.2 Mehr Konsolen | Andere Firmwares, zuerst 10.40 und 13.60 aus den Issues | Mindestens eine weitere Firmware besteht die Checkliste in `docs/firmware-porting.md` | Diagnoseberichten und Testern; hier läuft nur 13.00 |
 | 0.3 Alltagstauglich | Der Host läuft zuverlässig, ohne Pflege | Ruhemodus mit Controller, offenem Spiel und laufendem Stream geprüft; Android und TV geprüft; Wake-on-LAN geprüft (die MAC kommt beim Client an); Fehlstarts geklärt (Windows-Client: 0 in 150); Dauertest über mehrere Stunden im Spiel; mehrere Controller im Spiel geprüft | Teils Nutzertests |
-| 0.4 Mehr Bild | 1440p, 4K, HDR | Mindestens eines davon stabil im Stream, oder belegt, warum nicht. Stand: H.264 in 1440p und 4K läuft (`STATUS.md`); es fehlen Bewegung im Spiel und ein längerer Lauf. HEVC über 1080p und HDR sind offen | Reverse Engineering |
+| 0.4 Mehr Bild | 1440p, 4K, HDR | Mindestens eines davon stabil im Stream, oder belegt, warum nicht. Stand: H.264 in 1440p und 4K läuft auch unter Last (`STATUS.md`); es fehlt der aktive Spielbetrieb. HEVC über 1080p und HDR sind offen | Reverse Engineering |
 | 1.0 Stabil | Klare Zusage, was unterstützt ist | Liste geprüfter Firmwares und Clients; mehrstündige Sitzung in mindestens zwei Spielen ohne Ausfall; Ruhemodus belegt oder klar ausgeschlossen; Neuinstallation aus dem Store nach Anleitung, von jemandem ohne Vorwissen | Den Meilensteinen davor |
 
 Bewusst nicht geplant: Haptik (Moonlight hat keinen Kanal dafür); harte Trigger nach dem Stream lassen sich nur in Moonlight beheben.

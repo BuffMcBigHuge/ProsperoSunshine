@@ -106,3 +106,5 @@ Toolchain: PS5 Payload SDK v0.45 in the Docker image `prosperosunshine-sdk:v0.45
   ShadowMountPlus logging `launch mount unavailable ... Device busy`, until the console restarted (`STATUS.md`).
 - Don't open the real Moonlight on the PC without asking, its window takes the focus and the owner may be playing there.
   `stream_test.exe` has no window.
+- `ps5_launch` and `ps5_open_url` sometimes fail with `0x80960003` while nothing is wrong; try again. A browser card must be
+  closed first (hold Options, Close Card). For encoder load without a game, open a noise page in the browser card.

@@ -5,7 +5,7 @@
 A native, Sunshine-compatible game-stream host for the PlayStation 5. Add your console to Moonlight and stream
 the PS5 screen, game audio and controller input over your LAN.
 
-> **Status: 0.1.3 ([changelog](CHANGELOG.md)).** Pairing, 1080p H.264 or HEVC video at 30 or 60 fps, game audio and controller input work end to end
+> **Status: 0.1.4 ([changelog](CHANGELOG.md)).** Pairing, H.264 up to 4K or 1080p HEVC at 30 or 60 fps, game audio and controller input work end to end
 > with Moonlight on PC, in the browser (Moonlight Web) and on iPhone. Sessions of 30 minutes and ten reconnects
 > were tested without errors. Only firmware 13.00 has been tested so far. Not every client or game has been tried.
 
@@ -69,11 +69,12 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
 - SDR only. On firmware 13.00, H.264 streams at 1080p, 1440p or 4K, whichever the client asks for. HEVC, and every other
   firmware, stays at 1080p, so choose H.264 in Moonlight's settings for more. A client asking for less than 1080p gets 1080p
   and scales it. The frame rate follows the client: 30 or 60 fps.
-- The console refuses 1440p and 4K capture in some titles (seen in a Mario 64 port; GTA III works). The stream then runs at
-  1080p, also when such a title starts during a stream, and stays there until the next stream.
+- The console refuses 1440p and 4K capture in some titles (seen in a Mario 64 port and Teardown; GTA III works). The stream
+  then runs at 1080p, also when such a title starts during a stream, and stays there until the next stream.
 - HEVC (8-bit) is offered on firmware 13.00 only, elsewhere H.264. Clients that prefer HEVC pick it on their own. To
   force H.264, choose it in Moonlight's settings or set `hevc_mode = 1` in `sunshine.conf`.
-- The bitrate is capped at 50 Mbit/s.
+- The bitrate is capped at 50 Mbit/s. The encoder holds it in normal scenes, but extreme images can exceed it: full-screen
+  random noise reached about 130 Mbit/s at 4K and 35 Mbit/s at 1080p, whatever was set.
 - One streaming session at a time. More than one Moonlight controller is untested.
 - A real DualSense disconnects when the stream controller connects. Turned back on during the stream it stays without
   effect, because apps read only the controller that connected first; after the stream it works normally. The other way
