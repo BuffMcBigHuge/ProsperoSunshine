@@ -63,6 +63,9 @@ int main(int argc, char *argv[]) {
     // control stream every 100 ms, so 2 s (upstream default 10 s) still tolerates 20 lost pings while
     // cutting the stuck-input window after a network drop (P4.3). sunshine.conf can override it.
     config::stream.ping_timeout = 2s;
+    // Moonlight's on-screen layouts have no PS button: holding Select this long sends it (gamepad_update
+    // in platform_ps5.cpp). sunshine.conf can override it; a negative value turns it off.
+    config::input.back_button_timeout = 500ms;
     mail::man = std::make_shared<safe::mail_raw_t>();
     if (const int rc = config::parse(argc, argv)) {
         klog_printf("ProsperoSunshine: host config::parse returned %d\n", rc);

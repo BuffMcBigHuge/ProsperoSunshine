@@ -4,6 +4,7 @@
 #include "input/gamepad_map.hpp"
 #include "platform/ps5/pad.h"
 #include "platform/ps5/shared_capture.hpp"
+#include "src/config.h"
 #include "src/logging.h"
 #include "src/platform/common.h"
 #include <arpa/inet.h>
@@ -334,6 +335,8 @@ struct input_raw_t {
     std::mutex mutex;
     std::array<ps_pad *, MAX_GAMEPADS> pads{};
     std::array<bool, MAX_GAMEPADS> active{};  // last state had something pressed or deflected
+    std::array<bool, MAX_GAMEPADS> back{};    // Select is down
+    std::array<std::chrono::steady_clock::time_point, MAX_GAMEPADS> back_since{};
     uint32_t user = 0;
 };
 
@@ -376,6 +379,7 @@ void free_gamepad(input_t &input, int nr) {
     if (!input->pads[nr]) return;
     const int rc = ps_pad_close(input->pads[nr]);  // sends a neutral state before removal
     input->pads[nr] = nullptr;
+    input->back[nr] = false;
     BOOST_LOG(info) << "PS5 virtual pad "sv << nr << " detached ("sv << rc << ')';
 }
 
@@ -383,10 +387,30 @@ void gamepad_update(input_t &input, int nr, const gamepad_state_t &state) {
     if (nr < 0 || nr >= MAX_GAMEPADS) return;
     std::lock_guard lock(input->mutex);
     if (!input->pads[nr]) return;
-    const auto mapped = prospero::map_gamepad(state.buttonFlags, state.lt, state.rt, state.lsX, state.lsY, state.rsX,
-                                              state.rsY);
-    const ps_pad_state pad{mapped.buttons, mapped.lx, mapped.ly, mapped.rx, mapped.ry, mapped.l2, mapped.r2};
-    ps_pad_send(input->pads[nr], &pad);
+    const auto send = [&](uint32_t flags) {
+        const auto mapped = prospero::map_gamepad(flags, state.lt, state.rt, state.lsX, state.lsY, state.rsX, state.rsY);
+        const ps_pad_state pad{mapped.buttons, mapped.lx, mapped.ly, mapped.rx, mapped.ry, mapped.l2, mapped.r2};
+        ps_pad_send(input->pads[nr], &pad);
+    };
+    // Sunshine turns a held Select into PS (back_button_timeout), but Select is Create here and pressing it
+    // first would open the Create menu. So Create only goes out, as a tap, when Select comes up early. The
+    // margin keeps Sunshine's own forced release at the timeout from counting as early.
+    uint32_t flags = state.buttonFlags;
+    bool create_tap = false;
+    if (const auto timeout = config::input.back_button_timeout; timeout >= 0ms) {
+        const bool back = flags & BACK;
+        const auto now = std::chrono::steady_clock::now();
+        if (back && !input->back[nr]) input->back_since[nr] = now;
+        create_tap = !back && input->back[nr] && now - input->back_since[nr] < timeout - 20ms;
+        input->back[nr] = back;
+        flags &= ~BACK;
+    }
+    send(flags);
+    if (create_tap) {
+        send(flags | BACK);
+        std::this_thread::sleep_for(50ms);
+        send(flags);
+    }
     // Sunshine neutralises held input with an all-zero state when a session ends (P4.3).
     const bool active = state.buttonFlags || state.lt || state.rt || state.lsX || state.lsY || state.rsX || state.rsY;
     if (input->active[nr] && !active) BOOST_LOG(debug) << "PS5 virtual pad "sv << nr << " released to neutral"sv;

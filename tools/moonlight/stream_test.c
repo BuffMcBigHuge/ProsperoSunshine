@@ -14,11 +14,11 @@
 //       --rikey <32 hex> --rikeyid <int> --appversion 7.1.431.-1 \
 //       --gfe 3.23.0.74 --codec-mode 1 --out out/moonlight-test.h264 \
 //       [--duration 20] [--bitrate 6000] [--audio-out file.s16] [--no-encryption]
-//       [--timing-log file.csv] [--ui-ticks N [--tick-interval-ms 1500] [--tick-kind dpad|ps] [--tick-start S]]
-//       [--no-script]
+//       [--timing-log file.csv] [--ui-ticks N [--tick-interval-ms 1500] [--tick-hold-ms 120]
+//       [--tick-kind dpad|ps|back] [--tick-start S]] [--no-script]
 //
 // --timing-log writes one CSV line per video frame / audio packet / input press on a common monotonic microsecond
-// clock, --ui-ticks presses D-pad RIGHT/LEFT (or the PS button) N times after the startup input, --no-script skips
+// clock, --ui-ticks presses D-pad RIGHT/LEFT (or the PS button, or Select) N times after the startup input, --no-script skips
 // the scripted startup input (see tools/moonlight/av_sync.py, README).
 
 #include <getopt.h>
@@ -292,7 +292,7 @@ int main(int argc, char **argv) {
   long rikeyid = 0;
   int codec_mode = SCM_H264, duration = 20, bitrate = 6000, no_enc = 0, w = 1920, h = 1080, fps = 60;
   int idr_at = -1;
-  int ui_ticks = 0, tick_interval_ms = 1500, no_script = 0;
+  int ui_ticks = 0, tick_interval_ms = 1500, tick_hold_ms = 120, no_script = 0;
   double tick_start = -1;
   const char *tick_kind = "dpad", *timing_path = NULL;
 
@@ -302,7 +302,7 @@ int main(int argc, char **argv) {
     {"audio-out", 1, 0, 'A'}, {"duration", 1, 0, 'd'},  {"bitrate", 1, 0, 'b'},  {"no-encryption", 0, 0, 'n'},
     {"width", 1, 0, 'W'},    {"height", 1, 0, 'H'},     {"fps", 1, 0, 'f'},      {"idr-at", 1, 0, 'I'},
     {"ui-ticks", 1, 0, 'U'}, {"tick-interval-ms", 1, 0, 'T'}, {"tick-start", 1, 0, 'S'}, {"tick-kind", 1, 0, 'K'},
-    {"timing-log", 1, 0, 'L'}, {"no-script", 0, 0, 'N'},
+    {"timing-log", 1, 0, 'L'}, {"no-script", 0, 0, 'N'}, {"tick-hold-ms", 1, 0, 'M'},
     {0, 0, 0, 0}};
   int c;
   while ((c = getopt_long(argc, argv, "", opts, NULL)) != -1) {
@@ -329,6 +329,7 @@ int main(int argc, char **argv) {
       case 'K': tick_kind = optarg; break;
       case 'L': timing_path = optarg; break;
       case 'N': no_script = 1; break;
+      case 'M': tick_hold_ms = atoi(optarg); break;
       default: return 2;
     }
   }
@@ -338,8 +339,9 @@ int main(int argc, char **argv) {
   }
   if (idr_at < 0) idr_at = duration / 2;
   int tick_ps = !strcmp(tick_kind, "ps");
-  if (!tick_ps && strcmp(tick_kind, "dpad")) {
-    fprintf(stderr, "--tick-kind must be dpad or ps\n");
+  int tick_back = !strcmp(tick_kind, "back");
+  if (!tick_ps && !tick_back && strcmp(tick_kind, "dpad")) {
+    fprintf(stderr, "--tick-kind must be dpad, ps or back\n");
     return 2;
   }
   // The UI ticks start after the scripted startup input (which ends at 7.0 s) unless --tick-start says otherwise.
@@ -490,23 +492,23 @@ int main(int argc, char **argv) {
         uint64_t nowm = now_ms();
         if (tick_next_ms == 0 || nowm >= tick_next_ms) {
           if (tick_phase == 0) {
-            const char *nm = tick_ps ? "ps" : tick_names[tick_n & 1];
-            int flag = tick_ps ? SPECIAL_FLAG : ((tick_n & 1) ? LEFT_FLAG : RIGHT_FLAG);
+            const char *nm = tick_ps ? "ps" : tick_back ? "back" : tick_names[tick_n & 1];
+            int flag = tick_ps ? SPECIAL_FLAG : tick_back ? BACK_FLAG : ((tick_n & 1) ? LEFT_FLAG : RIGHT_FLAG);
             uint64_t ts = now_us();
             int r = LiSendMultiControllerEvent(0, 0x1, flag, 0, 0, 0, 0, 0, 0);
             timing_line("P,%d,%s,%llu\n", tick_n, nm, (unsigned long long) ts);
             tlog("input: tick %d/%d %s press -> %d\n", tick_n + 1, ui_ticks, nm, r);
             tick_phase = 1;
-            tick_next_ms = nowm + 120;  // hold time
+            tick_next_ms = nowm + (uint64_t) tick_hold_ms;
           } else {
-            const char *nm = tick_ps ? "ps" : tick_names[tick_n & 1];
+            const char *nm = tick_ps ? "ps" : tick_back ? "back" : tick_names[tick_n & 1];
             uint64_t ts = now_us();
             int r = LiSendMultiControllerEvent(0, 0x1, 0, 0, 0, 0, 0, 0, 0);
             timing_line("P,%d,release_%s,%llu\n", tick_n, nm, (unsigned long long) ts);
             (void) r;
             tick_phase = 0;
             tick_n++;
-            tick_next_ms = nowm + (uint64_t) (tick_interval_ms > 120 ? tick_interval_ms - 120 : 1);
+            tick_next_ms = nowm + (uint64_t) (tick_interval_ms > tick_hold_ms ? tick_interval_ms - tick_hold_ms : 1);
           }
         }
       }

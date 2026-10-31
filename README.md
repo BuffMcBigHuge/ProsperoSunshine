@@ -43,7 +43,8 @@ autoload through the Payload Manager, settings and PIN entry. Install it from Pr
 
 **Option B: send the ELF manually.** Send `prospero_sunshine.elf` (from a release, or `out/` after building) to your
 ELF loader. The host keeps its state (identity, paired clients, `sunshine.conf`) in `/data/prosperosunshine/`.
-Sending the ELF again restarts the host.
+To replace a running host, stop it first (app: "Stop host"); a second ELF cannot bind the ports and exits, and the
+old host keeps running.
 
 ## Pairing
 
@@ -59,15 +60,21 @@ Pairing survives host restarts.
 Start the app **"PS5 Screen"** in Moonlight. The first time, the console asks **"Who's using this controller?"**
 inside the stream; answer it with your Moonlight controller.
 
+**PS button:** Moonlight's on-screen controller on a phone has none, so holding Select for half a second sends it. A
+short press of Select sends Create when you let go, which means Create cannot be held. To get a plain Create button
+back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is the hold time in milliseconds.
+
 ## Known limits
 
 - H.264 and SDR only. The stream is always 1080p: the console encoder starts no other resolution, so a client asking
   for less gets 1080p and scales it. The frame rate follows the client: 30 or 60 fps.
 - The bitrate is capped at 15 Mbit/s (the console encoder stops above that).
-- One streaming session at a time. More than one controller is untested.
-- If another controller is connected to the same user, an app may read only that one and ignore Moonlight, while the
-  console's home screen still reacts. Seen with a second virtual pad; a real DualSense is not tested yet. If the stream
-  controller does nothing, turn the other controller off.
+- One streaming session at a time. More than one Moonlight controller is untested.
+- A real DualSense disconnects when the stream controller connects. Turned back on during the stream it stays without
+  effect, because apps read only the controller that connected first; after the stream it works normally. The other way
+  round, a controller that is already connected and not disconnected (seen with a second virtual pad) keeps the app, and
+  only the console's home screen still reacts to Moonlight. If the stream controller does nothing in an app, turn the
+  other controller off.
 - No HDR, HEVC, 4K, mouse, keyboard, touch, rumble or microphone.
 - No Wake-on-LAN (the console MAC address is not available to the host).
 - Starting or quitting a game briefly takes the capture resource away: video and audio pause for about 2 seconds
