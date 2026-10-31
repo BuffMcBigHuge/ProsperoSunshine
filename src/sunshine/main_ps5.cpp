@@ -58,11 +58,13 @@ boost::shared_ptr<klog_sink> add_klog_sink() {
 using Ports = std::array<uint16_t, 3>;
 
 // Returns false when the host was told to stop, true when rest mode has taken its ports: the process runs on, but
-// nothing answers until the services start anew (STATUS.md).
-bool wait_or_ports_lost(const std::shared_ptr<safe::event_t<bool>> &shutdown_event, const Ports &ports) {
+// nothing answers until the services start anew (STATUS.md). RELISTEN on the control socket tests that path.
+bool wait_or_ports_lost(const std::shared_ptr<safe::event_t<bool>> &shutdown_event, const Ports &ports,
+                        prospero::ControlServer &control) {
     bool up = false;
     int refused = 0;
     while (!shutdown_event->view(5s)) {
+        if (control.take_relisten()) return true;
         if (std::none_of(ports.begin(), ports.end(), prospero::port_refused)) {
             up = true;
             refused = 0;
@@ -140,10 +142,10 @@ int main(int argc, char *argv[]) {
         });
         ps_diag_log("ProsperoSunshine: host ready control_port=%u\n", prospero::ControlServer::port);
 
-        again = wait_or_ports_lost(shutdown_event, ports);
+        again = wait_or_ports_lost(shutdown_event, ports, control);
         if (again) {
-            ps_diag_log("ProsperoSunshine: host lost its ports, starting the services anew\n");
-            BOOST_LOG(warning) << "The ports stopped answering, starting the services anew"sv;
+            ps_diag_log("ProsperoSunshine: host starting the services anew\n");
+            BOOST_LOG(warning) << "Starting the services anew"sv;
             shutdown_event->raise(true);
         } else {
             BOOST_LOG(info) << "ProsperoSunshine host shutting down"sv;

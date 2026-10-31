@@ -80,7 +80,8 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
 - No HDR, AV1, 4K, mouse, keyboard, touch or microphone.
 - Rumble is the classic two-motor kind only. Games that drive the DualSense's haptics send nothing to your controller.
   Whether your device vibrates also depends on the Moonlight client.
-- After rest mode the host stops accepting connections and has to be restarted.
+- Avoid rest mode for now. In the only test, the host stopped accepting connections after waking, the console then hung and had
+  to be switched off at the power button. Turn the console off instead.
 - Adaptive triggers work with Moonlight on a PC and a DualSense; other clients ignore them. Only Teardown has been tested. If a stream
   ends during an effect, the trigger stays stiff until you connect again, because Moonlight doesn't reset it.
 - No Wake-on-LAN (the console MAC address is not available to the host).

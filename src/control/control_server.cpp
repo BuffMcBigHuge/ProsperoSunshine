@@ -73,6 +73,10 @@ std::string ControlServer::handle(const std::string &line) {
         BOOST_LOG(info) << "Control: autoload "sv << action;
         return autoload_host::set(action == "ON");
     }
+    if (command == "RELISTEN") {
+        relisten_ = true;
+        return "OK";
+    }
     if (command == "QUIT") {
         shutdown_->raise(true);
         return "OK bye";

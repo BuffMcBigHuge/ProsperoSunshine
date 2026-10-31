@@ -31,12 +31,15 @@ public:
     void run_report(std::stop_token stop);
     // Handles one request line; public for tests.
     std::string handle(const std::string &line);
+    // Whether RELISTEN was asked for since the last call.
+    bool take_relisten() { return relisten_.exchange(false); }
 
 private:
     // The app asks every two seconds while its page is open; this outlasts a missed turn or two.
     static constexpr std::chrono::seconds report_window{8};
     std::shared_ptr<safe::event_t<bool>> shutdown_;
     std::atomic_bool report_listening_{false};
+    std::atomic_bool relisten_{false};
     std::atomic<std::chrono::steady_clock::rep> report_until_{0};
 };
 
