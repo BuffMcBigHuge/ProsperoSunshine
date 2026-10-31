@@ -23,7 +23,7 @@ int ps_capture_set_video_mode(uint32_t resolution, uint32_t timing);
 int ps_capture_set_codec(uint32_t codec);
 // Whether HEVC was verified on this firmware.
 int ps_capture_hevc_verified(void);
-// Whether H.264 at 1440p and 2160p was verified on this firmware.
+// Whether 1440p and 2160p were verified on this firmware.
 int ps_capture_large_modes_verified(void);
 // The resolution set for the next open. After the system refused the last open of a mode above 1080p (seen in a title,
 // the arbitrator logs "4K NG(4K120)"), ps_capture_fall_back_mode sets 1080p and returns 1; otherwise it changes nothing.

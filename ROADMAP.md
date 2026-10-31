@@ -18,7 +18,7 @@ Ein unveränderter Moonlight-Client im lokalen Netz fügt die PS5 per IP hinzu, 
 
 Nicht in v1.0: HEVC/AV1, HDR, 4K, mehrere Clients oder Controller, Mikrofon, Rumble, adaptive Trigger, Internetzugriff, Maus/Tastatur.
 
-Davon ist seit 0.1.2 HEVC (bis 50 Mbit/s), Rumble und die Lichtleiste des Pads dazugekommen, jeweils nur auf Firmware 13.00. Weiter nicht vorgesehen: AV1, HDR, 4K, mehrere Clients oder Controller, Mikrofon, adaptive Trigger, Internetzugriff, Maus/Tastatur.
+Davon ist seit 0.1.2 HEVC (bis 50 Mbit/s), Rumble und die Lichtleiste des Pads dazugekommen, seit 0.1.4 1440p und 4K, jeweils nur auf Firmware 13.00. Weiter nicht vorgesehen: AV1, HDR, mehrere Clients oder Controller, Mikrofon, adaptive Trigger, Internetzugriff, Maus/Tastatur.
 
 ## Architekturentscheidung (Vorschlag ADR-001, Abschluss in Phase 0)
 
@@ -219,7 +219,7 @@ Ist R2 negativ, erscheint 0.1 als Vorschau ohne Ton und benennt das deutlich.
 
 Erledigt seit 0.1.0: 60 fps (59,94 fps in der 30-Minuten-Sitzung), Moonlight-Discovery per mDNS, HEVC, Rumble und Lichtleiste.
 
-Offen, in dieser Reihenfolge, jeweils mit eigenem Spike: weitere Firmware-Versionen (Checkliste `docs/firmware-porting.md`; ResourceArbitrator per NID, Rest live zu prüfen), Haptik geht über Moonlight nicht (`docs/re/adaptive-triggers.md`), HDR und 4K (1440p und 4K scheitern in der jetzigen Konfiguration schon beim Öffnen, P9.3), mehrere Controller.
+Offen, in dieser Reihenfolge, jeweils mit eigenem Spike: weitere Firmware-Versionen (Checkliste `docs/firmware-porting.md`; ResourceArbitrator per NID, Rest live zu prüfen), Haptik geht über Moonlight nicht (`docs/re/adaptive-triggers.md`), HDR, mehrere Controller. 1440p und 4K laufen seit dem 2026-10-31 (`STATUS.md`).
 
 ## Risikoregister
 
@@ -243,7 +243,7 @@ Offen, in dieser Reihenfolge, jeweils mit eigenem Spike: weitere Firmware-Versio
 | --- | --- | --- | --- |
 | 0.2 Mehr Konsolen | Andere Firmwares, zuerst 10.40 und 13.60 aus den Issues | Mindestens eine weitere Firmware besteht die Checkliste in `docs/firmware-porting.md` | Diagnoseberichten und Testern; hier läuft nur 13.00 |
 | 0.3 Alltagstauglich | Der Host läuft zuverlässig, ohne Pflege | Ruhemodus mit Controller, offenem Spiel und laufendem Stream geprüft; Android und TV geprüft; Wake-on-LAN geprüft (die MAC kommt beim Client an); Fehlstarts geklärt (Windows-Client: 0 in 150); Dauertest über mehrere Stunden im Spiel; mehrere Controller im Spiel geprüft | Teils Nutzertests |
-| 0.4 Mehr Bild | 1440p, 4K, HDR | Mindestens eines davon stabil im Stream, oder belegt, warum nicht. Stand: H.264 in 1440p und 4K läuft auch unter Last (`STATUS.md`); es fehlt der aktive Spielbetrieb. HEVC über 1080p und HDR sind offen | Reverse Engineering |
+| 0.4 Mehr Bild | 1440p, 4K, HDR | Mindestens eines davon stabil im Stream, oder belegt, warum nicht. Stand: H.264 und HEVC in 1440p und 4K laufen auch unter Last (`STATUS.md`); es fehlt der aktive Spielbetrieb. HDR ist offen | Reverse Engineering |
 | 1.0 Stabil | Klare Zusage, was unterstützt ist | Liste geprüfter Firmwares und Clients; mehrstündige Sitzung in mindestens zwei Spielen ohne Ausfall; Ruhemodus belegt oder klar ausgeschlossen; Neuinstallation aus dem Store nach Anleitung, von jemandem ohne Vorwissen | Den Meilensteinen davor |
 
 Bewusst nicht geplant: Haptik (Moonlight hat keinen Kanal dafür); harte Trigger nach dem Stream lassen sich nur in Moonlight beheben.

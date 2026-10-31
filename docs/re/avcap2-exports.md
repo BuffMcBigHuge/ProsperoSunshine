@@ -135,7 +135,8 @@ Zusätzliche sichere Fakten zur Tabelle:
 * Timing-Enum (`cfg+0x1C`): **0 = 30 fps, 1 = 60 fps** (RemotePlay setzt `fps != 30`; die Konvertierung bildet
   `0x1E → 0`, `0x3C → 1` ab). Validator erlaubt 0…2 (2 vermutlich höhere Rate, unbelegt).
 * `cfg+0x10` Kanalart ≤ 2 (Server-Factory: 0 = `AvcapVideoScanIn`, Objektgröße 0x828; 1 = 0x718; 2 = 0x720),
-  `cfg+0x14` Purpose < 8, `cfg+0x24` Codec 0…2, `cfg+0x20` ≤ 1 (Vermutung: HDR/10 Bit).
+  `cfg+0x14` Purpose < 8 (0 VideoRecording, 1 GameLiveStreaming, 2 Remote Play, 3 SocialScreen, 4 Shareplay, 5 ShareScreen, 6 VideoChat, 7 PS Now;
+  Wirkung auf HEVC: `docs/re/hevc.md`), `cfg+0x24` Codec 0…2, `cfg+0x20` ≤ 1 (Vermutung: HDR/10 Bit).
 * `GetNonVclNalUnitStream2(in*0x28, out*0x1A8)` erzeugt SPS/PPS **ohne offenen Kanal** aus Parametern (RemotePlay
   nutzt nur diese Variante, nie die Handle-Variante). Die 0x28-Eingabe entspricht dem Kopfblock `cfg+0x08…0x30`
   (`{0x28, _, kind, purpose, res, timing, flag, codec, …}`).

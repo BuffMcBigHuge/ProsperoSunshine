@@ -57,7 +57,7 @@ int probe_encoders() {
     // stream if it fails, while H.264 may still run. hevc_mode = 1 in sunshine.conf turns it off.
     active_hevc_mode = config::video.hevc_mode != 1 && ps_capture_hevc_verified() ? 2 : 1;
     BOOST_LOG(info) << "PS5: Avcap2 passthrough, "sv << (active_hevc_mode == 2 ? "H.264 and HEVC, "sv : "H.264, "sv)
-                    << (ps_capture_large_modes_verified() ? "H.264 up to 3840x2160, "sv : "1920x1080, "sv) << "TSC "sv
+                    << (ps_capture_large_modes_verified() ? "up to 3840x2160, "sv : "1920x1080, "sv) << "TSC "sv
                     << tsc_per_ns() << " ticks/ns"sv;
     return 0;
 }
@@ -72,7 +72,7 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     // Avcap2 encodes at 30 or 60 fps, 1080p and up; smaller modes do not start (mode_spike, STATUS.md).
     const bool hevc = config.videoFormat == 1;
     const bool low_rate = config.framerate > 0 && config.framerate <= 30;
-    const auto mode = prospero::choose_capture_mode(config.height, hevc, ps_capture_large_modes_verified());
+    const auto mode = prospero::choose_capture_mode(config.height, ps_capture_large_modes_verified());
     BOOST_LOG(info) << "PS5 capture requested "sv << config.width << 'x' << config.height << '@' << config.framerate
                     << ", delivering "sv << mode.width << 'x' << mode.height << '@' << (low_rate ? 30 : 60);
     int delivered_height = 0;

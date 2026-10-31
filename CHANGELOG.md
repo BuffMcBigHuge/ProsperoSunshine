@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- HEVC at 1440p and 4K on firmware 13.00, when the client asks for it. The console's fallback to 1080p in some titles applies
+  here too. Measured on the home screen, in a quiet game scene and with noise in the console's browser; not yet during active play.
+
 ## 0.1.4 (2026-10-31)
 
 ### Added

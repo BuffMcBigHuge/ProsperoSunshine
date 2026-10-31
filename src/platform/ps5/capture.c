@@ -162,7 +162,9 @@ static void configure(uint8_t *p, uint32_t mode)
     memset(p, 0, 0x2e0);
     for (size_t i = 0; i < sizeof headers / sizeof headers[0]; i++) u64(p, headers[i].at, headers[i].size);
     u32(p, 0x10, 0);
-    u32(p, 0x14, 2);
+    // Purpose: Remote Play. HEVC above 1080p with it needs the service's memory pools, which are missing (docs/re/hevc.md);
+    // video chat has the same encoder preset and allocates per request.
+    u32(p, 0x14, atomic_load(&video_codec) == 1 && atomic_load(&video_resolution) >= 5 ? 6 : 2);
     u32(p, 0x18, atomic_load(&video_resolution));
     u32(p, 0x1c, atomic_load(&video_timing));
     u32(p, 0x24, atomic_load(&video_codec));

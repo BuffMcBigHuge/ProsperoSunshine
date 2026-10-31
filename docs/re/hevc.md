@@ -4,7 +4,7 @@ Stand 2026-10-31, Firmware 13.00. `src/hevc_spike.cpp` ist der Spike, der Host n
 
 ## Ergebnis
 
-Avcap2 liefert HEVC Main (8 Bit, 4:2:0, Level 5.0, BT.709, nur I- und P-Bilder) in 1080p mit 30 und 60 fps. Der Host bietet es auf Firmware 13.00 an (`ps_capture_hevc_verified`), auf anderen nur H.264.
+Avcap2 liefert HEVC Main (8 Bit, 4:2:0, BT.709, nur I- und P-Bilder) in 1080p (Level 5.0), 1440p und 4K (Level 6.0). Über 1080p braucht es einen anderen Zweck als Remote Play, siehe „1440p und 4K“. Der Host bietet HEVC auf Firmware 13.00 an (`ps_capture_hevc_verified`), auf anderen nur H.264.
 
 ## Was nötig war
 
@@ -37,12 +37,38 @@ Das Ressourcen-Profil ist nicht die Ursache: 175, 177, 180, 182 und 185 scheiter
 
 * **Bitrate nur senken:** `SetVideoBitrate` über den Wert beim Öffnen hinaus tötet den Kanal, das nächste `ReadVideo2`
   liefert `0x80c78000`. Gemessen: 20 → 40 Mbit/s bricht ab; 30 → 10 → 30 Mbit/s läuft durch.
-* **1440p und 4K:** Schon die Speicher-Reservierung scheitert mit `0x81950003`, auf allen getesteten RA-Profilen (180, 177, 185, 175, 182).
-  H.264 öffnet dort mit den Profilen 177 und 182, nicht mit denen für 2K (`docs/re/avcap2-exports.md`, Abschnitt 8.1).
 * **Obergrenze bei extremem Bild:** H.264 hält die Bitrate bei Rauschen über die ganze Fläche nicht ein (1080p 35–39, 4K rund 132 Mbit/s, unabhängig
   von der Vorgabe); bei Rauschen auf einem Viertel der Fläche folgt sie der Vorgabe. HEVC ist so nicht gemessen.
 * **Last nur begrenzt gemessen:** Getestet mit dem Home-Bildschirm und der Demo von Mario 64. Mario erzeugte bei 100 Mbit/s
   nur rund 33 Mbit/s. Ob der Encoder 100 Mbit/s in einem aufwendigen Spiel hält, ist offen; der Host klemmt daher auf 50 Mbit/s.
+
+## 1440p und 4K
+
+Mit Zweck 2 (`cfg+0x14`, Remote Play) scheitert die Speicher-Reservierung in Modus 5 und 6 mit `0x81950003`, auf allen getesteten RA-Profilen
+(180, 177, 185, 175, 182). Ursache (statisch, `SceAvCapture`): Der Manager `0x17e0` nimmt bei `cfg+0x14 == 2` und `cfg+0x18` 5 oder 6 den Weg `0xa7a0`, der
+zwei Speicherpools einblendet. Die legt `0xa000` beim Start des Dienstes an (16 MB und 240 MB im festen Bereich `0x1100000000..0x1200000000`). Bleibt ihr Wert auf
+der Vorgabe `0x5000000000` oder ist der Pool schon belegt (`0xb5c0`), kommt `0x81950003`. Warum die Pools hier fehlen, ist nicht geklärt. Alle anderen Fälle
+reservieren je Anfrage (`0x16c0`, `0xa610`).
+
+Der Host nimmt deshalb für HEVC über 1080p **Zweck 6**. Gemessen mit `src/hevc_memory_spike.cpp` und RA-Profil 182:
+
+| Zweck | Öffnen in Modus 5 und 6 | GTA III, 6 s, 30 Mbit/s, Modus 6 |
+| --- | --- | --- |
+| 0 VideoRecording, 3 SocialScreen, 4 Shareplay | `0x81950008` | – |
+| 1 GameLiveStreaming | Bilder | IDR 8–51 statt 1, Verzögerung 22–27 ms: fällt raus |
+| 2 Remote Play | `0x81950003` | – |
+| 5 ShareScreen, 6 VideoChat, 7 PS Now | Bilder | 359–360 Bilder, 1 IDR, 18 ms |
+
+Zum Vergleich Zweck 2 in Modus 4: 363 Bilder, 23 ms. Unter den dreien gibt die Tabelle Zweck → Voreinstellung (`0x268f0`: `100, 200, 300, 400, 700, 500, 300, 500, 800`) den Ausschlag:
+**Zweck 6 hat dieselbe Voreinstellung 300 wie Remote Play**, 5 und 7 haben 500. 1080p und H.264 bleiben bei Zweck 2, H.264 öffnet dort mit den Profilen 177 und 182
+(`docs/re/avcap2-exports.md`, Abschnitt 8.1).
+
+Der Validator `0x17aa0` lässt `cfg+0x14 < 8` zu, 8 nur mit Sonderprüfung. In manchen Titeln verweigert die Konsole 4K unabhängig vom Codec; dann fällt der Host auf 1080p und damit
+auf Zweck 2 zurück.
+
+Die Systemmeldung „Gameplay recording paused because you entered a blocked scene“ erschien im Vorspann von GTA III mit HEVC Zweck 5, 6, 7 in Modus 6 und ebenso mit H.264 Zweck 2 in Modus 6,
+nicht in Modus 4 (HEVC Zweck 2 und 6, je 40 s, jedes 200. Bild angesehen). Sie hängt also am Modus, nicht am Zweck. In beiden Fällen stand sie auf Bild 200 nach dem Öffnen, an verschiedenen
+Stellen des Vorspanns; sie folgt demnach dem Öffnen, nicht der Spielszene. Vermutung: Das Profil 182 (`prio[1]`) nimmt der Hintergrundaufnahme der Konsole die Mittel. Nicht geprüft. Sie liegt als Einblendung im Bild, die Bilder laufen weiter.
 
 ## Schlüsselbild-Abstand und ausgelassene Bilder
 
@@ -68,6 +94,6 @@ Felder braucht es nicht. Der Host öffnet daher beide Codecs so und ruft `SetVid
 ## `AvActivation`
 
 `libSceVenc` ruft beim Anlegen eines HEVC-Encoders (`0xa680`) `AvActivation` mit dem Typ `HwHevcEncode` (`0x10001`) und einer
-Titel-ID auf, die aus der Voreinstellung folgt (`0xbac0`; `cfg+0x14 = 2` ergibt `NPXS40102`, Remote Play). Das Ergebnis wertet
+Titel-ID auf, die aus der Voreinstellung folgt (`0xbac0`; Voreinstellung 300, also `cfg+0x14` 2 und 6, ergibt `NPXS40102`, Remote Play). Das Ergebnis wertet
 die Funktion nicht aus (`0xba07`). Es ist also keine Sperre, nur eine Meldung. Ob es Folgen außerhalb der Konsole hat, ist
 nicht bekannt.

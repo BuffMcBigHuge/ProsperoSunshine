@@ -2,7 +2,7 @@
 // Milestone 0.4: does another ResourceArbitrator profile allow 1440p or 2160p? Resource 180 grants scanin[2K] only
 // (docs/re/avcap2-exports.md). Tries each profile with each mode and logs the result to klog; a stream that opens goes
 // to /data/prosperosunshine/spike_uhd_<n>.bin, so that ffprobe on the PC can check its real size. Result on 13.00: H.264 with
-// 177 and 182, HEVC with none of them; the host uses 182.
+// 177 and 182; the host uses 182. HEVC needs another purpose as well (hevc_memory_spike).
 #include "platform/ps5/capture.h"
 #include <chrono>
 #include <cstdint>
