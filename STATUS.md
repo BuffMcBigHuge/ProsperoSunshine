@@ -97,6 +97,8 @@ Live auf der Konsole geprüft mit dem aktuellen Host (Testclient vom PC):
 - **Netz (`udp_burst.py`, je 180 Bursts zu 1024 Byte, 60 pro Sekunde):** Windows nativ empfängt 60, 100, 150 und 250 Pakete je Burst vollständig (bis 122 Mbit/s). Im Docker-Container kommen 60 vollständig an, von größeren Bursts nur 67–93 Pakete. Bei 55 Mbit/s angefordert und viel Bewegung bricht der Testclient daher ab (6 von 600 Frames), obwohl der Host fehlerfrei sendet. Über 31 Mbit/s liegt daher nur der Nutzertest vor.
 - **Nicht geprüft:** `hevc_mode = 1` und das Verhalten auf anderer Firmware (beides nur im Code).
 
+**Release 0.1.2:** App aus dem Release-Build installiert (`01.000.003`, in der App angezeigt), „Restart host“ ausgelöst, das Log meldet „H.264 and HEVC“. Danach mit Homebrew UI Lab je 15 s Stream über `stream_test`: HEVC 879 und H.264 897 Frames, fehlerfrei decodierbar, 0 Frame-Lücken, je 6 von 6 Rumble-Pulsen, Lichtleiste `0,0,255` und `127,240,216`. Das Archiv prüft `sha256sum -c` ohne Fehler, im ELF stehen keine lokalen Pfade oder Konsolenadresse (per `grep -a`).
+
 Noch offen:
 
 1. **Auflösung (P9.3):** Avcap2 liefert in der jetzigen Konfiguration nur 1080p (`src/mode_spike.cpp`): 30 und 60 fps gehen (90 bzw. 180 Frames in 3 s, fehlerfrei decodierbar), mit 360p, 540p, 720p, 1440p und 4K scheitert das Öffnen, und `sceAvcap2ChangeScanInResolution` lehnt ab (`0x81950001`, `0x8195000A`). Der Host beachtet daher nur die Bildrate (bis 30 fps gewünscht: 30 fps); Moonlight skaliert 1080p selbst herunter.
