@@ -83,7 +83,6 @@ kommen die Effekte also an, und zwar in dieser Form. Dass sie aus diesem Feld st
 
 ### Gefolgert, nicht belegt
 
-- **Byte 2–11 = links (L2), 13–22 = rechts (R2):** Das folgt nur aus der Annahme Maskenbit 0 = L2. Die Messung muss es klären.
 - **Der Kernel legt den ioctl-Block unverändert in Feld 5 ab:** Der Kernel ist nicht analysiert.
 - **Was der Kernel bei Maske nur L2 mit dem anderen Trigger tut** (behalten oder nullen): unbekannt.
 
@@ -165,8 +164,8 @@ Format von `ReadHaptic` gelesen. Das bleibt außerhalb von P9.10.
 
 - **Adaptive Trigger: machbar und im Host umgesetzt.** Nutzen nur mit Moonlight PC und DualSense.
 - **Haptik: nicht machbar** ohne eigene Protokollerweiterung.
-- **Offen:** Ob der erste Block L2 und der zweite R2 ist. Das Auto setzt beide gleich. Die Zuordnung folgt aus der Reihenfolge in
-  `libScePad` und Remote Play und passt dazu, dass das Werkzeug nur den zweiten Block setzt; am Controller getrennt gespürt ist sie nicht.
+- **Zuordnung bestätigt:** Der zweite Block ist R2. Mit dem Werkzeug stand im Log nur der zweite Block auf `0x21`, und laut Nutzer wurde
+  nur R2 hart. Der erste Block ist damit L2 (einzeln nicht gemessen, das Auto setzt beide).
 
 ## Umsetzung
 
