@@ -76,8 +76,8 @@ inside the stream; answer it with your Moonlight controller.
 
 ## Troubleshooting
 
-- **Moonlight cannot find the console:** add it by IP. The host answers mDNS discovery queries, but whether a client
-  lists the console on its own also depends on the network and has not been confirmed with a real Moonlight client yet.
+- **Moonlight cannot find the console:** Moonlight normally lists it on its own (mDNS, confirmed on iPhone). If not, for
+  example because the network blocks multicast, add it by IP.
 - **Connection fails or stalls:** make sure nothing blocks TCP 47984, 47989, 48010 and UDP 47998-48000 between the
   client and the console (client or router firewall).
 - **iPhone:** works. An earlier bug (sound but no picture, because the host announced HEVC) is fixed.

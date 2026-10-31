@@ -10,8 +10,7 @@ First release. Tested on PS5 firmware 13.00; other versions are untested.
   a virtual DualSense per Moonlight gamepad.
 - The stream follows the client's frame rate (30 or 60 fps) and bitrate (up to 15 Mbit/s). Other resolutions are
   delivered as 1080p; Moonlight scales them.
-- The host answers mDNS discovery queries. Listing in a real Moonlight client is not confirmed yet; adding the console
-  by IP always works.
+- The console announces itself over mDNS, so Moonlight lists it without entering an address (confirmed on iPhone).
 - Control socket for status and PIN entry, bound to the console itself by default.
 - PS5 app `PPSA47989` for starting and stopping the host, autoload, settings and PIN entry.
 
