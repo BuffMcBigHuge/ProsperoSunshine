@@ -88,7 +88,7 @@ Noch offen:
 3. **Payload-Manager-Fenster:** Ein offenes Fenster des Payload Managers liegt über Apps und nimmt Eingaben an sich, auch wenn es nicht reagiert. In dem Zustand lässt es sich nur am echten Controller schließen. Beim Fernsteuern vorher prüfen.
 4. **Eigene Werkzeuge vom PC:** `PIN`/`QUIT` und `pair.py status` über den Steuer-Socket gehen vom PC aus nur noch mit der leeren Datei `/data/prosperosunshine/control_lan` (danach Host neu starten). Sonst geht der Host-Neustart über die App.
 5. **Store-Installation (P8.9):** Die Installation aus dem ProsperoStore klappt (Nutzerbericht, 2026-10-31).
-6. **Rumble in echten Spielen:** Geprüft ist es nur mit dem Puls der UI-Bibliothek und am Log des Test-Clients, weder mit einem Spiel noch mit einem Controller, der wirklich vibriert. Welche Spiele den klassischen Modus nutzen, ist offen.
+6. **Rumble je Spiel:** Im Nutzertest (2026-10-31) vibrierte der Controller in Moonlight beim Streamen. Welche Spiele den klassischen Modus nutzen und welche nur die Haptik, ist offen.
 7. **PS-Taste abschalten:** `back_button_timeout = -1` ist nur im Code nachgelesen, nicht live geprüft.
 8. **Einmaliger Fehlstart:** Ein Stream direkt nach dem Schließen des ProsperoStore scheiterte (`stream_test` Exit 3: `Failed to establish ENet connection on UDP port 47999`, Fehler 11; im Host-Log `Ping Timeout` und `Initial Ping Timeout`). Der Host blieb betriebsbereit, die Wiederholung lief fehlerfrei. Die Ursache ist nicht geklärt.
 6. **Weiter offen wie bisher:** Ruhemodus (nur mit Rückfrage testen), Android/TV-Clients, andere Firmwares (Checkliste in `docs/firmware-porting.md`), MAC-Adresse 0 (kein Wake-on-LAN).
