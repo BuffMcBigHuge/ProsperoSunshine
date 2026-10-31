@@ -257,8 +257,19 @@ int ps_capture_open(ps_capture **out)
     int (*list)(int32_t *) = (void *)(base + ra_calls.offset[PS_RA_LIST]);
     int32_t active[32] = {0};
     step = "resource list";
-    if (list(active)) goto fail;
-    for (size_t i = 0; i < 32; i++) if (active[i] == RESOURCE) { error = PS_CAPTURE_BUSY; goto fail; }
+    // Right after our own close the arbitrator can list the resource for a moment longer: a reopen failed on that.
+    // Stay well below the 2 s a client waits for the stream.
+    for (int attempt = 0;; attempt++) {
+        if (list(active)) goto fail;
+        int listed = 0;
+        for (size_t i = 0; i < 32; i++) if (active[i] == RESOURCE) listed = 1;
+        if (!listed) {
+            if (attempt) LOG("resource free after %d ms\n", attempt * 20);
+            break;
+        }
+        if (attempt == 40) { error = PS_CAPTURE_BUSY; goto fail; }
+        usleep(20000);
+    }
 
     step = "Avcap2 functions";
 #define SYM(name) kernel_dynlib_dlsym(-1, av, name)

@@ -9,6 +9,7 @@
   still get one right away after packet loss.
 - Opening the capture is repeated for about a second when the service doesn't list the host's resource as active, seen on
   firmware 10.40. If it keeps failing, the diagnostic report lists the active resources. Whether this helps on 10.40 is not known.
+- A stream no longer fails when the capture resource is still listed right after the last session closed it.
 - Docs: the host does give paired clients the console's MAC address. Whether Wake-on-LAN wakes the console is untested.
 
 ## 0.1.3 (2026-10-31)

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-only
-# Starts many short streams in a row, alternating H.264 and HEVC, to catch rare failed starts. Uses the Windows
-# client if it is built (build_windows.sh), so that Docker's network is not a suspect. Stops if someone else is
-# streaming. The log of every failed run stays in out/moonlight/series/.
+# Starts many short streams in a row, alternating H.264 and HEVC, to catch rare failed starts. Stops if someone else
+# is streaming. The log of every failed run stays in out/moonlight/series/.
 #
 #   tools/moonlight/start_series.sh [host] [runs] [seconds]
 set -uo pipefail
@@ -12,8 +11,6 @@ RUNS=${2:-100}
 DUR=${3:-5}
 OUTDIR=out/moonlight/series
 mkdir -p "$OUTDIR"
-NATIVE=0
-[ -f out/moonlight/stream_test.exe ] && NATIVE=1
 # A healthy run delivers at least this many frames; the first ones can come late.
 MIN_FRAMES=$((DUR * 60 * 8 / 10))
 
@@ -27,7 +24,7 @@ for ((run = 1; run <= RUNS; run++)); do
   codec=h264 args="--no-script"
   if ((run % 2 == 0)); then codec=hevc args="--no-script --hevc"; fi
   start=$SECONDS
-  log=$(NATIVE=$NATIVE VIDEO_FORMAT=$codec STREAM_ARGS="$args" bash tools/moonlight/run_smoke.sh "$HOST" "$DUR" 2>&1)
+  log=$(VIDEO_FORMAT=$codec STREAM_ARGS="$args" bash tools/moonlight/run_smoke.sh "$HOST" "$DUR" 2>&1)
   rc=$?
   frames=$(printf '%s\n' "$log" | sed -n 's/^video_frames  *\([0-9]*\).*/\1/p' | head -n 1)
   gaps=$(printf '%s\n' "$log" | sed -n 's/^video_frame_gaps  *\([0-9]*\).*/\1/p' | head -n 1)

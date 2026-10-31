@@ -54,9 +54,9 @@ py -3 tools/moonlight/av_sync.py --kind ps ...                                  
 
 HEVC: `STREAM_ARGS="--hevc" VIDEO_FORMAT=hevc tools/moonlight/run_smoke.sh`. The output file keeps its `.h264` name.
 
-Without Docker: run `bash tools/moonlight/build_windows.sh` once, then `NATIVE=1 bash tools/moonlight/run_smoke.sh ...`.
-The ffmpeg check still runs in the container, `DOCKER_ARGS` and `PRE_CMD` do not apply. Scripts that shape packets inside
-the container, such as `loss_test.sh`, keep using the Linux client.
+Prefer the Windows client: run `bash tools/moonlight/build_windows.sh` once, and `run_smoke.sh` and the scripts on top of it
+use it from then on. The ffmpeg check still runs in the container. Scripts that shape packets inside the container
+(`loss_test.sh`, through `DOCKER_ARGS` and `PRE_CMD`) keep using the Linux client; `NATIVE=0` asks for it elsewhere.
 
 **Limit of this client in Docker:** Docker Desktop's network drops large bursts. Frames above about 70–85 packets arrive
 incomplete, so the stream stalls at bitrates above roughly 30 Mbit/s with motion, although the console sends them

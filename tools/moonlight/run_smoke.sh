@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-only
-# End-to-end smoke test: serverinfo -> /launch (pair.py) -> stream_test in the container
-# -> ffmpeg verification -> /cancel.  The client must already be paired (pair.py pair).
+# End-to-end smoke test: serverinfo -> /launch (pair.py) -> stream_test -> ffmpeg verification -> /cancel.  The client must already be paired (pair.py pair).
 #
 #   tools/moonlight/run_smoke.sh [host] [duration_s] [extra pair.py launch args, e.g. --corever]
 #   STREAM_ARGS="--bitrate 20000" passes extra options to stream_test.
 #   VIDEO_FORMAT=hevc checks the output as HEVC (with STREAM_ARGS="--hevc").
 #   DOCKER_ARGS="--cap-add NET_ADMIN" and PRE_CMD="<shell>" run the client container with extra
 #   rights and a setup command first, e.g. to inject packet loss (see loss_test.sh).
-#   NATIVE=1 runs the Windows client from build_windows.sh instead, without Docker's network in between.
+#   The client is the Windows program from build_windows.sh if it is built, so that Docker's network doesn't falsify the
+#   result, and the one in the container with DOCKER_ARGS or PRE_CMD, or with NATIVE=0.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 HOST=${1:-${PS5_HOST:?pass the console address or set PS5_HOST}}
@@ -23,7 +23,11 @@ mkdir -p "$OUTDIR" out/moonlight-client
 KEEP_TLS=""
 dock() { MSYS_NO_PATHCONV=1 docker run --rm ${DOCKER_ARGS:-} --mount "type=bind,source=$REPO_WIN,target=/repo" "$IMAGE" bash -c "$1"; }
 
-if [ "${NATIVE:-}" = 1 ]; then
+if [ -z "${NATIVE:-}" ]; then
+  NATIVE=0
+  [ -f "$OUTDIR/stream_test.exe" ] && [ -z "${DOCKER_ARGS:-}${PRE_CMD:-}" ] && NATIVE=1
+fi
+if [ "$NATIVE" = 1 ]; then
   [ -f "$OUTDIR/stream_test.exe" ] || { echo "build first: tools/moonlight/build_windows.sh"; exit 2; }
 else
   [ -f "$OUTDIR/stream_test" ] || { echo "build first: tools/moonlight/build.sh"; exit 2; }
@@ -39,7 +43,7 @@ APPVER=$(getj appversion); GFE=$(getj gfe); CODEC=$(getj codec_mode)
 rm -f "$OUTDIR/moonlight-test.h264"
 CLIENT_ARGS="--addr $HOST --rtsp-url '$RTSP' --rikey $RIKEY --rikeyid $RIKEYID --appversion '$APPVER' --gfe '$GFE' --codec-mode $CODEC --out out/moonlight-test.h264 --audio-out out/moonlight-test.s16 --duration $DUR ${STREAM_ARGS:-}"
 run_client() {
-  if [ "${NATIVE:-}" = 1 ]; then
+  if [ "$NATIVE" = 1 ]; then
     eval "MSYS_NO_PATHCONV=1 timeout $((DUR+60)) out/moonlight/stream_test.exe $CLIENT_ARGS"
   else
     dock "cd /repo && ${PRE_CMD:-true} && timeout $((DUR+60)) out/moonlight/stream_test $CLIENT_ARGS"

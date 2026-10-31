@@ -34,11 +34,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File app/build.ps1   # -> build/a
 docker run --rm --mount type=bind,source="$PWD",target=/repo prosperosunshine-app:2 bash app/tests/run.sh
 ```
 
-Stream test against the console, from Git Bash: build the client once with `bash tools/moonlight/build.sh`, then
+Stream test against the console, from Git Bash: build the local client once with `bash tools/moonlight/build_windows.sh`, then
 `STREAM_ARGS="--no-script" [VIDEO_FORMAT=hevc] bash tools/moonlight/run_smoke.sh <console> <seconds>`. `--no-script`
-presses nothing; without it the client presses buttons on the console. For anything about loss or high bitrates, build
-`tools/moonlight/build_windows.sh` once and add `NATIVE=1`: Docker's network drops large bursts. The home screen is too
-quiet to load the encoder; the Mario 64 demo moves without input.
+presses nothing; without it the client presses buttons on the console. Test locally, not in Docker: Docker's network drops
+large bursts and falsifies results. Only `loss_test.sh` needs the container client (`tools/moonlight/build.sh`). The home
+screen is too quiet to load the encoder; the Mario 64 demo moves without input.
 
 Release archive from an existing build: `bash scripts/package.sh [version]` (on the host) -> `dist/`.
 
