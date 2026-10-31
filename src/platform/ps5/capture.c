@@ -11,8 +11,10 @@
 #include <unistd.h>
 #include <ps5/kernel.h>
 
-#define RESOURCE 180
+static _Atomic int resource_id = 180;
+#define RESOURCE atomic_load(&resource_id)
 #define AGAIN ((int)0x81950002)
+#define RESOURCE_NOT_ACTIVE ((int)0x81950008)
 #define LOG(...) ps_diag_log("ProsperoSunshine: capture " __VA_ARGS__)
 typedef int (*load_fn)(const char *, size_t, const void *, uint32_t, void *, int *);
 typedef int (*handle_fn)(intptr_t);
@@ -120,6 +122,17 @@ int ps_capture_set_video_mode(uint32_t resolution, uint32_t timing)
     return 0;
 }
 
+static _Atomic size_t override_field;
+static _Atomic uint32_t override_value;
+
+void ps_capture_set_resource(int id) { atomic_store(&resource_id, id); }
+
+void ps_capture_override_config(size_t field, uint32_t value)
+{
+    atomic_store(&override_value, value);
+    atomic_store(&override_field, field);
+}
+
 static void configure(uint8_t *p, uint32_t mode)
 {
     static const struct { size_t at; uint64_t size; } headers[] = {
@@ -172,6 +185,7 @@ static void configure(uint8_t *p, uint32_t mode)
         u32(p, 0x2c0, 1);
         u32(p, 0x2c4, 0x6e);
     }
+    if (atomic_load(&override_field)) u32(p, atomic_load(&override_field), atomic_load(&override_value));
 }
 
 int ps_capture_close(ps_capture *s)
@@ -308,9 +322,28 @@ int ps_capture_open(ps_capture **out)
         s->has_memory = 1;
     }
     step = "OpenVideo";
-    rc = open_video(&s->handle, config, 0);
+    // The service refuses while it doesn't list our resource as active. Seen on firmware 10.40, which may just need a
+    // moment; stay below the 2 s a client waits for the stream (Initial Ping Timeout).
+    for (int attempt = 0;; attempt++) {
+        rc = open_video(&s->handle, config, 0);
+        if (rc != RESOURCE_NOT_ACTIVE || attempt == 25 || atomic_load(&revoked)) {
+            if (attempt) LOG("OpenVideo repeated %d times\n", attempt);
+            break;
+        }
+        usleep(40000);
+    }
     atomic_store(&last_open_rc, rc);
     LOG("OpenVideo rc=%#x\n", rc);
+    if (rc == RESOURCE_NOT_ACTIVE) {
+        // For the app's report: is our resource listed, and which others are?
+        int32_t now[32] = {0};
+        const int list_rc = list(now);
+        char ids[32 * 12] = "";
+        size_t used = 0;
+        for (size_t i = 0; i < 32; i++)
+            if (now[i]) used += (size_t)snprintf(ids + used, sizeof ids - used, " %d", now[i]);
+        LOG("active resources rc=%#x:%s\n", list_rc, ids);
+    }
     if (rc) goto fail;
     s->opened = 1;
     step = "Start";

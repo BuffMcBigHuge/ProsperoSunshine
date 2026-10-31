@@ -7,6 +7,8 @@
 - HEVC no longer pauses after each key frame. The encoder skipped frames to make up for it: one per second at 15 Mbit/s,
   100 ms per second at 5 Mbit/s. Key frames now come every 10 seconds instead of every second, for both codecs, and clients
   still get one right away after packet loss.
+- Opening the capture is repeated for about a second when the service doesn't list the host's resource as active, seen on
+  firmware 10.40. If it keeps failing, the diagnostic report lists the active resources. Whether this helps on 10.40 is not known.
 - Docs: the host does give paired clients the console's MAC address. Whether Wake-on-LAN wakes the console is untested.
 
 ## 0.1.3 (2026-10-31)

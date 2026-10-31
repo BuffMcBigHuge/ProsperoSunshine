@@ -93,6 +93,8 @@ Live auf der Konsole geprüft mit dem aktuellen Host (Testclient vom PC):
 - **Starts:** 50 Stream-Starts ohne Fehlschlag (unten).
 - **Nicht geprüft:** echte Moonlight-Clients mit diesem Stand.
 
+**Bericht von Firmware 10.40 (Issue 2, 2026-10-31, nicht selbst gemessen):** Host, Pairing und „Start at boot“ laufen laut Bericht, `OpenVideo` scheitert mit `0x81950008`. Der Host wiederholt den Aufruf jetzt und schreibt die aktiven Ressourcen in den Bericht; `open_probe.elf` probiert Varianten durch (`docs/firmware-porting.md`). Auf 13.00 geprüft: Der neue Host öffnet wie bisher und streamt H.264 und HEVC, der Probe läuft durch. Auf 10.40 ist beides ungeprüft.
+
 **Testclient als Windows-Programm (2026-10-31):** `tools/moonlight/build_windows.sh` baut `stream_test.exe`; `NATIVE=1` nutzt es.
 
 - **Docker im Vergleich:** Gleiche Szene (Home-Bildschirm), 20 s, Bitrate-Anforderung 80 Mbit/s (der Host klemmt auf 50). Windows: H.264 1195 und 1196 Frames, HEVC 1180 Frames, jeweils 0 Lücken. Docker: 300 und 224 Frames (H.264), 365 (HEVC), längster Aussetzer bis 3,7 s. Aussagen zu Verlust und hohen Bitraten aus dem Docker-Client gelten also für dessen Netz, nicht für den Host.

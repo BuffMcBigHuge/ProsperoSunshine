@@ -100,6 +100,16 @@ Nur auf einer Konsole mit dieser Firmware, Schritt für Schritt, mit klog:
 Solange Schritte 3 bis 6, 8 und 9 für eine Version nicht belegt sind (Schritt 7 nur für HEVC), gilt sie als nicht unterstützt, auch wenn
 die NID-Suche gelingt.
 
+## `OpenVideo` meldet `0x81950008`
+
+Auf 13.00 heißt das: Der Dienst führt die Ressource aus `cfg+0x28` nicht als aktiv (`docs/re/avcap2-exports.md`, Abschnitt 8.1).
+Der Host wiederholt den Aufruf rund 1 s lang und schreibt danach die Liste der aktiven Ressourcen in `host_diag.log`.
+`out/open_probe.elf` geht weiter: Es probiert die Ressourcen 180, 177, 185, 175 und 182 sowie 180 zusätzlich an `cfg+0x20` und `cfg+0x2c` und
+schreibt ebenfalls nach `host_diag.log`, sodass der Bericht der App das Ergebnis zeigt. Nicht während eines Streams starten.
+
+Ergebnis auf 13.00: Alle fünf Ressourcen öffnen und liefern in 2 s rund 120 Frames. 180 an `cfg+0x20` ergibt `0x81950001`, an `cfg+0x2c` öffnet es
+normal. Der Host lief danach weiter.
+
 ## Berichte von anderen Firmwares
 
 Ohne Konsole mit dieser Firmware ist der Bericht der App der erste Anhaltspunkt: Seite „Diagnostics“, im Netz unter

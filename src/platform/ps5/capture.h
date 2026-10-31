@@ -26,6 +26,10 @@ int ps_capture_hevc_verified(void);
 // Bitrate in the config of the next open, in bit/s. Default 6 Mbit/s and no peak. HEVC needs a peak. Raising
 // the bitrate above this at runtime kills the channel (0x80c78000 on the next read).
 void ps_capture_set_opening_bitrate(uint32_t average, uint32_t peak);
+// Research, for other firmwares: the resource for the next open (default 180), and one more 32-bit config field to
+// write after all others (field 0 = none).
+void ps_capture_set_resource(int id);
+void ps_capture_override_config(size_t field, uint32_t value);
 // Research: raw result of the last sceAvcap2OpenVideo, and sceAvcap2ChangeScanInResolution at runtime.
 int ps_capture_last_open_rc(void);
 int ps_capture_change_scan_in(ps_capture *session, uint32_t resolution);
