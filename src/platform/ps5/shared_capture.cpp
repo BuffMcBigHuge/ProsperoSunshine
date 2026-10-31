@@ -6,6 +6,12 @@ namespace prospero {
 namespace {
 std::mutex registry;
 std::weak_ptr<SharedCapture> current;
+
+// Here and not in the video thread, because audio may open the session first and would then stay silent.
+int open_session(ps_capture **session) {
+    const int rc = ps_capture_open(session);
+    return rc && ps_capture_fall_back_mode() ? ps_capture_open(session) : rc;
+}
 }
 
 std::shared_ptr<SharedCapture> SharedCapture::acquire(int &rc) {
@@ -17,7 +23,7 @@ std::shared_ptr<SharedCapture> SharedCapture::acquire(int &rc) {
         return existing;
     }
     ps_capture *session = nullptr;
-    rc = ps_capture_open(&session);
+    rc = open_session(&session);
     if (rc) return nullptr;
     std::shared_ptr<SharedCapture> created(new SharedCapture(session));
     current = created;
@@ -27,7 +33,7 @@ std::shared_ptr<SharedCapture> SharedCapture::acquire(int &rc) {
 int SharedCapture::reopen() {
     ps_capture_close(session_);  // also closes an audio channel on it
     session_ = nullptr;
-    const int rc = ps_capture_open(&session_);
+    const int rc = open_session(&session_);
     if (rc) {
         session_ = nullptr;
         failed_ = true;

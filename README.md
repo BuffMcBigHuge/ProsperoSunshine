@@ -66,8 +66,11 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
 
 ## Known limits
 
-- SDR only. The stream is always 1080p: the console encoder starts no other resolution, so a client asking for less
-  gets 1080p and scales it. The frame rate follows the client: 30 or 60 fps.
+- SDR only. On firmware 13.00, H.264 streams at 1080p, 1440p or 4K, whichever the client asks for. HEVC, and every other
+  firmware, stays at 1080p, so choose H.264 in Moonlight's settings for more. A client asking for less than 1080p gets 1080p
+  and scales it. The frame rate follows the client: 30 or 60 fps.
+- The console refuses 1440p and 4K capture in some titles (seen in a Mario 64 port; GTA III works). The stream then runs at
+  1080p, also when such a title starts during a stream, and stays there until the next stream.
 - HEVC (8-bit) is offered on firmware 13.00 only, elsewhere H.264. Clients that prefer HEVC pick it on their own. To
   force H.264, choose it in Moonlight's settings or set `hevc_mode = 1` in `sunshine.conf`.
 - The bitrate is capped at 50 Mbit/s.
@@ -77,7 +80,7 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   round, a controller that is already connected and not disconnected (seen with a second virtual pad) keeps the app, and
   only the console's home screen still reacts to Moonlight. If the stream controller does nothing in an app, turn the
   other controller off.
-- No HDR, AV1, 4K, mouse, keyboard, touch or microphone.
+- No HDR, AV1, mouse, keyboard, touch or microphone.
 - Rumble is the classic two-motor kind only. Games that drive the DualSense's haptics send nothing to your controller.
   Whether your device vibrates also depends on the Moonlight client.
 - Rest mode is young. The host starts its services again after waking, which worked in two tests on the home screen, with no

@@ -37,7 +37,8 @@ Das Ressourcen-Profil ist nicht die Ursache: 175, 177, 180, 182 und 185 scheiter
 
 * **Bitrate nur senken:** `SetVideoBitrate` über den Wert beim Öffnen hinaus tötet den Kanal, das nächste `ReadVideo2`
   liefert `0x80c78000`. Gemessen: 20 → 40 Mbit/s bricht ab; 30 → 10 → 30 Mbit/s läuft durch.
-* **1440p und 4K:** Schon die Speicher-Reservierung scheitert mit `0x81950003`. Mit H.264 scheitert das Öffnen dort ebenfalls.
+* **1440p und 4K:** Schon die Speicher-Reservierung scheitert mit `0x81950003`, auf allen getesteten RA-Profilen (180, 177, 185, 175, 182).
+  H.264 öffnet dort mit den Profilen 177 und 182, nicht mit denen für 2K (`docs/re/avcap2-exports.md`, Abschnitt 8.1).
 * **Last nur begrenzt gemessen:** Getestet mit dem Home-Bildschirm und der Demo von Mario 64. Mario erzeugte bei 100 Mbit/s
   nur rund 33 Mbit/s. Ob der Encoder 100 Mbit/s in einem aufwendigen Spiel hält, ist offen; der Host klemmt daher auf 50 Mbit/s.
 

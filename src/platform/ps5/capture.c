@@ -11,8 +11,8 @@
 #include <unistd.h>
 #include <ps5/kernel.h>
 
-static _Atomic int resource_id = 180;
-#define RESOURCE atomic_load(&resource_id)
+// The resource the next open asks for, and the one of the session opened last, which events and the config refer to.
+static _Atomic int resource_id = 180, session_resource = 180;
 #define AGAIN ((int)0x81950002)
 #define RESOURCE_NOT_ACTIVE ((int)0x81950008)
 #define LOG(...) ps_diag_log("ProsperoSunshine: capture " __VA_ARGS__)
@@ -22,6 +22,7 @@ typedef int (*handle_fn)(intptr_t);
 struct ps_capture {
     intptr_t handle;
     int registered, requested, initialized, opened, started;
+    int resource;  // close and audio must use what this session registered, whatever is set for the next open
     int (*unregister)(int);
     int (*request)(int, const char *, void *, int);
     int (*terminate)(void);
@@ -50,10 +51,14 @@ struct ps_capture {
 static atomic_flag owned = ATOMIC_FLAG_INIT;
 static atomic_int granted;
 static atomic_int revoked;
+static atomic_int refused;
 static int resource_event(int id, int event, const uint8_t *data)
 {
-    if (id == RESOURCE && event == 1 && data) atomic_store(&granted, data[0] == 1);
-    if (id == RESOURCE && event == 2) {
+    if (id == atomic_load(&session_resource) && event == 1 && data) {
+        atomic_store(&granted, data[0] == 1);
+        if (data[0] != 1) atomic_store(&refused, 1);
+    }
+    if (id == atomic_load(&session_resource) && event == 2) {
         atomic_store(&revoked, 1);
         atomic_store(&granted, 0);
     }
@@ -98,6 +103,8 @@ int ps_capture_last_open_rc(void) { return atomic_load(&last_open_rc); }
 
 int ps_capture_hevc_verified(void) { return (kernel_get_fw_version() & 0xffff0000u) == 0x13000000u; }
 
+int ps_capture_large_modes_verified(void) { return (kernel_get_fw_version() & 0xffff0000u) == 0x13000000u; }
+
 static void mode_snapshot(uint32_t mode[5])
 {
     mode[0] = atomic_load(&video_resolution);
@@ -119,7 +126,18 @@ int ps_capture_set_video_mode(uint32_t resolution, uint32_t timing)
     if (resolution < 1 || resolution > 6 || timing > 1) return PS_CAPTURE_ERROR;
     atomic_store(&video_resolution, resolution);
     atomic_store(&video_timing, timing);
+    // Profile 180 grants scanin[2K], 182 scanin[4K] and more of the encoder (docs/re/avcap2-exports.md).
+    atomic_store(&resource_id, resolution >= 5 ? 182 : 180);
     return 0;
+}
+
+uint32_t ps_capture_video_resolution(void) { return atomic_load(&video_resolution); }
+
+int ps_capture_fall_back_mode(void)
+{
+    if (!atomic_load(&refused) || atomic_load(&video_resolution) < 5) return 0;
+    ps_capture_set_video_mode(4, atomic_load(&video_timing));
+    return 1;
 }
 
 static _Atomic size_t override_field;
@@ -148,7 +166,7 @@ static void configure(uint8_t *p, uint32_t mode)
     u32(p, 0x18, atomic_load(&video_resolution));
     u32(p, 0x1c, atomic_load(&video_timing));
     u32(p, 0x24, atomic_load(&video_codec));
-    u32(p, 0x28, RESOURCE);
+    u32(p, 0x28, atomic_load(&session_resource));
     const uint64_t peak = atomic_load(&opening_peak), fps = atomic_load(&video_timing) ? 60 : 30;
     // Frames between periodic IDRs. Clients ask for one after a loss, so these are only a safety net, and each one
     // costs bits and, with HEVC, skipped frames (docs/re/hevc.md).
@@ -200,10 +218,10 @@ int ps_capture_close(ps_capture *s)
     CLEANUP(s->opened, s->close(s->handle), "Close");
     CLEANUP(s->has_memory, s->free_memory(s->memory, s->memory + 0x20), "free encoder memory");
     CLEANUP(s->initialized, s->terminate(), "Terminate");
-    CLEANUP(s->requested, s->request(RESOURCE, "STOP", NULL, getpid()), "STOP");
+    CLEANUP(s->requested, s->request(s->resource, "STOP", NULL, getpid()), "STOP");
     int unregistered = 1;
     if (s->registered) {
-        rc = s->unregister(RESOURCE);
+        rc = s->unregister(s->resource);
         LOG("unregister rc=%#x\n", rc);
         if (rc) { failed = 1; unregistered = 0; }
     }
@@ -224,10 +242,13 @@ int ps_capture_open(ps_capture **out)
     if (!s) { atomic_flag_clear(&owned); return PS_CAPTURE_ERROR; }
     // The app's report tells from "open start", "open ok" and "open failed" how this attempt ended, also
     // when a step takes the process down (no outcome line then).
-    LOG("open start codec=%u\n", atomic_load(&video_codec));
+    LOG("open start codec=%u resource=%d\n", atomic_load(&video_codec), atomic_load(&resource_id));
+    s->resource = atomic_load(&resource_id);
+    atomic_store(&session_resource, s->resource);
     const char *step = "system modules";
     atomic_store(&granted, 0);
     atomic_store(&revoked, 0);
+    atomic_store(&refused, 0);
     int error = PS_CAPTURE_ERROR;
     load_fn load = NULL;
     const char *kernels[] = {"libkernel_web.sprx", "libkernel_sys.sprx", "libkernel.sprx"};
@@ -262,7 +283,7 @@ int ps_capture_open(ps_capture **out)
     for (int attempt = 0;; attempt++) {
         if (list(active)) goto fail;
         int listed = 0;
-        for (size_t i = 0; i < 32; i++) if (active[i] == RESOURCE) listed = 1;
+        for (size_t i = 0; i < 32; i++) if (active[i] == s->resource) listed = 1;
         if (!listed) {
             if (attempt) LOG("resource free after %d ms\n", attempt * 20);
             break;
@@ -291,16 +312,16 @@ int ps_capture_open(ps_capture **out)
     if (!init || !mode || !open_video || !start || !s->terminate || !s->stop || !s->close || !s->headers || !s->read)
         goto fail;
     step = "register";
-    int rc = reg(RESOURCE, (void *)resource_event, NULL);
+    int rc = reg(s->resource, (void *)resource_event, NULL);
     LOG("register rc=%#x\n", rc);
     if (rc) goto fail;
     s->registered = 1;
     s->requested = 1; // STOP is attempted even if the RUNNING request reports failure.
     step = "RUNNING";
-    rc = s->request(RESOURCE, "RUNNING", NULL, getpid());
+    rc = s->request(s->resource, "RUNNING", NULL, getpid());
     LOG("RUNNING rc=%#x\n", rc);
     if (rc < 0) goto fail;
-    for (int i = 0; i < 200 && !atomic_load(&granted) && !atomic_load(&revoked); i++) usleep(10000);
+    for (int i = 0; i < 200 && !atomic_load(&granted) && !atomic_load(&revoked) && !atomic_load(&refused); i++) usleep(10000);
     if (!atomic_load(&granted) || atomic_load(&revoked)) goto fail;
     step = "Initialize";
     rc = init();
@@ -453,7 +474,7 @@ int ps_capture_audio_open(ps_capture *s, uint32_t encoder, uint32_t bitrate, uin
 {
     // cfg+0x1C is the ResourceArbitrator id the server checks against the active list, like
     // OpenVideo's cfg+0x28 (docs/re/avcap2-exports.md, R2-Nachtrag).
-    return ps_capture_audio_open_ex(s, encoder, bitrate, frame_index, 2, RESOURCE, 0);
+    return ps_capture_audio_open_ex(s, encoder, bitrate, frame_index, 2, s ? (uint32_t)s->resource : 0, 0);
 }
 
 int ps_capture_audio_open_ex(ps_capture *s, uint32_t encoder, uint32_t bitrate, uint32_t frame_index,

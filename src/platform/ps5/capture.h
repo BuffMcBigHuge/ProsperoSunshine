@@ -23,11 +23,17 @@ int ps_capture_set_video_mode(uint32_t resolution, uint32_t timing);
 int ps_capture_set_codec(uint32_t codec);
 // Whether HEVC was verified on this firmware.
 int ps_capture_hevc_verified(void);
+// Whether H.264 at 1440p and 2160p was verified on this firmware.
+int ps_capture_large_modes_verified(void);
+// The resolution set for the next open. After the system refused the last open of a mode above 1080p (seen in a title,
+// the arbitrator logs "4K NG(4K120)"), ps_capture_fall_back_mode sets 1080p and returns 1; otherwise it changes nothing.
+uint32_t ps_capture_video_resolution(void);
+int ps_capture_fall_back_mode(void);
 // Bitrate in the config of the next open, in bit/s. Default 6 Mbit/s and no peak. HEVC needs a peak. Raising
 // the bitrate above this at runtime kills the channel (0x80c78000 on the next read).
 void ps_capture_set_opening_bitrate(uint32_t average, uint32_t peak);
-// Research, for other firmwares: the resource for the next open (default 180), and one more 32-bit config field to
-// write after all others (field 0 = none).
+// Research, for other firmwares: the resource for the next open (ps_capture_set_video_mode sets the default for the
+// mode, so call this after it), and one more 32-bit config field to write after all others (field 0 = none).
 void ps_capture_set_resource(int id);
 void ps_capture_override_config(size_t field, uint32_t value);
 // Research: raw result of the last sceAvcap2OpenVideo, and sceAvcap2ChangeScanInResolution at runtime.
