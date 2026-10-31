@@ -62,7 +62,7 @@ std::string get_mac_address(const std::string_view &address) {
         mac = buf;
     }
     freeifaddrs(list);
-    // The payload's getifaddrs reports no AF_LINK entries; ask the network library instead.
+    // Without a match above, for example on an address the client reached through a proxy, ask the network library.
     if (mac == "00:00:00:00:00:00") {
         uint8_t b[6] = {};
         if (sceNetGetMacAddress(b, 0) == 0) {

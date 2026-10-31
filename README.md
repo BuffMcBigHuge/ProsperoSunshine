@@ -85,7 +85,8 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   the power button; the cause is unknown. To be safe, turn the console off instead.
 - Adaptive triggers work with Moonlight on a PC and a DualSense; other clients ignore them. Only Teardown has been tested. If a stream
   ends during an effect, the trigger stays stiff until you connect again, because Moonlight doesn't reset it.
-- No Wake-on-LAN (the console MAC address is not available to the host).
+- Wake-on-LAN is untested. The host gives paired clients the console's MAC address, but whether the console wakes from
+  rest mode on the packet Moonlight sends is not known.
 - Starting or quitting a game briefly takes the capture resource away: video and audio pause for about 2 seconds
   and then resume on their own.
 - After a hard network drop, held controller input is released after about 2 seconds.

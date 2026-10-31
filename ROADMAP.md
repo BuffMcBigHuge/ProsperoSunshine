@@ -242,7 +242,7 @@ Offen, in dieser Reihenfolge, jeweils mit eigenem Spike: weitere Firmware-Versio
 | Meilenstein | Ziel | Fertig, wenn | Abhängig von |
 | --- | --- | --- | --- |
 | 0.2 Mehr Konsolen | Andere Firmwares, zuerst 10.40 und 13.60 aus den Issues | Mindestens eine weitere Firmware besteht die Checkliste in `docs/firmware-porting.md` | Diagnoseberichten und Testern; hier läuft nur 13.00 |
-| 0.3 Alltagstauglich | Der Host läuft zuverlässig, ohne Pflege | Ruhemodus mit Controller, offenem Spiel und laufendem Stream geprüft; Android und TV geprüft; Wake-on-LAN (MAC bisher 0); Fehlstarts geklärt, Testclient außerhalb von Docker; Dauertest über mehrere Stunden im Spiel; mehrere Controller im Spiel geprüft | Teils Nutzertests |
+| 0.3 Alltagstauglich | Der Host läuft zuverlässig, ohne Pflege | Ruhemodus mit Controller, offenem Spiel und laufendem Stream geprüft; Android und TV geprüft; Wake-on-LAN geprüft (die MAC kommt beim Client an); Fehlstarts geklärt, Testclient außerhalb von Docker; Dauertest über mehrere Stunden im Spiel; mehrere Controller im Spiel geprüft | Teils Nutzertests |
 | 0.4 Mehr Bild | 1440p, 4K, HDR | Mindestens eines davon stabil im Stream, oder belegt, warum nicht | Reverse Engineering, Ausgang offen; zuerst ein kurzer Spike |
 | 1.0 Stabil | Klare Zusage, was unterstützt ist | Liste geprüfter Firmwares und Clients; mehrstündige Sitzung in mindestens zwei Spielen ohne Ausfall; Ruhemodus belegt oder klar ausgeschlossen; Neuinstallation aus dem Store nach Anleitung, von jemandem ohne Vorwissen | Den Meilensteinen davor |
 

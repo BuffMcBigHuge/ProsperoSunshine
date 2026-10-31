@@ -332,7 +332,7 @@ def cmd_info(a):
     root = parse_xml(body)
     info = {c.tag: c.text for c in root}
     for k in ("hostname", "appversion", "GfeVersion", "ServerCodecModeSupport", "PairStatus",
-              "currentgame", "state", "uniqueid"):
+              "currentgame", "state", "uniqueid", "mac"):
         log("  %s = %s" % (k, info.get(k)))
     status, body = host.https_get(ident, "/applist", base_params(ident))
     log("GET https://%s:%d/applist -> HTTP %d" % (a.host, host.https_port, status))
