@@ -11,6 +11,8 @@ extern "C" {
 // Starts the file at `path` with `header` as its first line. Without this call (the probes) lines go
 // to the kernel log only.
 void ps_diag_open(const char *path, const char *header);
+// Opens the file again without emptying it; after rest mode the old descriptor takes no more lines.
+void ps_diag_reopen(void);
 void ps_diag_log(const char *format, ...) __attribute__((format(printf, 1, 2)));
 
 #ifdef __cplusplus

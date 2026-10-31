@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.3 (2026-10-31)
 
 ### Added
 
@@ -12,6 +12,12 @@
 - The host writes its steps to `/data/prosperosunshine/host_diag.log`, which survives a crash.
 - Adaptive triggers: effects a game sends reach a DualSense on Moonlight for PC. Other clients ignore them. If a stream
   ends during an effect, the trigger stays stiff until the next connection, because Moonlight doesn't reset it.
+
+### Changed
+
+- After rest mode the host starts its services again by itself instead of staying unreachable. This worked in two tests on
+  the home screen, with no game open and no stream running. An earlier test without this ended in a hung console, for
+  an unknown reason, so to be safe, turn the console off instead.
 
 ### Fixed
 

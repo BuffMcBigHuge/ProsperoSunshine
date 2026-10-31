@@ -24,6 +24,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1   # host +
 docker run --rm --mount type=bind,source="$PWD",target=/repo prosperosunshine-sdk:v0.45 bash scripts/test.sh
 ```
 
+The app and its tests (the app bundles `out/prospero_sunshine.elf`, so build the host first):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File app/build.ps1   # -> build/app/PPSA47989 and .zip
+```
+
+```sh
+docker run --rm --mount type=bind,source="$PWD",target=/repo prosperosunshine-app:2 bash app/tests/run.sh
+```
+
+Stream test against the console, from Git Bash: build the client once with `bash tools/moonlight/build.sh`, then
+`STREAM_ARGS="--no-script" [VIDEO_FORMAT=hevc] bash tools/moonlight/run_smoke.sh <console> <seconds>`. `--no-script`
+presses nothing; without it the client presses buttons on the console.
+
 Release archive from an existing build: `bash scripts/package.sh [version]` (on the host) -> `dist/`.
 
 Toolchain: PS5 Payload SDK v0.45 in the Docker image `prosperosunshine-sdk:v0.45` (clang 18, target
@@ -38,7 +52,23 @@ Toolchain: PS5 Payload SDK v0.45 in the Docker image `prosperosunshine-sdk:v0.45
 - New or changed third-party sources: pin them in `deps.lock` (SHA256), patch via `patches/<dep>/`.
 - `STATUS.md` records only what was verified live, with how it was measured. Plans go in `ROADMAP.md`.
 - Commit only when asked; never push without being asked.
-- Do not test rest mode on the console without asking first (risk to the homebrew environment).
+- Do not test rest mode on the console without asking first (risk to the homebrew environment). One test
+  ended in a hung console that had to be switched off at the power button. Close all games first.
+- Publishing (push, GitHub release, store catalog PR, issue comments) needs the owner's OK each time. No
+  attribution lines for agents in commits or PRs.
+- Don't accept terms or EULAs for the owner. Don't save games.
+
+## Releasing
+
+1. Set the version in `CMakeLists.txt` (`PROJECT_VERSION`, `PROJECT_VERSION_PATCH`), `contentVersion` in
+   `app/sce_sys/param.json` (must rise, format `01.000.004`), the status line in `README.md` and `CHANGELOG.md`.
+2. Build host and app, run both test suites, `scripts/package.sh <version>`. Check `SHA256SUMS` and grep the ELF
+   for private strings (`10.0.0.0/8` in there is Sunshine's own LAN range).
+3. Install the build on the console, re-register the app (below), restart the host, stream H.264 and HEVC.
+4. Push, wait for CI, then `gh release create v<version> build/app/PPSA47989.zip dist/prosperosunshine-<version>.tar.gz`
+   with `--target <full SHA>` (a short SHA fails with HTTP 422).
+5. Catalog: a PR to `darkxex/ps5-homebrew-catalog` updating `apps/PPSA47989.json` (`version`, `artifact_url`, `sha256`,
+   `icon_url`) from a fork branch. The store API at `/api/v1/apps/PPSA47989.json` shows when it is live.
 
 ## Working on the console
 
@@ -47,6 +77,18 @@ Toolchain: PS5 Payload SDK v0.45 in the Docker image `prosperosunshine-sdk:v0.45
   `STATUS`, `PAIRINGS`, `PIN [<id>] <pin> [name]`, `REPORT`, `AUTOLOAD [ON|OFF]`, `RELISTEN`, `QUIT` (one client at a time). `REPORT` makes the
   host answer on TCP 47996 for some seconds with `diagnostics.txt` (a title may not listen on the network).
   `RELISTEN` starts the host's services anew as after rest mode took its ports; `out/relisten_probe.elf` sends it.
+- Before touching the console, check `http://<console>:47989/serverinfo`: go on only at `SUNSHINE_SERVER_FREE`, someone may
+  be streaming. Don't take screenshots during a stream.
+- Logs: `sunshine.log` (older ones `.1`, `.2`, ...; `min_log_level = debug` in `sunshine.conf` also logs motors, light bar
+  and trigger blocks), and `host_diag.log`, which the app's diagnostic report reads. The host reads `sunshine.conf` at
+  start; to restart it, use "Restart host" in the app.
+- Key presses from a tool add a virtual controller next to the host's pad, and it stays. Remove it afterwards, or the
+  owner's input in a game may not work. After waking from rest mode the console waits on "Press the PS button" and the
+  user selection.
+- Rest mode closes the host's listening sockets and stops its log files; `wait_or_ports_lost` in `main_ps5.cpp` notices
+  refused ports and starts the services anew in the same process.
+- Whether a game sends trigger effects: only some do (Teardown yes, GTA III not in the sessions measured), and only Moonlight
+  for PC passes them to a DualSense. See `docs/re/adaptive-triggers.md`.
 - Autoload through the Payload Manager: `/data/pldmgr/autoload.txt`, slot `local/prospero-sunshine`.
 - The app is installed at `/data/homebrew/PPSA47989`. A ShadowMountPlus scan does **not** pick up changes to
   `sce_sys` (param.json, icon, background) of an already registered title. Re-register it:

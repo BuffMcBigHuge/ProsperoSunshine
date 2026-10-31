@@ -144,6 +144,10 @@ int main(int argc, char *argv[]) {
 
         again = wait_or_ports_lost(shutdown_event, ports, control);
         if (again) {
+            // The log files stop taking lines after rest mode; the old sunshine.log stays as its rotated copy.
+            ps_diag_reopen();
+            log_guard.reset();
+            log_guard = logging::init(config::sunshine.min_log_level, config::sunshine.log_file);
             ps_diag_log("ProsperoSunshine: host starting the services anew\n");
             BOOST_LOG(warning) << "Starting the services anew"sv;
             shutdown_event->raise(true);

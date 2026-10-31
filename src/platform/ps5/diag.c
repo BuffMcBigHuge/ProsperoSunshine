@@ -15,6 +15,7 @@ static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static int fd = -1;
 static size_t written;
 static char first_line[256];
+static char file_path[256];
 
 static void append(const char *line, size_t length)
 {
@@ -33,11 +34,22 @@ void ps_diag_open(const char *path, const char *header)
 {
     pthread_mutex_lock(&lock);
     fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND, 0666);
+    snprintf(file_path, sizeof file_path, "%s", path);
     written = 0;
     snprintf(first_line, sizeof first_line, "%s\n", header);
     append(first_line, strlen(first_line));
     pthread_mutex_unlock(&lock);
     klog_printf("%s\n", header);
+}
+
+void ps_diag_reopen(void)
+{
+    pthread_mutex_lock(&lock);
+    if (fd >= 0) close(fd);
+    fd = open(file_path, O_WRONLY | O_CREAT | O_APPEND, 0666);
+    const off_t size = fd < 0 ? 0 : lseek(fd, 0, SEEK_END);
+    written = size > 0 ? (size_t)size : 0;
+    pthread_mutex_unlock(&lock);
 }
 
 void ps_diag_log(const char *format, ...)
