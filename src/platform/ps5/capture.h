@@ -21,16 +21,20 @@ enum ps_capture_error {
 int ps_capture_set_video_mode(uint32_t resolution, uint32_t timing);
 // Codec for the next ps_capture_open: 0 = H.264 (default), 1 = HEVC.
 int ps_capture_set_codec(uint32_t codec);
-// HEVC only: bitrate in the config of the next open, in bit/s. Raising it above this at runtime kills the
-// channel (0x80c78000 on the next read). Default 6 / 6.6 Mbit/s.
-void ps_capture_set_hevc_bitrate(uint32_t average, uint32_t peak);
+// Whether HEVC was verified on this firmware.
+int ps_capture_hevc_verified(void);
+// Bitrate in the config of the next open, in bit/s. Default 6 Mbit/s and no peak. HEVC needs a peak. Raising
+// the bitrate above this at runtime kills the channel (0x80c78000 on the next read).
+void ps_capture_set_opening_bitrate(uint32_t average, uint32_t peak);
 // Research: raw result of the last sceAvcap2OpenVideo, and sceAvcap2ChangeScanInResolution at runtime.
 int ps_capture_last_open_rc(void);
 int ps_capture_change_scan_in(ps_capture *session, uint32_t resolution);
 // One session per process. Measured FW 13.00 / AVC / SDR configuration.
 // On failure *out is NULL and any acquired resources have had cleanup attempted.
 int ps_capture_open(ps_capture **out);
-// Annex-B parameter sets; returns bytes written or a negative error.
+// Whether the session was opened with the mode set now. NULL counts as not current.
+int ps_capture_mode_current(const ps_capture *session);
+// Annex-B parameter sets, for HEVC in the order VPS, SPS, PPS; returns bytes written or a negative error.
 int ps_capture_headers(ps_capture *session, void *destination, size_t capacity);
 // Nonblocking: >0 encoded bytes, 0 means try again, <0 error/revocation.
 // Descriptor bytes are copied unchanged; their timestamp fields remain unverified.

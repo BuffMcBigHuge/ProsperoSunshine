@@ -12,10 +12,8 @@ std::shared_ptr<SharedCapture> SharedCapture::acquire(int &rc) {
     std::lock_guard lock(registry);
     rc = 0;
     if (auto existing = current.lock()) {
-        if (existing->failed_) {
-            std::unique_lock session_lock(existing->mutex_);
-            if (existing->failed_ && (rc = existing->reopen())) return nullptr;
-        }
+        std::unique_lock session_lock(existing->mutex_);
+        if ((existing->failed_ || !ps_capture_mode_current(existing->session_)) && (rc = existing->reopen())) return nullptr;
         return existing;
     }
     ps_capture *session = nullptr;
@@ -32,6 +30,7 @@ int SharedCapture::reopen() {
     const int rc = ps_capture_open(&session_);
     if (rc) {
         session_ = nullptr;
+        failed_ = true;
         return rc;
     }
     failed_ = false;

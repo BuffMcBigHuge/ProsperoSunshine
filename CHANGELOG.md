@@ -6,6 +6,12 @@
 
 - Rumble: classic two-motor vibration from the console reaches the Moonlight client, including short pulses.
 - Light bar: the colour a title sets on the controller reaches the Moonlight client.
+- HEVC (8-bit, firmware 13.00): clients that support it can stream HEVC. `hevc_mode = 1` in `sunshine.conf` turns it off.
+
+### Changed
+
+- Bitrate cap raised from 15 to 50 Mbit/s, for H.264 too. The encoder now opens at the client's bitrate instead of being
+  raised afterwards, which is what stopped it above 15 Mbit/s.
 
 ## 0.1.1 (2026-10-31)
 

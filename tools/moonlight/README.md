@@ -50,6 +50,12 @@ py -3 tools/moonlight/av_sync.py --analyze-only                                 
 py -3 tools/moonlight/av_sync.py --kind ps ...                                     # PS button (control centre) instead of D-pad
 ```
 
+HEVC: `STREAM_ARGS="--hevc" VIDEO_FORMAT=hevc tools/moonlight/run_smoke.sh`. The output file keeps its `.h264` name.
+
+**Limit of this client in Docker:** Docker Desktop's network drops large bursts. Frames above about 70–85 packets arrive
+incomplete, so the stream stalls at bitrates above roughly 30 Mbit/s with motion, although the console sends them
+correctly. `udp_burst.py` measures it against `udp_burst_spike.elf`; run it natively and in the container to compare.
+
 `stream_test` gained `--ui-ticks N [--tick-interval-ms 1500] [--tick-hold-ms 120] [--tick-kind dpad|ps|back] [--tick-seq left,cross,...] [--tick-start S] [--no-script]` and
 `--timing-log <csv>`. Without them nothing changes. The log has one line per received video frame
 (`V,frame,idr,arrival_us,presentationTimeUs,bytes`), audio packet (`A,index,arrival_us,rms,peak`) and press

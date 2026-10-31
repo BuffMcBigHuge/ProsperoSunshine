@@ -6,6 +6,7 @@ namespace prospero {
 namespace {
 class Ps5CaptureBackend final : public CaptureBackend {
 public:
+    explicit Ps5CaptureBackend(Codec codec) : codec_(codec) {}
     int open() override {
         int rc = 0;
         shared_ = SharedCapture::acquire(rc);
@@ -14,9 +15,11 @@ public:
     int headers(void *destination, size_t capacity) override {
         return shared_->with_session([&](ps_capture *s) { return ps_capture_headers(s, destination, capacity); });
     }
-    int read(void *destination, size_t capacity, uint8_t descriptor[0x70]) override {
-        const int rc = shared_->with_session(
-            [&](ps_capture *s) { return ps_capture_read(s, destination, capacity, descriptor); });
+    int read(void *destination, size_t capacity, uint8_t descriptor[0x88]) override {
+        const int rc = shared_->with_session([&](ps_capture *s) {
+            return codec_ == Codec::hevc ? ps_capture_read2(s, destination, capacity, descriptor)
+                                         : ps_capture_read(s, destination, capacity, descriptor);
+        });
         // Lost resource or a dead channel: the next open() reopens the shared session.
         if (rc < 0) shared_->mark_failed();
         return rc;
@@ -34,9 +37,12 @@ public:
     }
 
 private:
+    Codec codec_;
     std::shared_ptr<SharedCapture> shared_;
 };
 }
 
-std::unique_ptr<CaptureBackend> make_ps5_capture_backend() { return std::make_unique<Ps5CaptureBackend>(); }
+std::unique_ptr<CaptureBackend> make_ps5_capture_backend(Codec codec) {
+    return std::make_unique<Ps5CaptureBackend>(codec);
+}
 }

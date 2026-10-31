@@ -1,10 +1,10 @@
 # HEVC über Avcap2 (P9.7)
 
-Stand 2026-10-31, Firmware 13.00. `src/hevc_spike.cpp` ist der Spike; die Messwerte stehen in `STATUS.md`.
+Stand 2026-10-31, Firmware 13.00. `src/hevc_spike.cpp` ist der Spike, der Host nutzt den Weg über `video_ps5.cpp`; die Messwerte stehen in `STATUS.md`.
 
 ## Ergebnis
 
-Avcap2 liefert HEVC Main (8 Bit, 4:2:0, Level 5.0, BT.709, nur I- und P-Bilder) in 1080p60. Der Host nutzt es noch nicht.
+Avcap2 liefert HEVC Main (8 Bit, 4:2:0, Level 5.0, BT.709, nur I- und P-Bilder) in 1080p mit 30 und 60 fps. Der Host bietet es auf Firmware 13.00 an (`ps_capture_hevc_verified`), auf anderen nur H.264.
 
 ## Was nötig war
 
@@ -27,9 +27,10 @@ Das Ressourcen-Profil ist nicht die Ursache: 175, 177, 180, 182 und 185 scheiter
 
 * Lesen geht nur mit `sceAvcap2ReadVideo2`; `sceAvcap2ReadVideo` ist AVC-only. Im Descriptor (0x88 Byte) gemessen: `+0x2c`
   Bildtyp (1 = IDR, 3 = P), `+0x30` Bildnummer ab 1, `+0x38`/`+0x40` Sekunden/Nanosekunden, `+0x4c`/`+0x50` Breite/Höhe,
-  `+0x6c` Bytes des Bildes.
+  `+0x58` TSC-Stempel (beim alten `ReadVideo` `+0x48`), `+0x6c` Bytes des Bildes.
 * `sceAvcap2GetNonVclNalUnitStream` liefert die Parameter in der Reihenfolge **SPS, PPS, VPS** (53, 11 und 28 Byte,
-  inklusive Startcode). `ffmpeg` decodiert erst, wenn das VPS vorn steht. Der Host muss sie also umsortieren.
+  inklusive Startcode). `ffmpeg` decodiert erst, wenn das VPS vorn steht, und `moonlight-common-c` erkennt daran den
+  Anfang eines IDR. `ps_capture_headers` sortiert sie um.
 * IDR-Bilder (NAL-Typ 20) tragen keine Parameter-Sets. Eine `RequestKeyFrame`-Anforderung ergab teils zwei IDR hintereinander.
 
 ## Grenzen
@@ -37,8 +38,14 @@ Das Ressourcen-Profil ist nicht die Ursache: 175, 177, 180, 182 und 185 scheiter
 * **Bitrate nur senken:** `SetVideoBitrate` über den Wert beim Öffnen hinaus tötet den Kanal, das nächste `ReadVideo2`
   liefert `0x80c78000`. Gemessen: 20 → 40 Mbit/s bricht ab; 30 → 10 → 30 Mbit/s läuft durch.
 * **1440p und 4K:** Schon die Speicher-Reservierung scheitert mit `0x81950003`. Mit H.264 scheitert das Öffnen dort ebenfalls.
-* **Unter Last nicht gemessen:** Alle Läufe zeigten den Home-Bildschirm mit wenig Bewegung (3 s bis 1,3 MB). Dass 100 Mbit/s
-  öffnen, sagt nichts darüber, ob der Encoder sie in einem Spiel hält.
+* **Last nur begrenzt gemessen:** Getestet mit dem Home-Bildschirm und der Demo von Mario 64. Mario erzeugte bei 100 Mbit/s
+  nur rund 33 Mbit/s. Ob der Encoder 100 Mbit/s in einem aufwendigen Spiel hält, ist offen; der Host klemmt daher auf 50 Mbit/s.
+
+## H.264
+
+Das Öffnen mit der Bitrate in `cfg+0xc8/0xcc/0xd0` hilft auch H.264: 20, 30 und 50 Mbit/s liefen im Spike ohne Fehler, während
+`SetVideoBitrate` ab 16 Mbit/s den Encoder stoppte. Für H.264 reichen diese drei Felder, Speicher-Reservierung und die übrigen
+Felder braucht es nicht. Der Host öffnet daher beide Codecs so und ruft `SetVideoBitrate` nicht mehr auf.
 
 ## `AvActivation`
 

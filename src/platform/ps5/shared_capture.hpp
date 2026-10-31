@@ -16,7 +16,8 @@ namespace prospero {
 class SharedCapture {
 public:
     // Returns the open session, opening or reopening it if needed; on failure null and rc holds
-    // the error.
+    // the error. Audio usually gets here first, so a session whose mode differs from what was set
+    // since (codec, bitrate, frame rate) is reopened; audio follows through generation().
     static std::shared_ptr<SharedCapture> acquire(int &rc);
     ~SharedCapture();
     SharedCapture(const SharedCapture &) = delete;

@@ -28,7 +28,7 @@ Echte Moonlight-Clients (Moonlight Web, Moonlight PC, Moonlight auf dem iPhone i
 | P0.7 | ADR-001 festgeschrieben | `docs/adr/001-sunshine-port.md` |
 | R1 | `sceAvcap2RequestKeyFrame`: IDR nach 2–3 Frames (8/8); im Stream nach ~50 ms | `src/avcap_spike.cpp` |
 | R2 | Spielton über `sceAvcap2OpenAudio` (cfg+0x1C = RA-Id 180): PCM float32 Stereo 48 kHz, 1024 Frames/Paket; auch Opus 10/20 ms möglich | `src/audio_spike.cpp`, `docs/re/avcap2-exports.md` |
-| R3 | `sceAvcap2SetVideoBitrate` wirkt live; bis 15 Mbit/s (Spitze ×1,12) stabil, ab 16 Mbit/s stoppt der Encoder → Host klemmt auf 15 Mbit/s | `src/bitrate_spike.cpp` |
+| R3 | `sceAvcap2SetVideoBitrate` wirkt live; bis 15 Mbit/s (Spitze ×1,12) stabil, ab 16 Mbit/s stoppt der Encoder. Überholt: Seit dem HEVC-Einbau öffnet der Host mit der Bitrate in der Konfiguration und klemmt auf 50 Mbit/s (siehe „HEVC im Host“) | `src/bitrate_spike.cpp` |
 | R4 | Host läuft als Payload-Daemon, Daten unter `/data/prosperosunshine/`, Neustart per Steuer-Socket + ELF-Loader | — |
 | R5 | Natives virtuelles Pad ohne Mono; neues Pad löst „Wer benutzt diesen Controller?“ aus (im Stream sichtbar und beantwortbar) | `src/pad_probe.cpp` |
 | R6 | Ports 47984/47989/48010 TCP und 47998–48000 UDP frei; Discovery (mDNS) nicht untersucht | — |
@@ -83,7 +83,17 @@ Live auf der Konsole geprüft mit dem aktuellen Host (Testclient vom PC):
 
 **Lichtleiste (P9.10, 2026-10-31):** Der Host schickt Farbänderungen des virtuellen Pads an den Client. Gemessen mit Homebrew UI Lab im Vordergrund und `stream_test`: 2 s nach Stream-Start meldet das Client-Log `led pad=0 rgb=0,0,255` (Systemblau), 50 ms später `127,240,216` (die Farbe des Titels). Rumble lief im selben Stream weiter (6 von 6 Pulsen), 0 Frame-Lücken. Ob ein echter Moonlight-Client die Farbe am Controller zeigt, ist nicht geprüft.
 
-**HEVC-Spike (P9.7, 2026-10-31):** Avcap2 liefert HEVC, der Host nutzt es noch nicht (`docs/re/hevc.md`). Gemessen mit `src/hevc_spike.cpp` auf dem Home-Bildschirm, je 180 Frames in 1080p60, frischer Kanal je Stufe: Bei 6, 15, 30, 50, 80 und 100 Mbit/s kein Fehler. `ffprobe` meldet HEVC Main, Level 5.0, yuv420p, BT.709; die Streams zu 6, 50 und 100 Mbit/s decodiert `ffmpeg` mit 180 Frames und ohne Fehlermeldung, sobald das VPS vor SPS und PPS steht. Das decodierte Bild zeigt den Home-Bildschirm korrekt. 30 → 10 → 30 Mbit/s im laufenden Kanal geht, 20 → 40 Mbit/s bricht nach dem Wechsel mit `0x80c78000` ab. 1440p und 4K scheitern bei der Speicher-Reservierung (`0x81950003`). Der Code nach dem Aufräumen ergab dieselben Ergebnisse, seine Streams wurden nicht erneut decodiert. Nicht gemessen: Spielszenen mit viel Bewegung, längere Läufe, echte Moonlight-Clients.
+**HEVC-Spike (P9.7, 2026-10-31):** Avcap2 liefert HEVC (`docs/re/hevc.md`). Gemessen mit `src/hevc_spike.cpp` auf dem Home-Bildschirm, je 180 Frames in 1080p60, frischer Kanal je Stufe: Bei 6, 15, 30, 50, 80 und 100 Mbit/s kein Fehler. `ffprobe` meldet HEVC Main, Level 5.0, yuv420p, BT.709; die Streams zu 6, 50 und 100 Mbit/s decodiert `ffmpeg` mit 180 Frames und ohne Fehlermeldung, sobald das VPS vor SPS und PPS steht. Das decodierte Bild zeigt den Home-Bildschirm korrekt. 30 → 10 → 30 Mbit/s im laufenden Kanal geht, 20 → 40 Mbit/s bricht nach dem Wechsel mit `0x80c78000` ab. 1440p und 4K scheitern bei der Speicher-Reservierung (`0x81950003`). Der Code nach dem Aufräumen ergab dieselben Ergebnisse, seine Streams wurden nicht erneut decodiert. Nicht gemessen: Spielszenen mit viel Bewegung, längere Läufe, echte Moonlight-Clients.
+
+**HEVC im Host (P9.11, 2026-10-31):** Der Host bietet auf Firmware 13.00 HEVC an (`ServerCodecModeSupport` 257) und öffnet H.264 und HEVC jetzt mit der Bitrate des Clients in der Konfiguration. Grenze 50 Mbit/s statt 15. Alles gemessen mit `stream_test` (`--hevc`), Bildquelle meist die Demo von Mario 64; ein echter Moonlight-Client wurde nicht geprüft.
+
+- **Stream:** HEVC und H.264 bei 2, 15 und 31 Mbit/s (HEVC-Werte 2 und 31, dazu 15 bei 30 fps; H.264 alle drei und 15 bei 30 fps), je 10 s: 0 Frame-Lücken, `ffmpeg -xerror` fehlerfrei. Ein Lauf (HEVC 2 Mbit/s) begann rund 2 s später als die anderen, die Ursache ist nicht geklärt.
+- **Dauer:** HEVC 31 Mbit/s über 120 s: 7082 Frames decodiert, 5 Lücken mit zusammen 20 fehlenden Frames (je 68–72 Pakete angekommen, passend zur Docker-Grenze unten; der Client holte sich jeweils ein IDR). H.264 31 Mbit/s über 60 s: 3595 Frames, 0 Lücken.
+- **Spiel schließen und neu starten im Stream:** HEVC läuft 1,7 s nach dem Entzug weiter (`0x81950009`, reopened), 2425 Frames in 45 s, 0 Lücken, Ton ohne Fehler.
+- **Codec-Wechsel:** H.264 → HEVC → HEVC → H.264 in aufeinanderfolgenden Sitzungen fehlerfrei. Öffnet der Ton den Kanal zuerst, öffnet ihn das Bild mit dem richtigen Modus neu (`ps_capture_mode_current`).
+- **Encoder ohne Netz (`hevc_spike`, Mario 64, 3 s je Stufe):** HEVC 6–100 Mbit/s und H.264 15–50 Mbit/s ohne Fehler; bei 100 Mbit/s entstanden 33 Mbit/s, größter Frame 239 KB. Eine Szene, die 50 Mbit/s voll ausschöpft, wurde nicht gemessen.
+- **Netz (`udp_burst.py`, je 180 Bursts zu 1024 Byte, 60 pro Sekunde):** Windows nativ empfängt 60, 100, 150 und 250 Pakete je Burst vollständig (bis 122 Mbit/s). Im Docker-Container kommen 60 vollständig an, von größeren Bursts nur 67–93 Pakete. Bei 55 Mbit/s angefordert und viel Bewegung bricht der Testclient daher ab (6 von 600 Frames), obwohl der Host fehlerfrei sendet. Bitraten über 31 Mbit/s sind Ende-zu-Ende also nicht geprüft.
+- **Nicht geprüft:** `hevc_mode = 1` und das Verhalten auf anderer Firmware (beides nur im Code).
 
 Noch offen:
 
@@ -106,7 +116,7 @@ Noch offen:
 - **Avcap2-Symbolauflösung war nicht threadsicher:** `kernel_dynlib_dlsym` aus mehreren Threads gleichzeitig ließ Ton und Keyframe-Anforderung scheitern; alle Funktionen werden jetzt einmal beim Öffnen aufgelöst.
 - **Log-Stufe:** `min_log_level` in `/data/prosperosunshine/sunshine.conf` gilt auch für das Kernel-Log (z. B. `min_log_level = debug` für Diagnose).
 - **Steuer-Socket** ist im LAN offen und nur für Entwicklung gedacht; die Host-API für die PS5-App (P2.5) ist noch nicht abgestimmt.
-- **Kein HDR/HEVC, keine Maus/Tastatur** (v1.0-Umfang).
+- **Kein HDR, keine Maus/Tastatur** (v1.0-Umfang).
 - **Rumble nur klassisch:** Haptik und adaptive Trigger des DualSense kommen nicht an (`docs/re/pad-output.md`).
 
 ## Bauen und testen

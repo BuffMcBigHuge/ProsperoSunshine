@@ -16,6 +16,18 @@ int main() {
     assert(prospero::has_idr(short_idr));
     assert(!prospero::has_idr(predicted));
     assert(!prospero::has_idr(truncated));
+    // HEVC: the type sits in bits 1-6 of the first header byte. 0x28 = 20 (IDR_N_LP), 0x02 = 1 (trailing
+    // picture), 0x40 = 32 (VPS). An H.264 reading of these would be wrong: 0x65 as HEVC is type 50.
+    const uint8_t hevc_idr[] = {0, 0, 0, 1, 0x28, 1, 3};
+    const uint8_t hevc_cra[] = {0, 0, 1, 0x2a, 1, 3};
+    const uint8_t hevc_p[] = {0, 0, 0, 1, 0x02, 1, 3};
+    const uint8_t hevc_vps[] = {0, 0, 0, 1, 0x40, 1, 3};
+    assert(prospero::has_idr(hevc_idr, prospero::Codec::hevc));
+    assert(prospero::has_idr(hevc_cra, prospero::Codec::hevc));
+    assert(!prospero::has_idr(hevc_p, prospero::Codec::hevc));
+    assert(!prospero::has_idr(idr, prospero::Codec::hevc));
+    assert(prospero::has_sps(hevc_vps, prospero::Codec::hevc));
+    assert(!prospero::has_sps(hevc_idr, prospero::Codec::hevc));
     const auto now = std::chrono::steady_clock::now();
     auto frame = [&](uint64_t i, bool key, size_t n = 4) {
         return EncodedFrame{i, now, key, std::vector<uint8_t>(n)};

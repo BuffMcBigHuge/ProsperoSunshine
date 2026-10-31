@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "capture/capture_session.hpp"
-#include "video/annex_b.hpp"
 #include <thread>
 
 namespace prospero {
@@ -9,7 +8,8 @@ constexpr int error_revoked = -5;  // PS_CAPTURE_REVOKED
 constexpr auto poll_interval = std::chrono::milliseconds(1);
 }
 
-CaptureSession::CaptureSession(std::unique_ptr<CaptureBackend> backend) : backend_(std::move(backend)) {}
+CaptureSession::CaptureSession(std::unique_ptr<CaptureBackend> backend, Codec codec)
+    : backend_(std::move(backend)), codec_(codec) {}
 
 CaptureSession::~CaptureSession() { stop(); }
 
@@ -47,9 +47,9 @@ CaptureStatus CaptureSession::read(EncodedFrame &frame, std::chrono::millisecond
             const std::span<const uint8_t> bytes(buffer_.data(), static_cast<size_t>(rc));
             frame.index = next_index_++;
             frame.read_time = std::chrono::steady_clock::now();
-            frame.idr = has_idr(bytes);
+            frame.idr = has_idr(bytes, codec_);
             frame.bytes.clear();
-            if (frame.idr && !has_sps(bytes)) frame.bytes.insert(frame.bytes.end(), headers_.begin(), headers_.end());
+            if (frame.idr && !has_sps(bytes, codec_)) frame.bytes.insert(frame.bytes.end(), headers_.begin(), headers_.end());
             frame.bytes.insert(frame.bytes.end(), bytes.begin(), bytes.end());
             return CaptureStatus::frame;
         }

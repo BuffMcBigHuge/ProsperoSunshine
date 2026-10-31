@@ -27,7 +27,7 @@ public:
         std::memcpy(destination, sps_pps, sizeof sps_pps);
         return sizeof sps_pps;
     }
-    int read(void *destination, size_t, uint8_t descriptor[0x70]) override {
+    int read(void *destination, size_t, uint8_t descriptor[0x88]) override {
         descriptor[8] = 0x42;
         if (script_.empty()) return 0;
         auto next = std::move(script_.front());
@@ -115,6 +115,16 @@ int main() {
         assert(s.start() == 0 && calls.opens == 2);
         assert(s.read(f, 50ms) == CaptureStatus::frame && f.index == 2 && f.idr);
         assert(s.read(f, 50ms) == CaptureStatus::frame && f.index == 3);
+    }
+    {
+        // HEVC frames: the session recognises IDR by HEVC's NAL types and puts the parameter sets in front.
+        Calls calls;
+        CaptureSession s(std::make_unique<FakeBackend>(calls, 0, std::deque<std::vector<int>>{{0, 0, 0, 1, 0x28, 9}, {0, 0, 0, 1, 2, 9}}),
+                         prospero::Codec::hevc);
+        assert(s.start() == 0);
+        EncodedFrame f;
+        assert(s.read(f, 50ms) == CaptureStatus::frame && f.idr && f.bytes.size() == 12 + 6);
+        assert(s.read(f, 50ms) == CaptureStatus::frame && !f.idr && f.bytes.size() == 6);
     }
     std::cout << "PASS: capture session start/busy, SPS/PPS on IDR, timeout, stop token, revocation, single close, "
                  "frame numbers across reopen\n";

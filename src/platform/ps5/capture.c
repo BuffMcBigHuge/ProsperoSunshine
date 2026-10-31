@@ -40,6 +40,7 @@ struct ps_capture {
     int (*free_memory)(void *, void *);
     uint8_t memory[0x40];
     int has_memory;
+    uint32_t mode[5];  // what mode_snapshot() returned at open
 };
 
 // Callback ABI currently has no verified instance context, so resource ownership
@@ -76,12 +77,12 @@ static void u64(uint8_t *p, size_t at, uint64_t value) { memcpy(p + at, &value, 
 static _Atomic uint32_t video_resolution = 4, video_timing = 1, video_codec = 0;
 static _Atomic int last_open_rc = 0;
 
-static _Atomic uint32_t hevc_average = 6000000, hevc_peak = 6600000;
+static _Atomic uint32_t opening_average = 6000000, opening_peak = 0;
 
-void ps_capture_set_hevc_bitrate(uint32_t average, uint32_t peak)
+void ps_capture_set_opening_bitrate(uint32_t average, uint32_t peak)
 {
-    atomic_store(&hevc_average, average);
-    atomic_store(&hevc_peak, peak);
+    atomic_store(&opening_average, average);
+    atomic_store(&opening_peak, peak);
 }
 
 int ps_capture_set_codec(uint32_t codec)
@@ -92,6 +93,24 @@ int ps_capture_set_codec(uint32_t codec)
 }
 
 int ps_capture_last_open_rc(void) { return atomic_load(&last_open_rc); }
+
+int ps_capture_hevc_verified(void) { return (kernel_get_fw_version() & 0xffff0000u) == 0x13000000u; }
+
+static void mode_snapshot(uint32_t mode[5])
+{
+    mode[0] = atomic_load(&video_resolution);
+    mode[1] = atomic_load(&video_timing);
+    mode[2] = atomic_load(&video_codec);
+    mode[3] = atomic_load(&opening_average);
+    mode[4] = atomic_load(&opening_peak);
+}
+
+int ps_capture_mode_current(const ps_capture *s)
+{
+    uint32_t mode[5];
+    mode_snapshot(mode);
+    return s && !memcmp(mode, s->mode, sizeof mode);
+}
 
 int ps_capture_set_video_mode(uint32_t resolution, uint32_t timing)
 {
@@ -118,15 +137,18 @@ static void configure(uint8_t *p, uint32_t mode)
     u32(p, 0x24, atomic_load(&video_codec));
     u32(p, 0x28, RESOURCE);
     u32(p, 0x94, 30);
-    u32(p, 0xc8, 6000000);
+    // Rate fields as SceRemotePlay 0x70130 computes them: average, peak, bits per frame.
+    const uint64_t peak = atomic_load(&opening_peak), fps = atomic_load(&video_timing) ? 60 : 30;
+    u32(p, 0xc8, atomic_load(&opening_average));
+    u32(p, 0xcc, (uint32_t)peak);
+    u32(p, 0xd0, (uint32_t)(peak * 1001 / (fps * 1000)));
     u32(p, 0x2a0, mode);
     u32(p, 0x2a4, 2); // composited screen, including home menu
     u32(p, 0x2b0, 1);
     p[0x2b4] = 1;
     if (atomic_load(&video_codec) == 1) {
-        // Remote Play's values (SceRemotePlay 0x6f7f0, rate fields 0x70130). With only the fields it sets for
-        // HEVC alone, sceAvcap2Start returns 0x80c78000. The set is not minimised.
-        const uint64_t peak = atomic_load(&hevc_peak), fps = atomic_load(&video_timing) ? 60 : 30;
+        // Remote Play's values (SceRemotePlay 0x6f7f0). With only the fields it sets for HEVC alone,
+        // sceAvcap2Start returns 0x80c78000. The set is not minimised.
         u32(p, 0x44, 1);
         u32(p, 0x48, 1);
         p[0x58] = 1;
@@ -134,9 +156,6 @@ static void configure(uint8_t *p, uint32_t mode)
         u64(p, 0x60, 0x18);
         p[0x68] = 1;
         u32(p, 0x98, 1);
-        u32(p, 0xc8, atomic_load(&hevc_average));
-        u32(p, 0xcc, (uint32_t)peak);
-        u32(p, 0xd0, (uint32_t)(peak * 1001 / (fps * 1000))); // bits per frame
         u32(p, 0xd4, 35);
         u32(p, 0xd8, 0x33);
         p[0x108] = 1;
@@ -255,6 +274,7 @@ int ps_capture_open(ps_capture **out)
     if (mode(&output)) goto fail;
     if (output & 3) { error = PS_CAPTURE_HDR; goto fail; }
     uint8_t config[0x2e0];
+    mode_snapshot(s->mode);
     configure(config, (uint32_t)output);
     if (atomic_load(&video_codec) == 1) {
         // Memory Mode 1 as Remote Play sets it up (SceRemotePlay 0x6fb83..0x6fc65).
@@ -308,7 +328,10 @@ int ps_capture_headers(ps_capture *s, void *destination, size_t capacity)
     int rc = s->headers(s->handle, nal);
     if (rc) { LOG("headers rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
     size_t used = 0;
-    for (size_t off = 0x10; off <= 0x120; off += 0x88) {
+    // The console lists HEVC's as SPS, PPS, VPS; decoders and moonlight-common-c want the VPS first.
+    static const size_t order[][3] = {{0x10, 0x98, 0x120}, {0x120, 0x10, 0x98}};
+    for (size_t i = 0; i < 3; i++) {
+        const size_t off = order[s->mode[2] == 1][i];
         uint64_t n;
         memcpy(&n, nal + off, sizeof n);
         if (n > 0x80 || (n && (capacity < used || capacity - used < n + 4))) return PS_CAPTURE_ERROR;

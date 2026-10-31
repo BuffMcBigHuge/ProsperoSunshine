@@ -15,7 +15,7 @@
 //       --gfe 3.23.0.74 --codec-mode 1 --out out/moonlight-test.h264 \
 //       [--duration 20] [--bitrate 6000] [--audio-out file.s16] [--no-encryption]
 //       [--timing-log file.csv] [--ui-ticks N [--tick-interval-ms 1500] [--tick-hold-ms 120]
-//       [--tick-kind dpad|ps|back] [--tick-seq right,cross,...] [--tick-start S]] [--no-script]
+//       [--tick-kind dpad|ps|back] [--tick-seq right,cross,...] [--tick-start S]] [--no-script] [--hevc]
 //
 // --timing-log writes one CSV line per video frame / audio packet / input press on a common monotonic microsecond
 // clock, --ui-ticks presses D-pad RIGHT/LEFT (or the PS button, or Select) N times after the startup input, --no-script skips
@@ -296,6 +296,7 @@ int main(int argc, char **argv) {
   double tick_start = -1;
   const char *tick_kind = "dpad", *timing_path = NULL;
   char *tick_seq = NULL;
+  int hevc = 0;
 
   static const struct option opts[] = {
     {"addr", 1, 0, 'a'},     {"rtsp-url", 1, 0, 'r'},   {"rikey", 1, 0, 'k'},    {"rikeyid", 1, 0, 'i'},
@@ -304,6 +305,7 @@ int main(int argc, char **argv) {
     {"width", 1, 0, 'W'},    {"height", 1, 0, 'H'},     {"fps", 1, 0, 'f'},      {"idr-at", 1, 0, 'I'},
     {"ui-ticks", 1, 0, 'U'}, {"tick-interval-ms", 1, 0, 'T'}, {"tick-start", 1, 0, 'S'}, {"tick-kind", 1, 0, 'K'},
     {"timing-log", 1, 0, 'L'}, {"no-script", 0, 0, 'N'}, {"tick-hold-ms", 1, 0, 'M'}, {"tick-seq", 1, 0, 'Q'},
+    {"hevc", 0, 0, 'E'},
     {0, 0, 0, 0}};
   int c;
   while ((c = getopt_long(argc, argv, "", opts, NULL)) != -1) {
@@ -332,6 +334,7 @@ int main(int argc, char **argv) {
       case 'N': no_script = 1; break;
       case 'M': tick_hold_ms = atoi(optarg); break;
       case 'Q': tick_seq = optarg; break;
+      case 'E': hevc = 1; break;
       default: return 2;
     }
   }
@@ -384,7 +387,7 @@ int main(int argc, char **argv) {
   sc.packetSize = 1024;
   sc.streamingRemotely = STREAM_CFG_LOCAL;
   sc.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
-  sc.supportedVideoFormats = VIDEO_FORMAT_H264;
+  sc.supportedVideoFormats = hevc ? VIDEO_FORMAT_H264 | VIDEO_FORMAT_H265 : VIDEO_FORMAT_H264;
   sc.clientRefreshRateX100 = fps * 100;
   sc.colorSpace = COLORSPACE_REC_709;
   sc.colorRange = COLOR_RANGE_LIMITED;

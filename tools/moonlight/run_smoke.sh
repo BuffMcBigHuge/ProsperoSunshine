@@ -5,6 +5,7 @@
 #
 #   tools/moonlight/run_smoke.sh [host] [duration_s] [extra pair.py launch args, e.g. --corever]
 #   STREAM_ARGS="--bitrate 20000" passes extra options to stream_test.
+#   VIDEO_FORMAT=hevc checks the output as HEVC (with STREAM_ARGS="--hevc").
 #   DOCKER_ARGS="--cap-add NET_ADMIN" and PRE_CMD="<shell>" run the client container with extra
 #   rights and a setup command first, e.g. to inject packet loss (see loss_test.sh).
 set -uo pipefail
@@ -36,6 +37,6 @@ RC=${PIPESTATUS[0]}
 echo "stream_test exit code: $RC"
 "${PY[@]}" tools/moonlight/pair.py --host "$HOST" cancel
 if [ -s out/moonlight-test.h264 ]; then
-  dock "cd /repo && ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=codec_name,profile,width,height,avg_frame_rate,r_frame_rate,nb_read_frames -of default=nw=1 -f h264 out/moonlight-test.h264; echo '--- ffmpeg full decode (-xerror):'; ffmpeg -v error -xerror -i out/moonlight-test.h264 -f null - && echo DECODE_OK"
+  dock "cd /repo && ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=codec_name,profile,width,height,avg_frame_rate,r_frame_rate,nb_read_frames -of default=nw=1 -f ${VIDEO_FORMAT:-h264} out/moonlight-test.h264; echo '--- ffmpeg full decode (-xerror):'; ffmpeg -v error -xerror -f ${VIDEO_FORMAT:-h264} -i out/moonlight-test.h264 -f null - && echo DECODE_OK"
 fi
 exit $RC

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Replaces Sunshine's video.cpp. Avcap2 already delivers H.264, so there is no encoder, display or
+// Replaces Sunshine's video.cpp. Avcap2 already delivers H.264 or HEVC, so there is no encoder, display or
 // colour conversion: frames from CaptureSession go straight into the stream's packet queue.
 #include "capture/capture_session.hpp"
 #include "platform/ps5/capture.h"
+#include "src/config.h"
 #include "src/globals.h"
 #include "src/input.h"
 #include "src/logging.h"
@@ -14,9 +15,8 @@
 using namespace std::literals;
 
 namespace video {
-// Only H.264 SDR 4:2:0 is offered (see ROADMAP v1.0 scope). In Sunshine 1 means "disabled"; 0 would
-// still advertise HEVC/AV1 in the RTSP DESCRIBE reply, and clients that prefer HEVC (Moonlight on
-// iOS) then wait for HEVC keyframes in our H.264 stream and give up with "no video frame".
+// Only 8-bit SDR 4:2:0 is offered. In Sunshine 1 means "disabled" and 2 "Main"; 0 would still advertise
+// HEVC/AV1 in the RTSP DESCRIBE reply. Set in probe_encoders.
 int active_hevc_mode = 1;
 int active_av1_mode = 1;
 bool last_encoder_probe_supported_ref_frames_invalidation = false;
@@ -42,9 +42,9 @@ double tsc_per_ns() {
 }
 
 std::chrono::steady_clock::time_point capture_time(const prospero::CaptureSession::Descriptor &desc,
-                                                   std::chrono::steady_clock::time_point read_time) {
+                                                   std::chrono::steady_clock::time_point read_time, bool hevc) {
     uint64_t stamp;
-    std::memcpy(&stamp, desc.data() + 0x48, sizeof stamp);
+    std::memcpy(&stamp, desc.data() + (hevc ? 0x58 : 0x48), sizeof stamp);
     const uint64_t now = __rdtsc();
     if (!stamp || stamp > now) return read_time;
     const auto age = std::chrono::nanoseconds(static_cast<int64_t>((now - stamp) / tsc_per_ns()));
@@ -54,8 +54,11 @@ std::chrono::steady_clock::time_point capture_time(const prospero::CaptureSessio
 
 int probe_encoders() {
     tsc_per_ns();
-    BOOST_LOG(info) << "PS5: Avcap2 H.264 passthrough, "sv << width << 'x' << height << ", TSC "sv << tsc_per_ns()
-                    << " ticks/ns"sv;
+    // The HEVC setup is measured on firmware 13.00 only. Elsewhere a client that prefers HEVC would lose the
+    // stream if it fails, while H.264 may still run. hevc_mode = 1 in sunshine.conf turns it off.
+    active_hevc_mode = config::video.hevc_mode != 1 && ps_capture_hevc_verified() ? 2 : 1;
+    BOOST_LOG(info) << "PS5: Avcap2 passthrough, "sv << (active_hevc_mode == 2 ? "H.264 and HEVC, "sv : "H.264, "sv) << width
+                    << 'x' << height << ", TSC "sv << tsc_per_ns() << " ticks/ns"sv;
     return 0;
 }
 
@@ -87,21 +90,24 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     }
     const auto release = util::fail_guard([] { streaming = false; });
 
+    // config.bitrate is in kbit/s. The channel opens with its bitrate in the config: raising it later above the
+    // opening value stops the encoder (docs/re/hevc.md). Peak as Remote Play: H.264 average * 1.12, HEVC * 1.10.
+    const bool hevc = config.videoFormat == 1;
+    constexpr uint32_t default_average = 6'000'000, max_average = 50'000'000;
+    const uint32_t requested = config.bitrate > 0 ? static_cast<uint32_t>(config.bitrate) * 1000u : default_average;
+    const uint32_t average = std::min(requested, max_average);
+    ps_capture_set_opening_bitrate(average, average / 100 * (hevc ? 110 : 112));
+    ps_capture_set_codec(hevc ? 1 : 0);
     ps_capture_set_video_mode(4, low_rate ? 0 : 1);
-    prospero::CaptureSession session(prospero::make_ps5_capture_backend());
+    const auto codec = hevc ? prospero::Codec::hevc : prospero::Codec::h264;
+    prospero::CaptureSession session(prospero::make_ps5_capture_backend(codec), codec);
     if (const int rc = session.start()) {
         BOOST_LOG(error) << "PS5 capture failed to start: "sv << rc;
         shutdown_event->raise(true);
         return;
     }
-    // config.bitrate is in kbit/s. Measured on FW 13.00 (R3): averages up to 15 Mbit/s with
-    // peak = average * 1.12 (RemotePlay's ratio) work; 16 Mbit/s and above stop the encoder.
-    constexpr uint32_t opening_average = 6'000'000, max_average = 15'000'000;
-    const uint32_t requested = config.bitrate > 0 ? static_cast<uint32_t>(config.bitrate) * 1000u : opening_average;
-    const uint32_t average = std::min(requested, max_average);
-    if (average != opening_average && session.set_bitrate(average, average / 100 * 112))
-        BOOST_LOG(warning) << "PS5 capture: could not set bitrate to "sv << average;
-    BOOST_LOG(info) << "PS5 capture bitrate "sv << average / 1000 << " kbit/s (requested "sv << requested / 1000 << ')';
+    BOOST_LOG(info) << "PS5 capture "sv << (hevc ? "HEVC"sv : "H.264"sv) << " bitrate "sv << average / 1000 << " kbit/s (requested "sv
+                    << requested / 1000 << ')';
     prospero::EncodedFrame frame;
     prospero::CaptureSession::Descriptor desc{};
     // Moonlight asks for an IDR after loss; Avcap2 delivers one within 2-3 frames (R1).
@@ -131,7 +137,6 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
                 shutdown_event->raise(true);
                 break;
             }
-            if (average != opening_average) session.set_bitrate(average, average / 100 * 112);
             BOOST_LOG(info) << "PS5 capture reopened after "sv
                             << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
                                                                                      lost_at).count()
@@ -141,7 +146,7 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
         auto packet = std::make_unique<packet_raw_generic>(std::move(frame.bytes), static_cast<int64_t>(frame.index),
                                                            frame.idr);
         packet->channel_data = channel_data;
-        packet->frame_timestamp = capture_time(desc, frame.read_time);
+        packet->frame_timestamp = capture_time(desc, frame.read_time, hevc);
         packets->raise(std::move(packet));
         frame.bytes = {};
     }

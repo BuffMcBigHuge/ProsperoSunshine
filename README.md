@@ -14,7 +14,7 @@ the PS5 screen, game audio and controller input over your LAN.
 ProsperoSunshine builds [Sunshine](https://github.com/LizardByte/Sunshine) (pinned commit, small documented
 patches) for the console and replaces the parts that talk to PC hardware:
 
-- **Video:** the console's hardware encoder (Avcap2) delivers H.264 straight into Sunshine's packetiser.
+- **Video:** the console's hardware encoder (Avcap2) delivers H.264 or HEVC straight into Sunshine's packetiser.
 - **Audio:** game audio as PCM from the same capture service, encoded by Sunshine's Opus path.
 - **Input:** a native virtual DualSense per Moonlight gamepad.
 - **App list:** a single app, "PS5 Screen". There is no web UI.
@@ -66,16 +66,18 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
 
 ## Known limits
 
-- H.264 and SDR only. The stream is always 1080p: the console encoder starts no other resolution, so a client asking
-  for less gets 1080p and scales it. The frame rate follows the client: 30 or 60 fps.
-- The bitrate is capped at 15 Mbit/s (the console encoder stops above that).
+- SDR only. The stream is always 1080p: the console encoder starts no other resolution, so a client asking for less
+  gets 1080p and scales it. The frame rate follows the client: 30 or 60 fps.
+- HEVC (8-bit) is offered on firmware 13.00 only, elsewhere H.264. Clients that prefer HEVC pick it on their own. To
+  force H.264, choose it in Moonlight's settings or set `hevc_mode = 1` in `sunshine.conf`.
+- The bitrate is capped at 50 Mbit/s.
 - One streaming session at a time. More than one Moonlight controller is untested.
 - A real DualSense disconnects when the stream controller connects. Turned back on during the stream it stays without
   effect, because apps read only the controller that connected first; after the stream it works normally. The other way
   round, a controller that is already connected and not disconnected (seen with a second virtual pad) keeps the app, and
   only the console's home screen still reacts to Moonlight. If the stream controller does nothing in an app, turn the
   other controller off.
-- No HDR, HEVC, 4K, mouse, keyboard, touch or microphone.
+- No HDR, AV1, 4K, mouse, keyboard, touch or microphone.
 - Rumble is the classic two-motor kind only. Games that drive the DualSense's haptics or adaptive triggers probably send
   nothing to your controller. Whether your device vibrates also depends on the Moonlight client.
 - No Wake-on-LAN (the console MAC address is not available to the host).
