@@ -25,7 +25,7 @@ kleine Zahl.
 | 2 | 2 Bytes | unbekannt, immer 0 | gemessen |
 | 3 | 2 Bytes | **Motoren: groß, klein** | **sicher:** Stärke 0,25 aus `ps5-homebrew-ui` ergibt `0,63` (groß 0, klein 0,25 × 255) |
 | 4 | 3 Bytes | Lichtleiste RGB | sicher: Systemblau `0,0,255`, Farbe von Homebrew UI Lab `127,240,216` |
-| 5 | 24 Bytes | Trigger-Effekte: Maske, dann zwei Blöcke aus Modus und 10 Bytes | statisch belegt, gemessen nur der Ruhewert `03 05 … 05 …` (`adaptive-triggers.md`) |
+| 5 | 24 Bytes | Trigger-Effekte: Maske, dann zwei Blöcke aus Modus und 10 Bytes | **sicher:** Teardown setzt Modus `0x21`, am DualSense spürbar (`adaptive-triggers.md`) |
 | 6 | u32 | Vibrationsmodus | wahrscheinlich: 1, nach `scePadSetVibrationMode(handle, 2)` dann 2 |
 | 7–12 | je u32 | unbekannt | gemessen: `1,0,1,1,0` in Titeln, sonst 0 |
 

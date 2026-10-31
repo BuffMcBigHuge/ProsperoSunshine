@@ -2,6 +2,7 @@
 // Moonlight gamepad state (Xbox layout, platf::gamepad_state_t) → PS5 virtual DualSense state.
 // Portable so it can be unit-tested on the build host; docs/input-mapping.md lists the table.
 #pragma once
+#include <array>
 #include <cstdint>
 
 namespace prospero {
@@ -59,6 +60,35 @@ constexpr PadState map_gamepad(uint32_t flags, uint8_t lt, uint8_t rt, int16_t l
     if (rt >= trigger_threshold) buttons |= dualsense::r2;
     return {buttons, stick_axis(ls_x, false), stick_axis(ls_y, true), stick_axis(rs_x, false), stick_axis(rs_y, true),
             lt, rt};
+}
+
+// Moonlight's event flags in its trigger effect message.
+inline constexpr uint8_t trigger_flag_right = 0x04, trigger_flag_left = 0x08;
+
+// The block the console keeps for a pad: a mask, then mode and ten parameters for L2 and for R2, one spare byte
+// (docs/re/adaptive-triggers.md).
+using TriggerBlock = std::array<uint8_t, 24>;
+inline constexpr TriggerBlock triggers_off = {0x03, 0x05, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x05};
+
+struct TriggerEffects {
+    uint8_t flags;  // the triggers that differ from the last block
+    uint8_t type_left, type_right;
+    std::array<uint8_t, 10> left, right;
+};
+
+constexpr TriggerEffects map_trigger_effects(const TriggerBlock &block, const TriggerBlock &last) {
+    TriggerEffects effects{};
+    effects.type_left = block[1];
+    effects.type_right = block[12];
+    for (int i = 0; i < 10; ++i) {
+        effects.left[i] = block[2 + i];
+        effects.right[i] = block[13 + i];
+    }
+    for (int i = 1; i <= 11; ++i) {
+        if (block[i] != last[i]) effects.flags |= trigger_flag_left;
+        if (block[11 + i] != last[11 + i]) effects.flags |= trigger_flag_right;
+    }
+    return effects;
 }
 
 }

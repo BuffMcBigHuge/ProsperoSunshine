@@ -10,8 +10,8 @@
 - The home page says when the firmware is untested, and why capture failed: HDR on, capture in use, firmware not
   supported, or the step that failed.
 - The host writes its steps to `/data/prosperosunshine/host_diag.log`, which survives a crash.
-- At log level `debug` the host logs the trigger effects the console sends to a virtual pad. Nothing is passed to the
-  client yet; this is to find out which games send any.
+- Adaptive triggers: effects a game sends reach a DualSense on Moonlight for PC. Other clients ignore them. If a stream
+  ends during an effect, the trigger stays stiff until the next connection, because Moonlight doesn't reset it.
 
 ### Fixed
 

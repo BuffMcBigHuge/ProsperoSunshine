@@ -2,7 +2,7 @@
 
 Stand: 31. Oktober 2026. Klärt den offenen Punkt aus ROADMAP P9.10. Grundlage: gepinnte Quellen (`deps.lock`), Quellen der
 Clients auf GitHub und statische Analyse der entschlüsselten `libScePad` und `SceRemotePlay` (`tools/re/funcdump.py`).
-**Auf der Konsole ist bisher nur der Ruhewert des Felds gemessen**, ein Effekt aus einem Spiel noch nie.
+Am selben Tag live gemessen: Teardown sendet Effekte an das virtuelle Pad, sie kommen über Moonlight PC am DualSense an.
 
 ## Ergebnis
 
@@ -10,13 +10,13 @@ Clients auf GitHub und statische Analyse der entschlüsselten `libScePad` und `S
 | --- | --- | --- |
 | Protokoll hat Trigger-Meldung? | **Ja**, fertig im gepinnten Stand | Quelle |
 | Protokoll hat Haptik? | **Nein** | Quelle |
-| Client setzt Trigger um? | Nur Moonlight PC (Qt); iOS und Android nicht | Quelle, nicht am Controller probiert |
-| Feld 5 enthält Trigger-Effekte? | Sehr wahrscheinlich | statisch; der gemessene Ruhewert passt (Modus `05` in beiden Blöcken) |
-| Spiele füllen es bei unserem Pad? | **Unbekannt** | Messung unten |
+| Client setzt Trigger um? | Nur Moonlight PC (Qt); iOS und Android nicht | Qt im Nutzertest am DualSense bestätigt, sonst Quelle |
+| Feld 5 enthält Trigger-Effekte? | **Ja** | Teardown: Modus `0x21`, spürbar am DualSense |
+| Spiele füllen es bei unserem Pad? | **Ja**, Teardown; GTA III in zwei Sitzungen nicht | Messung unten |
 
 ## 1. Protokoll
 
-**Trigger: vorhanden.** Im Host fehlt nur der Aufruf.
+**Trigger: vorhanden.** Der Host ruft es in `set_triggers` auf (`src/sunshine/platform_ps5.cpp`).
 
 - Sunshine: `gamepad_feedback_e::set_adaptive_triggers` und `make_adaptive_triggers` (`.cache/deps/src/sunshine/src/platform/common.h:124,224`),
   Versand als Typ `0x5503` (`src/stream.cpp:74,262-275,1105-1120`). Kein Patch in `patches/sunshine/` berührt das.
@@ -47,8 +47,8 @@ Nutzen daher: **nur Moonlight PC mit angeschlossenem DualSense.** Am iPhone änd
 ## 3. Konsole
 
 Der Host liest den Block schon: `ps_pad_read_output` füllt `output->triggers[24]` (`src/platform/ps5/pad.c:99,113`),
-`poll_pad_output` schreibt Änderungen auf Log-Stufe `debug` ins Log und sendet sie nicht weiter. `pad_output_probe` protokolliert
-den Block ebenfalls.
+`poll_pad_output` reicht Änderungen an den Client weiter und schreibt sie auf Log-Stufe `debug` ins Log. `pad_output_probe`
+protokolliert den Block ebenfalls.
 
 ### Statisch belegt (Disassembly, nicht ausgeführt)
 
@@ -93,7 +93,15 @@ kommen die Effekte also an, und zwar in dieser Form. Dass sie aus diesem Feld st
   es am RemoteEye-Pad (Probe) und am Pad des Hosts im Stream (Debug-Log).
 - **GTA III, PS5-Fassung:** Der Vibrationsmodus wechselt auf 2, der Block bleibt auf dem Ruhewert, auch mit R2 und L2 bei Fäusten.
   Im Spielstand gab es weder Waffe noch Fahrzeug, die Messung ist also **ohne Aussage**.
-- **Teardown:** Nicht gemessen, das Spiel verlangt beim ersten Start die Zustimmung zu seiner EULA.
+- **GTA III im Stream (Log-Stufe `debug`):** Zwei Sitzungen, in einer rund 66 s, 186 Motor-Werte, Block unverändert. Die Szene ist
+  nicht festgehalten, GTA III bleibt also offen.
+- **Teardown, Werkzeug:** Nur der zweite Block wechselt: `21 fe03 48922409 …`. Nach der Modus-Übersicht ist das Widerstand über die
+  Zonen 1–9, Stärke 2 von 8. An und aus je einzeln, Abstand Sekunden. Er folgt nicht einfach dem Druck auf R2: Einmal blieb er über
+  zwei Minuten an, auch während nur L2 gehalten wurde. L2 allein änderte den ersten Block nicht.
+- **Teardown, Auto:** Beide Blöcke `21 fe03 00000000 …`. Laut Nutzer werden L2 und R2 am DualSense spürbar härter, im Log passend
+  (15:18:57 Konsolenuhr). An und aus je einzeln, Abstand Sekunden, also keine Drossel nötig.
+- **Byte 0 und 23:** In allen Messungen `03` und `00`, auch wenn sich nur ein Block änderte.
+- **Testclient:** `stream_test` bekam beim Anlegen des Pads `flags=0xc types=5/5`, den Ruhewert an beide Trigger.
 
 ## 4. Füllen Spiele das Feld bei unserem Pad?
 
@@ -110,8 +118,7 @@ virtuellen Pads benutzt.
   seine Pads anlegt, steht zur Laufzeit fest (`0x40654`, kein direkter Aufrufer gefunden). Der Kernel könnte Effekte je Typ
   verwerfen.
 - Ein Titel könnte Effekte je nach Controller-Information weglassen.
-- Bisher lief kein PS5-Titel in einer Szene mit bekannten Trigger-Effekten gegen das Pad. GTA III (bisher nur ohne Waffe und Fahrzeug),
-  Mario 64 und Homebrew UI Lab sagen dazu nichts.
+- Geklärt für Teardown: Das Pad bekommt Effekte. Andere Titel sind nicht gemessen; Mario 64 und Homebrew UI Lab sagen nichts dazu.
 
 ## Messung (entscheidet das Urteil)
 
@@ -156,23 +163,21 @@ Format von `ReadHaptic` gelesen. Das bleibt außerhalb von P9.10.
 
 ## Urteil
 
-- **Adaptive Trigger: unklar, bis Messung B.** Die statischen Belege sprechen für **machbar**; live belegt ist nichts.
+- **Adaptive Trigger: machbar und im Host umgesetzt.** Nutzen nur mit Moonlight PC und DualSense.
 - **Haptik: nicht machbar** ohne eigene Protokollerweiterung.
-- **Lohnt es sich?** Ja, wenn B positiv ausfällt: Der Aufwand ist **S**, es braucht weder Patch noch Protokolländerung, und es stört
-  sonst nichts. Der Nutzen bleibt aber klein, weil nur Moonlight PC mit DualSense etwas davon hat. Vor der Messung nichts bauen.
+- **Offen:** Ob der erste Block L2 und der zweite R2 ist. Das Auto setzt beide gleich. Die Zuordnung folgt aus der Reihenfolge in
+  `libScePad` und Remote Play und passt dazu, dass das Werkzeug nur den zweiten Block setzt; am Controller getrennt gespürt ist sie nicht.
 
-## Kleinster Plan (nur wenn B positiv)
+## Umsetzung
 
-1. `src/input/gamepad_map.hpp`: reine Funktion `map_trigger_effects(const uint8_t block[24])`, die `event_flags`, Typen und die
-   10-Byte-Arrays liefert, mit der gemessenen Zuordnung. Test in `tests/gamepad_map_test.cpp`.
-2. `src/sunshine/platform_ps5.cpp`:
-   - `log_triggers()` wird zu `set_triggers()`: bei Änderung zusätzlich `gamepad_feedback_msg_t::make_adaptive_triggers(...)` in die
-     Warteschlange.
-   - `free_gamepad`: beide Trigger auf `0x05` setzen wie `set_motors(..., 0, 0)`; der Merker wird dort schon gelöscht.
-   - Blöcke vom Typ 0 beim Start nicht senden.
-3. `tools/moonlight/stream_test.c`: `cl_adaptive` gibt es schon, es loggt aber nur Flags und Typen; die 10 Bytes je Trigger mit ins Log.
-4. Nachweis für `STATUS.md`: derselbe Titel wie Lauf B, Bytes im Client-Log gleich denen im Host-Log, dann Nutzertest mit Moonlight
-   PC und DualSense per Kabel. Dabei prüfen, ob der Trigger nach Stream-Ende frei ist.
+- `map_trigger_effects` in `src/input/gamepad_map.hpp` setzt die Flags nur für den Trigger, dessen Block sich geändert hat (Test in
+  `tests/gamepad_map_test.cpp`). `set_triggers` in `src/sunshine/platform_ps5.cpp` stellt die Meldung in Sunshines Warteschlange.
+- Beim Anlegen eines Pads geht der Ruhewert an beide Trigger, weil der Merker leer ist. Das löst auch einen Trigger, der von einer
+  früheren Sitzung noch hart ist.
 
-Umfang: etwa 30–40 Zeilen im Host, 15 Zeilen Test, dazu die Doku (`ROADMAP.md`, `STATUS.md`).
-Falls die Änderungsrate aus Punkt 4 hoch ist, kommt eine Drossel dazu.
+## Grenze: Trigger bleibt nach dem Stream hart
+
+Live bestätigt: Endet der Stream am Client während eines Effekts, bleibt der Trigger am DualSense hart. Beim nächsten Verbinden wird
+er weich. Der Host kann das nicht lösen: `free_gamepad` sendet zwar „aus“, aber der Client hat die Verbindung dann schon beendet.
+Moonlight PC v6.2.0 schließt den Controller beim Ende (`input.cpp:232`, `SDL_GameControllerClose`), ohne die Effekte zurückzusetzen.
+Die eigentliche Lösung läge in Moonlight. Ob der Trigger auch beim Ausschalten des Controllers frei wird, ist nicht geprüft.

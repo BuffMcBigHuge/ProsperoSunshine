@@ -261,9 +261,12 @@ static void cl_rumble_trig(uint16_t n, uint16_t l, uint16_t r) { tlog("rumble tr
 static void cl_motion(uint16_t n, uint8_t type, uint16_t hz) { tlog("motion state pad=%u type=%u hz=%u\n", n, type, hz); }
 static void cl_led(uint16_t n, uint8_t r, uint8_t g, uint8_t b) { tlog("led pad=%u rgb=%u,%u,%u\n", n, r, g, b); }
 static void cl_adaptive(uint16_t n, uint8_t flags, uint8_t tl, uint8_t tr, uint8_t *l, uint8_t *r) {
-  (void) l;
-  (void) r;
-  tlog("adaptive triggers pad=%u flags=0x%x types=%u/%u\n", n, flags, tl, tr);
+  char left[21], right[21];
+  for (int i = 0; i < 10; i++) {
+    snprintf(left + 2 * i, 3, "%02x", l[i]);
+    snprintf(right + 2 * i, 3, "%02x", r[i]);
+  }
+  tlog("adaptive triggers pad=%u flags=0x%x types=%u/%u left=%s right=%s\n", n, flags, tl, tr, left, right);
 }
 
 // ---------------------------------------------------------------- helpers

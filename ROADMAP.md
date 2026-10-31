@@ -189,7 +189,7 @@ Stand: P8.1, P8.3, P8.4 und P8.5 live geprüft; P8.2 ebenfalls live geprüft. P8
 | P9.6 | Weitere Clients: Android, TV/Shield, Steam Deck (Moonlight Web, PC und iPhone laufen bereits) | S | Je ein Stream mit Bild, Ton und Eingabe |
 | P9.7 | Spike: HEVC über den PS5-Encoder (erledigt, `docs/re/hevc.md`) | M | Ergebnis dokumentiert |
 | P9.11 | HEVC im Host (erledigt, in 0.1.2; am Testclient gemessen; Moonlight am PC mit GTA III bei 15 und 49,5 Mbit/s und auf dem iPhone bei 7 Mbit/s liefen im Nutzertest gut). Offen: ein Testclient außerhalb von Docker, um hohe Bitraten zu messen (in Docker verliert er dort Pakete); ob mehr als 50 Mbit/s sinnvoll sind | L | Moonlight streamt HEVC in einem Spiel, H.264-Clients laufen unverändert |
-| P9.10 | Rumble: Motorwerte des virtuellen Pads an den Client (erledigt, Nutzertest 2026-10-31); Lichtleiste erledigt (am Testclient gemessen); offen sind adaptive Trigger: Format und Clients geklärt, vor dem Bau fehlt eine Messung im Spiel (`docs/re/adaptive-triggers.md`) | M | Controller am Client vibriert im Spiel |
+| P9.10 | Rumble: Motorwerte des virtuellen Pads an den Client (erledigt, Nutzertest 2026-10-31); Lichtleiste erledigt (am Testclient gemessen); adaptive Trigger im Host umgesetzt und mit Teardown und DualSense bestätigt; offen sind die getrennte Prüfung von L2 und R2 und das Zurücksetzen in Moonlight nach dem Stream (`docs/re/adaptive-triggers.md`) | M | Controller am Client vibriert im Spiel |
 | P9.9 | PS-Taste für Clients ohne diese Taste: Select halten sendet PS, kurzer Druck Create | S | Kontrollzentrum und Create-Menü öffnen sich im Stream; Test in Moonlight am Handy |
 | P9.8 | Virtuelles Pad nach Sitzungsende: Laut App-Session bekam die App nach einem Handy-Stream (App blieb „running“, kein Client) keine Eingaben vom RemoteEye-Test-Pad, erst nach Host-Neustart. Prüfen, ob `free_gamepad` läuft (Log „detached“) oder ob sich Host-Pad und RemoteEye-Pad stören; ggf. „PS5 Screen“ nach Client-Abbruch beenden | S | Nach Streamende erreichen Eingaben wieder Apps, ohne Host-Neustart |
 
@@ -219,7 +219,7 @@ Ist R2 negativ, erscheint 0.1 als Vorschau ohne Ton und benennt das deutlich.
 
 Erledigt seit 0.1.0: 60 fps (59,94 fps in der 30-Minuten-Sitzung), Moonlight-Discovery per mDNS, HEVC, Rumble und Lichtleiste.
 
-Offen, in dieser Reihenfolge, jeweils mit eigenem Spike: weitere Firmware-Versionen (Checkliste `docs/firmware-porting.md`; ResourceArbitrator per NID, Rest live zu prüfen), adaptive Trigger (`docs/re/adaptive-triggers.md`; Haptik geht über Moonlight nicht), HDR und 4K (1440p und 4K scheitern in der jetzigen Konfiguration schon beim Öffnen, P9.3), mehrere Controller.
+Offen, in dieser Reihenfolge, jeweils mit eigenem Spike: weitere Firmware-Versionen (Checkliste `docs/firmware-porting.md`; ResourceArbitrator per NID, Rest live zu prüfen), Haptik geht über Moonlight nicht (`docs/re/adaptive-triggers.md`), HDR und 4K (1440p und 4K scheitern in der jetzigen Konfiguration schon beim Öffnen, P9.3), mehrere Controller.
 
 ## Risikoregister
 
@@ -240,5 +240,5 @@ Offen, in dieser Reihenfolge, jeweils mit eigenem Spike: weitere Firmware-Versio
 1. Diagnosebericht und klare Meldung auf nicht unterstützter Firmware sind gebaut, aber noch in keinem Release. Danach Berichte aus den Issues #1 (13.60) und #2 (10.40) einholen.
 2. Portierung einzelner Firmwares, sobald Berichte vorliegen. Reihenfolge nach Bericht, Checkliste in `docs/firmware-porting.md`; eine Version gilt erst als unterstützt, wenn die Schritte 3 bis 6, 8 und 9 belegt sind (Schritt 7 nur für HEVC).
 3. Weitere Clients (P9.6): Android, TV/Shield, Steam Deck.
-4. Adaptive Trigger (P9.10): zuerst die Messung im Spiel mit Log-Stufe `debug`, gebaut wird nur bei positivem Ergebnis (`docs/re/adaptive-triggers.md`).
+4. Adaptive Trigger (P9.10): L2 und R2 getrennt am DualSense prüfen; Moonlight PC müsste die Effekte beim Beenden zurücksetzen (`docs/re/adaptive-triggers.md`).
 5. Ungeklärtes aus `STATUS.md`: seltene Fehlstarts (1 in 86), ein Testclient außerhalb von Docker könnte Host und Client unterscheiden. Ruhemodus (nur nach Rückfrage testen).

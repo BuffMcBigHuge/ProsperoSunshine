@@ -19,5 +19,20 @@ int main() {
     const auto triggers = map_gamepad(0, trigger_threshold - 1, 255, 0, 0, 0, 0);
     assert(!(triggers.buttons & dualsense::l2) && (triggers.buttons & dualsense::r2));
     assert(triggers.l2 == trigger_threshold - 1 && triggers.r2 == 255);
-    std::cout << "PASS: gamepad mapping (face, system, sticks, triggers)\n";
+    // As Teardown sends it: resistance on the second block only.
+    const TriggerBlock feedback = {0x03, 0x05, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x21, 0xfe, 0x03, 0x48, 0x92, 0x24, 0x09};
+    const auto on = map_trigger_effects(feedback, triggers_off);
+    assert(on.flags == trigger_flag_right);
+    assert(on.type_left == 0x05 && on.type_right == 0x21);
+    assert(on.right[0] == 0xfe && on.right[5] == 0x09 && on.right[9] == 0 && on.left[0] == 0);
+    assert(map_trigger_effects(triggers_off, feedback).flags == trigger_flag_right);
+    assert(map_trigger_effects(triggers_off, TriggerBlock{}).flags == (trigger_flag_left | trigger_flag_right));
+    TriggerBlock left_only = triggers_off;
+    left_only[11] = 1;  // last parameter of the first block
+    assert(map_trigger_effects(left_only, triggers_off).flags == trigger_flag_left);
+    TriggerBlock mask_only = triggers_off;
+    mask_only[0] = 0x01;
+    mask_only[23] = 0xff;
+    assert(map_trigger_effects(mask_only, triggers_off).flags == 0);
+    std::cout << "PASS: gamepad mapping (face, system, sticks, triggers, trigger effects)\n";
 }

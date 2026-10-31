@@ -342,7 +342,7 @@ struct input_raw_t {
     std::array<uint8_t, MAX_GAMEPADS> client_index{};
     std::array<std::array<uint8_t, 2>, MAX_GAMEPADS> motors{};
     std::array<std::array<uint8_t, 3>, MAX_GAMEPADS> colors{};
-    std::array<std::array<uint8_t, 24>, MAX_GAMEPADS> triggers{};
+    std::array<prospero::TriggerBlock, MAX_GAMEPADS> triggers{};
     uint32_t user = 0;
     std::jthread output_thread;
 };
@@ -361,21 +361,24 @@ static void set_color(input_raw_t &input, int nr, uint8_t r, uint8_t g, uint8_t 
     if (input.feedback[nr]) input.feedback[nr]->raise(gamepad_feedback_msg_t::make_rgb_led(input.client_index[nr], r, g, b));
 }
 
-// Only logged: whether titles send trigger effects to a virtual pad is still open (docs/re/adaptive-triggers.md).
-static void log_triggers(input_raw_t &input, int nr, const uint8_t (&triggers)[24]) {
-    if (!std::memcmp(input.triggers[nr].data(), triggers, sizeof triggers)) return;
-    std::memcpy(input.triggers[nr].data(), triggers, sizeof triggers);
+static void set_triggers(input_raw_t &input, int nr, const prospero::TriggerBlock &block) {
+    if (input.triggers[nr] == block) return;
+    const auto effects = prospero::map_trigger_effects(block, input.triggers[nr]);
+    input.triggers[nr] = block;
     static constexpr char digits[] = "0123456789abcdef";
     std::string hex;
-    for (const uint8_t byte : triggers) {
+    for (const uint8_t byte : block) {
         hex += digits[byte >> 4];
         hex += digits[byte & 15];
     }
     BOOST_LOG(debug) << "PS5 virtual pad "sv << nr << " triggers "sv << hex;
+    if (effects.flags && input.feedback[nr]) {
+        input.feedback[nr]->raise(gamepad_feedback_msg_t::make_adaptive_triggers(input.client_index[nr], effects.flags, effects.type_left, effects.type_right, effects.left, effects.right));
+    }
 }
 
 // Reads what the system wants from each pad at the cadence of Remote Play's own reader and passes on
-// changes of the motors and the light bar. Only titles using the classic two-motor rumble set the motors;
+// changes of the motors, the light bar and the trigger effects. Only titles using the classic two-motor rumble set the motors;
 // see docs/re/pad-output.md.
 static void poll_pad_output(std::stop_token stop, input_raw_t *input) {
     std::array<bool, MAX_GAMEPADS> failed{};
@@ -395,7 +398,9 @@ static void poll_pad_output(std::stop_token stop, input_raw_t *input) {
                 }
                 set_motors(*input, nr, output.motors[0], output.motors[1]);
                 set_color(*input, nr, output.color[0], output.color[1], output.color[2]);
-                log_triggers(*input, nr, output.triggers);
+                prospero::TriggerBlock triggers;
+                std::memcpy(triggers.data(), output.triggers, sizeof output.triggers);
+                set_triggers(*input, nr, triggers);
             }
         }
         std::this_thread::sleep_for(10ms);
@@ -451,6 +456,7 @@ void free_gamepad(input_t &input, int nr) {
     std::lock_guard lock(input->mutex);
     if (!input->pads[nr]) return;
     set_motors(*input, nr, 0, 0);
+    set_triggers(*input, nr, prospero::triggers_off);
     const int rc = ps_pad_close(input->pads[nr]);  // sends a neutral state before removal
     input->pads[nr] = nullptr;
     input->colors[nr] = {};  // a later pad in this slot reports its colour anew
