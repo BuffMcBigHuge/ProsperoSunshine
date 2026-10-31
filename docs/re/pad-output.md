@@ -47,6 +47,9 @@ mit dem Ping des Clients, und `moonlight-common-c` behält von wartenden Rumble-
 kam daher nur als Stopp an. Patch `patches/sunshine/0008-feedback-latency.patch` senkt die Wartezeit der Schleife von
 150 auf 5 ms.
 
+Die Lichtleiste läuft denselben Weg: Der Host vergleicht die Farbe bei jeder Abfrage und schickt Änderungen als
+`make_rgb_led` an den Client. Ein neues Pad im selben Platz meldet seine Farbe neu (`free_gamepad` setzt sie zurück).
+
 ## Messung nachstellen
 
 Ein Titel mit bekanntem Rumble ist „Homebrew UI Lab“: Links am linken Rand wird abgewiesen, das löst einen Puls von 0,25

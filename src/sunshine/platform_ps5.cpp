@@ -340,6 +340,7 @@ struct input_raw_t {
     std::array<feedback_queue_t, MAX_GAMEPADS> feedback{};
     std::array<uint8_t, MAX_GAMEPADS> client_index{};
     std::array<std::array<uint8_t, 2>, MAX_GAMEPADS> motors{};
+    std::array<std::array<uint8_t, 3>, MAX_GAMEPADS> colors{};
     uint32_t user = 0;
     std::jthread output_thread;
 };
@@ -351,8 +352,16 @@ static void set_motors(input_raw_t &input, int nr, uint8_t large, uint8_t small)
     if (input.feedback[nr]) input.feedback[nr]->raise(gamepad_feedback_msg_t::make_rumble(input.client_index[nr], large * 257, small * 257));
 }
 
+static void set_color(input_raw_t &input, int nr, uint8_t r, uint8_t g, uint8_t b) {
+    if (input.colors[nr] == std::array<uint8_t, 3>{r, g, b}) return;
+    input.colors[nr] = {r, g, b};
+    BOOST_LOG(debug) << "PS5 virtual pad "sv << nr << " light bar "sv << int(r) << ',' << int(g) << ',' << int(b);
+    if (input.feedback[nr]) input.feedback[nr]->raise(gamepad_feedback_msg_t::make_rgb_led(input.client_index[nr], r, g, b));
+}
+
 // Reads what the system wants from each pad at the cadence of Remote Play's own reader and passes on
-// changes of the motors. Only titles using the classic two-motor rumble set them; see docs/re/pad-output.md.
+// changes of the motors and the light bar. Only titles using the classic two-motor rumble set the motors;
+// see docs/re/pad-output.md.
 static void poll_pad_output(std::stop_token stop, input_raw_t *input) {
     std::array<bool, MAX_GAMEPADS> failed{};
     while (!stop.stop_requested()) {
@@ -370,6 +379,7 @@ static void poll_pad_output(std::stop_token stop, input_raw_t *input) {
                     continue;
                 }
                 set_motors(*input, nr, output.motors[0], output.motors[1]);
+                set_color(*input, nr, output.color[0], output.color[1], output.color[2]);
             }
         }
         std::this_thread::sleep_for(10ms);
@@ -427,6 +437,7 @@ void free_gamepad(input_t &input, int nr) {
     set_motors(*input, nr, 0, 0);
     const int rc = ps_pad_close(input->pads[nr]);  // sends a neutral state before removal
     input->pads[nr] = nullptr;
+    input->colors[nr] = {};  // a later pad in this slot reports its colour anew
     input->back[nr] = false;
     BOOST_LOG(info) << "PS5 virtual pad "sv << nr << " detached ("sv << rc << ')';
 }

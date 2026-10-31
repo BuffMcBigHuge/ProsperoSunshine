@@ -5,6 +5,7 @@
 ### Added
 
 - Rumble: classic two-motor vibration from the console reaches the Moonlight client, including short pulses.
+- Light bar: the colour a title sets on the controller reaches the Moonlight client.
 
 ## 0.1.1 (2026-10-31)
 

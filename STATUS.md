@@ -81,6 +81,8 @@ Live auf der Konsole geprüft mit dem aktuellen Host (Testclient vom PC):
 
 **Rumble (P9.10, 2026-10-31):** Der Host liest die Motorwerte des virtuellen Pads wie Remote Play und schickt Änderungen an den Client (`docs/re/pad-output.md`). Gemessen mit Homebrew UI Lab im Vordergrund und `stream_test --tick-seq left,...`, nur das Stream-Pad verbunden: 8 von 8 Abweisungen kamen als `rumble low=0 high=16191` (Stärke 0,25 auf dem kleinen Motor) und danach als Stopp an. Der Start lag 6–22 ms nach dem Absenden des Drucks, der Stopp 30–50 ms nach dem Start; alles am Client-Log abgelesen, 19 s Stream fehlerfrei decodierbar. Vor Patch 0008 kam von denselben Pulsen nur der Stopp an, also vibrierte nichts.
 
+**Lichtleiste (P9.10, 2026-10-31):** Der Host schickt Farbänderungen des virtuellen Pads an den Client. Gemessen mit Homebrew UI Lab im Vordergrund und `stream_test`: 2 s nach Stream-Start meldet das Client-Log `led pad=0 rgb=0,0,255` (Systemblau), 50 ms später `127,240,216` (die Farbe des Titels). Rumble lief im selben Stream weiter (6 von 6 Pulsen), 0 Frame-Lücken. Ob ein echter Moonlight-Client die Farbe am Controller zeigt, ist nicht geprüft.
+
 Noch offen:
 
 1. **Auflösung (P9.3):** Avcap2 liefert in der jetzigen Konfiguration nur 1080p (`src/mode_spike.cpp`): 30 und 60 fps gehen (90 bzw. 180 Frames in 3 s, fehlerfrei decodierbar), mit 360p, 540p, 720p, 1440p und 4K scheitert das Öffnen, und `sceAvcap2ChangeScanInResolution` lehnt ab (`0x81950001`, `0x8195000A`). Der Host beachtet daher nur die Bildrate (bis 30 fps gewünscht: 30 fps); Moonlight skaliert 1080p selbst herunter.
