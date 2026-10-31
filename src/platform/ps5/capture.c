@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Derived from ps5-mcp/payload/avcap_probe/avcap_probe.c, FW 13.00 research.
 #include "capture.h"
+#include "diag.h"
 #include "ra_resolve.h"
 #include <stdatomic.h>
 #include <stdint.h>
@@ -9,11 +10,10 @@
 #include <string.h>
 #include <unistd.h>
 #include <ps5/kernel.h>
-#include <ps5/klog.h>
 
 #define RESOURCE 180
 #define AGAIN ((int)0x81950002)
-#define LOG(...) klog_printf("ProsperoSunshine: capture " __VA_ARGS__)
+#define LOG(...) ps_diag_log("ProsperoSunshine: capture " __VA_ARGS__)
 typedef int (*load_fn)(const char *, size_t, const void *, uint32_t, void *, int *);
 typedef int (*handle_fn)(intptr_t);
 
@@ -206,6 +206,10 @@ int ps_capture_open(ps_capture **out)
     if (atomic_flag_test_and_set(&owned)) return PS_CAPTURE_BUSY;
     ps_capture *s = calloc(1, sizeof *s);
     if (!s) { atomic_flag_clear(&owned); return PS_CAPTURE_ERROR; }
+    // The app's report tells from "open start", "open ok" and "open failed" how this attempt ended, also
+    // when a step takes the process down (no outcome line then).
+    LOG("open start codec=%u\n", atomic_load(&video_codec));
+    const char *step = "system modules";
     atomic_store(&granted, 0);
     atomic_store(&revoked, 0);
     int error = PS_CAPTURE_ERROR;
@@ -227,6 +231,7 @@ int ps_capture_open(ps_capture **out)
     static ps_ra_functions ra_calls;
     static int ra_state; // 0 not yet resolved, 1 resolved, -1 refused
     if (!ra_state) ra_state = ps_ra_resolve(ra, &ra_calls) ? -1 : 1;
+    step = "ResourceArbitrator";
     if (ra_state < 0) { error = PS_CAPTURE_FIRMWARE; goto fail; }
     intptr_t base = kernel_dynlib_mapbase_addr(-1, ra);
     if (!base) goto fail;
@@ -235,9 +240,11 @@ int ps_capture_open(ps_capture **out)
     s->request = (void *)(base + ra_calls.offset[PS_RA_REQUEST]);
     int (*list)(int32_t *) = (void *)(base + ra_calls.offset[PS_RA_LIST]);
     int32_t active[32] = {0};
+    step = "resource list";
     if (list(active)) goto fail;
     for (size_t i = 0; i < 32; i++) if (active[i] == RESOURCE) { error = PS_CAPTURE_BUSY; goto fail; }
 
+    step = "Avcap2 functions";
 #define SYM(name) kernel_dynlib_dlsym(-1, av, name)
     int (*init)(void) = (void *)SYM("sceAvcap2Initialize");
     int (*mode)(int *) = (void *)SYM("sceAvcap2GetVideoOutMode");
@@ -256,20 +263,24 @@ int ps_capture_open(ps_capture **out)
 #undef SYM
     if (!init || !mode || !open_video || !start || !s->terminate || !s->stop || !s->close || !s->headers || !s->read)
         goto fail;
+    step = "register";
     int rc = reg(RESOURCE, (void *)resource_event, NULL);
     LOG("register rc=%#x\n", rc);
     if (rc) goto fail;
     s->registered = 1;
     s->requested = 1; // STOP is attempted even if the RUNNING request reports failure.
+    step = "RUNNING";
     rc = s->request(RESOURCE, "RUNNING", NULL, getpid());
     LOG("RUNNING rc=%#x\n", rc);
     if (rc < 0) goto fail;
     for (int i = 0; i < 200 && !atomic_load(&granted) && !atomic_load(&revoked); i++) usleep(10000);
     if (!atomic_load(&granted) || atomic_load(&revoked)) goto fail;
+    step = "Initialize";
     rc = init();
     LOG("Initialize rc=%#x\n", rc);
     if (rc) goto fail;
     s->initialized = 1;
+    step = "video out mode";
     int output = 0;
     if (mode(&output)) goto fail;
     if (output & 3) { error = PS_CAPTURE_HDR; goto fail; }
@@ -278,6 +289,7 @@ int ps_capture_open(ps_capture **out)
     configure(config, (uint32_t)output);
     if (atomic_load(&video_codec) == 1) {
         // Memory Mode 1 as Remote Play sets it up (SceRemotePlay 0x6fb83..0x6fc65).
+        step = "encoder memory";
         int (*reserve)(const void *, void *, void *) = (void *)kernel_dynlib_resolve(-1, av, "yN0w4tWivqs");
         s->free_memory = (void *)kernel_dynlib_resolve(-1, av, "96UQhNnBlxc");
         if (!reserve || !s->free_memory) goto fail;
@@ -293,19 +305,23 @@ int ps_capture_open(ps_capture **out)
         memcpy(s->memory, config + 0x1a8, sizeof s->memory);
         s->has_memory = 1;
     }
+    step = "OpenVideo";
     rc = open_video(&s->handle, config, 0);
     atomic_store(&last_open_rc, rc);
     LOG("OpenVideo rc=%#x\n", rc);
     if (rc) goto fail;
     s->opened = 1;
+    step = "Start";
     rc = start(s->handle);
     LOG("Start rc=%#x\n", rc);
     if (rc) goto fail;
     s->started = 1;
     if (!atomic_load(&granted) || atomic_load(&revoked)) { error = PS_CAPTURE_REVOKED; goto fail; }
     *out = s;
+    LOG("open ok\n");
     return 0;
 fail:
+    LOG("open failed step=%s error=%d rc=%#x\n", step, error, atomic_load(&last_open_rc));
     ps_capture_close(s);
     return error;
 }

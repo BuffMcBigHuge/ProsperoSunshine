@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The app's screen, drawn with ps5-homebrew-ui in its 1920x1080 virtual canvas. Two pages under a
+// The app's screen, drawn with ps5-homebrew-ui in its 1920x1080 virtual canvas. Three pages under a
 // tab bar (L1/R1):
 //   Home      a hero with the host's state and the sun emblem, the host's actions (start or stop,
 //             restart, start at boot), pairing requests as cards (Cross: the PIN) and the paired
 //             devices;
 //   Settings  one tile per sunshine.conf option (Cross opens its editor, Square puts it back to the
-//             host's default), then Save, Save and restart, and Revert.
+//             host's default), then Save, Save and restart, and Revert;
+//   Diagnostics the report for a bug report, to read here, as a file and over the network.
 // Editors and the PIN come up as a sheet over the page: a list for choices, a stepper for numbers,
 // the on-screen keyboard for text and the PIN. The page is frosted behind cards and sheets (the
 // kit's glass), and focus, pages, sheets and messages move with springs and fades.
@@ -51,6 +52,7 @@ class Screen
     {
         home,
         settings,
+        diagnostics,
     };
     enum class Sheet
     {
@@ -74,6 +76,7 @@ class Screen
     void switch_page(Page page, hui::ui::Feedback &feedback);
     void handle_home(const hui::InputFrame &input, hui::ui::Feedback &feedback);
     void handle_settings(const hui::InputFrame &input, hui::ui::Feedback &feedback);
+    void handle_diagnostics(const hui::InputFrame &input, hui::ui::Feedback &feedback);
     void handle_sheet(const hui::InputFrame &input, hui::ui::Feedback &feedback);
     void run(Action action, hui::ui::Feedback &feedback);
     void open_tile(int index);
@@ -105,6 +108,7 @@ class Screen
     void draw_top_bar(hui::gfx::DrawList &list, std::uint32_t glass) const;
     void draw_home(hui::gfx::DrawList &list, std::uint32_t glass) const;
     void draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const;
+    void draw_diagnostics(hui::gfx::DrawList &list, std::uint32_t glass) const;
     void draw_button(hui::gfx::DrawList &list, std::uint32_t glass, const hui::gfx::Rect &r, int icon,
                      const std::string &label, bool primary, float focus, bool enabled) const;
     void draw_footer(hui::gfx::DrawList &list, std::uint32_t glass) const;
@@ -146,6 +150,12 @@ class Screen
     float sun_glow_ = 0.0f;
     float sun_dim_ = 1.0f;
     float pulse_ = 0.0f; // the stream's rings
+
+    // The report, split into lines for the diagnostics page.
+    std::vector<std::string> report_lines_;
+    std::uint64_t seen_report_ = 0;
+    int report_scroll_ = 0;
+    float report_amount_ = 0.0f; // its button's focus
 
     // The sheet.
     Sheet sheet_ = Sheet::none;

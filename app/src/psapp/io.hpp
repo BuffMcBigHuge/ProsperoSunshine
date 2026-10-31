@@ -22,6 +22,13 @@ bool same_content(const std::string &a, const std::string &b);
 bool exists(const std::string &path);
 // mkdir -p for an absolute path.
 bool make_dirs(const std::string &path);
+// Why the file does not open for reading ("errno 13 (permission denied)"), empty when it does.
+std::string open_error(const std::string &path);
+// One line on a path for the diagnostic report: what it is, its owner and mode, and whether this title
+// may read and write it. Leaves nothing behind.
+std::string describe_path(const std::string &path);
+// The console's firmware (kern.sdk_version, as 0x13000040), or 0 when the title may not ask.
+std::uint32_t firmware_version();
 
 // ---- loopback TCP ----
 // Connects to 127.0.0.1:port, sends `request` and reads lines until `last_line` returns true for

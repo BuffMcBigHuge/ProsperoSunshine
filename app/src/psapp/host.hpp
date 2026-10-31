@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Everything the app does to the host, on one worker thread so the frame loop never waits:
 //   - the host's control socket on 127.0.0.1:47995 (src/control/control_server.hpp): STATUS and
-//     PAIRINGS every two seconds, PIN for a pending pairing, QUIT to stop it;
+//     PAIRINGS every two seconds, PIN for a pending pairing, QUIT to stop it, REPORT to have it offer
+//     the diagnostic report on the network (a title may not listen there itself);
 //   - starting the host: its ELF sent to the ELF loader on 127.0.0.1:9021;
 //   - /data/prosperosunshine/sunshine.conf (conf.hpp) and the Payload Manager's autoload list
 //     (autoload.hpp).
@@ -9,7 +10,9 @@
 #pragma once
 
 #include "app/psapp/conf.hpp"
+#include "app/psapp/diag.hpp"
 
+#include <atomic>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
@@ -27,8 +30,13 @@ constexpr const char *kConfPath = "/data/prosperosunshine/sunshine.conf";
 constexpr const char *kHostElf = "/data/prosperosunshine/prospero_sunshine.elf";
 constexpr const char *kStatePath = "/data/prosperosunshine/sunshine_state.json";
 constexpr const char *kBundledElf = "/app0/payloads/prospero_sunshine.elf";
+constexpr const char *kHostDiagPath = "/data/prosperosunshine/host_diag.log";
+constexpr const char *kHostLogPath = "/data/prosperosunshine/sunshine.log";
+constexpr const char *kReportPath = "/data/prosperosunshine/diagnostics.txt";
 constexpr std::uint16_t kControlPort = 47995;
 constexpr std::uint16_t kLoaderPort = 9021;
+constexpr std::uint16_t kStreamPort = 47989;
+constexpr std::uint16_t kReportPort = 47996;
 
 struct Pairing
 {
@@ -62,6 +70,11 @@ struct Snapshot
     std::vector<std::string> paired; // named_devices in sunshine_state.json
     std::string address;             // the console's IPv4 address, for Moonlight
     bool bundled_elf = false;        // the app carries one
+    // Diagnostics.
+    std::uint32_t firmware = 0;      // the console's, from the title or else from the host's file
+    diag::Notice notice;             // the home page's line about firmware and capture
+    std::uint64_t report_serial = 0; // grows with every new report; Host::report() has the text
+    bool report_served = false;      // the host offers the report on the network
     // The request being worked on ("" when idle), and the outcome of the last one.
     std::string busy;
     std::string message;
@@ -87,6 +100,10 @@ class Host
     void save_config(const Values &values, bool restart);
     void set_autoload(bool on);
     void refresh();
+    void make_report();         // writes kReportPath; the outcome comes as a message
+    void serve_report(bool on); // while on and the host runs, the report is at http://<console>:kReportPort/
+    void set_app_version(const std::string &version);
+    std::string report();
 
   private:
     enum class Kind
@@ -99,6 +116,7 @@ class Host
         autoload_on,
         autoload_off,
         refresh,
+        report,
     };
     struct Job
     {
@@ -116,6 +134,7 @@ class Host
 
     void prepare_files();
     void read_files();
+    std::string build_report();
     void poll();
     bool wait_control(bool open, int timeout_ms);
     std::string launch();
@@ -128,6 +147,8 @@ class Host
     void do_restart();
     void do_save(const Job &job);
     void do_autoload(bool on);
+    std::string autoload_direct(bool on);
+    void do_report();
 
     std::mutex mutex_;
     std::condition_variable wake_;
@@ -135,6 +156,10 @@ class Host
     Snapshot state_;
     bool stop_ = false;
     bool started_ = false;
+    std::atomic<bool> serve_{false};
+    std::string report_;
+    std::string app_version_;
+    std::uint32_t own_firmware_ = 0; // what the title itself could read
 };
 
 } // namespace psapp

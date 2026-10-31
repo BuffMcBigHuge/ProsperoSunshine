@@ -18,6 +18,7 @@
 #include <array>
 #include <cstring>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <boost/asio/ip/address.hpp>
 
@@ -341,6 +342,7 @@ struct input_raw_t {
     std::array<uint8_t, MAX_GAMEPADS> client_index{};
     std::array<std::array<uint8_t, 2>, MAX_GAMEPADS> motors{};
     std::array<std::array<uint8_t, 3>, MAX_GAMEPADS> colors{};
+    std::array<std::array<uint8_t, 24>, MAX_GAMEPADS> triggers{};
     uint32_t user = 0;
     std::jthread output_thread;
 };
@@ -357,6 +359,19 @@ static void set_color(input_raw_t &input, int nr, uint8_t r, uint8_t g, uint8_t 
     input.colors[nr] = {r, g, b};
     BOOST_LOG(debug) << "PS5 virtual pad "sv << nr << " light bar "sv << int(r) << ',' << int(g) << ',' << int(b);
     if (input.feedback[nr]) input.feedback[nr]->raise(gamepad_feedback_msg_t::make_rgb_led(input.client_index[nr], r, g, b));
+}
+
+// Only logged: whether titles send trigger effects to a virtual pad is still open (docs/re/adaptive-triggers.md).
+static void log_triggers(input_raw_t &input, int nr, const uint8_t (&triggers)[24]) {
+    if (!std::memcmp(input.triggers[nr].data(), triggers, sizeof triggers)) return;
+    std::memcpy(input.triggers[nr].data(), triggers, sizeof triggers);
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string hex;
+    for (const uint8_t byte : triggers) {
+        hex += digits[byte >> 4];
+        hex += digits[byte & 15];
+    }
+    BOOST_LOG(debug) << "PS5 virtual pad "sv << nr << " triggers "sv << hex;
 }
 
 // Reads what the system wants from each pad at the cadence of Remote Play's own reader and passes on
@@ -380,6 +395,7 @@ static void poll_pad_output(std::stop_token stop, input_raw_t *input) {
                 }
                 set_motors(*input, nr, output.motors[0], output.motors[1]);
                 set_color(*input, nr, output.color[0], output.color[1], output.color[2]);
+                log_triggers(*input, nr, output.triggers);
             }
         }
         std::this_thread::sleep_for(10ms);
@@ -438,6 +454,7 @@ void free_gamepad(input_t &input, int nr) {
     const int rc = ps_pad_close(input->pads[nr]);  // sends a neutral state before removal
     input->pads[nr] = nullptr;
     input->colors[nr] = {};  // a later pad in this slot reports its colour anew
+    input->triggers[nr] = {};
     input->back[nr] = false;
     BOOST_LOG(info) << "PS5 virtual pad "sv << nr << " detached ("sv << rc << ')';
 }

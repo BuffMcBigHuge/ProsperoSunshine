@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "app/psapp/io.hpp"
 
+#include "app/psapp/diag.hpp"
+
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstdio>
@@ -10,6 +12,7 @@
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -234,6 +237,60 @@ bool make_dirs(const std::string &path)
     }
     struct stat info{};
     return ::stat(path.c_str(), &info) == 0 && S_ISDIR(info.st_mode);
+}
+
+std::string open_error(const std::string &path)
+{
+    const int fd = ::open(path.c_str(), O_RDONLY);
+    if (fd < 0)
+        return diag::errno_name(errno);
+    ::close(fd);
+    return {};
+}
+
+std::string describe_path(const std::string &path)
+{
+    struct stat info{};
+    if (::stat(path.c_str(), &info) != 0)
+        return errno == ENOENT ? std::string("missing") : "stat " + diag::errno_name(errno);
+    char mode[16];
+    std::snprintf(mode, sizeof mode, "%04o", static_cast<unsigned>(info.st_mode & 07777));
+    const bool folder = S_ISDIR(info.st_mode);
+    std::string text = folder                  ? std::string("folder")
+                       : S_ISREG(info.st_mode) ? "file size=" + std::to_string(static_cast<long long>(info.st_size))
+                                               : std::string("other");
+    text += std::string(" mode=") + mode + " uid=" + std::to_string(info.st_uid) + " gid=" + std::to_string(info.st_gid);
+    const auto usable = [&](int flags) {
+        const int fd = ::open(path.c_str(), flags);
+        if (fd < 0)
+            return diag::errno_name(errno);
+        ::close(fd);
+        return std::string("ok");
+    };
+    text += " read=" + usable(O_RDONLY);
+    // Opening for writing without O_TRUNC or O_CREAT leaves a file as it is. For a folder only trying tells:
+    // access() answers EPERM in a title even where it may write.
+    if (!folder)
+    {
+        text += " write=" + usable(O_WRONLY);
+        return text;
+    }
+    const std::string probe = path + "/.prospero_write_test";
+    const int fd = ::open(probe.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    text += " write=" + (fd >= 0 ? std::string("ok") : diag::errno_name(errno));
+    if (fd >= 0)
+    {
+        ::close(fd);
+        ::unlink(probe.c_str());
+    }
+    return text;
+}
+
+std::uint32_t firmware_version()
+{
+    std::uint32_t version = 0;
+    std::size_t size = sizeof version;
+    return ::sysctlbyname("kern.sdk_version", &version, &size, nullptr, 0) == 0 ? version : 0;
 }
 
 Exchange exchange(std::uint16_t port, const std::string &request, bool (*last_line)(const std::string &),

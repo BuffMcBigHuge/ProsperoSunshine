@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <ctime>
 #include <pthread.h>
+#include <unistd.h>
 
 namespace psapp
 {
@@ -171,6 +172,24 @@ void Host::refresh()
 {
     push({Kind::refresh, {}, {}, {}, {}, false});
 }
+void Host::make_report()
+{
+    push({Kind::report, {}, {}, {}, {}, false});
+}
+void Host::serve_report(bool on)
+{
+    serve_ = on;
+}
+void Host::set_app_version(const std::string &version)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    app_version_ = version;
+}
+std::string Host::report()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return report_;
+}
 
 void Host::set_busy(const std::string &text)
 {
@@ -191,6 +210,8 @@ void Host::finish(const std::string &message, bool ok)
 void Host::run()
 {
     hui::sys::log("[PSAPP] worker started");
+    own_firmware_ = io::firmware_version();
+    hui::sys::log("[PSAPP] firmware 0x%x", own_firmware_);
     prepare_files();
     read_files();
     poll();
@@ -238,6 +259,9 @@ void Host::run()
             case Kind::refresh:
                 read_files();
                 finish("Read sunshine.conf and the autoload list again", true);
+                break;
+            case Kind::report:
+                do_report();
                 break;
             }
         }
@@ -302,14 +326,36 @@ void Host::read_files()
     const bool have_manager = io::read_text(autoload::kConfigPath, &manager);
     if (!have_manager && io::exists(autoload::kConfigPath))
         hui::sys::log("[PSAPP] cannot read %s (errno %d)", autoload::kConfigPath, errno);
+    bool autoload_on = have_list && autoload::contains(list, autoload::kSlotKey);
+    // The manager may keep its config unreadable for a title; then nothing is known and no warning
+    // is shown, unless the host (root) can tell.
+    bool manager_on = !have_manager || autoload::manager_autoload_enabled(manager);
+    if ((!have_list && io::exists(autoload::kListPath)) || (!have_manager && io::exists(autoload::kConfigPath)))
+    {
+        const io::Exchange reply = io::exchange(kControlPort, "AUTOLOAD\n", any_line, 3000);
+        if (!reply.lines.empty() && reply.lines.front().rfind("OK ", 0) == 0)
+        {
+            const std::string &line = reply.lines.front();
+            manager_on = status_field(line, "manager") == "1";
+            if (!have_list)
+            {
+                autoload_on = status_field(line, "list") == "1";
+                // prepare_files cannot keep this slot current: the host takes over.
+                if (autoload_on && status_field(line, "slot") != "1")
+                {
+                    const io::Exchange sync = io::exchange(kControlPort, "AUTOLOAD ON\n", any_line, 20000);
+                    hui::sys::log("[PSAPP] autoload slot updated by the host: %s",
+                                  sync.lines.empty() ? sync.error.c_str() : sync.lines.front().c_str());
+                }
+            }
+        }
+    }
     std::lock_guard<std::mutex> lock(mutex_);
     state_.files_read = true;
     state_.config = values;
     state_.config_error = error;
-    state_.autoload = have_list && autoload::contains(list, autoload::kSlotKey);
-    // The manager may keep its config unreadable for a title; then nothing is known and no warning
-    // is shown.
-    state_.manager_autoload = !have_manager || autoload::manager_autoload_enabled(manager);
+    state_.autoload = autoload_on;
+    state_.manager_autoload = manager_on;
     state_.manager_present = io::exists("/data/pldmgr");
     state_.host_elf_size = io::file_size(kHostElf);
     state_.paired = paired;
@@ -373,7 +419,23 @@ void Host::poll()
             pairings.push_back(p);
         }
     }
+    // The host's breadcrumbs: small, and the file is there after a crash too.
+    std::string host_file;
+    io::read_text(kHostDiagPath, &host_file);
+    const diag::HostLog host_log = diag::parse_host_log(host_file);
+    const std::uint32_t firmware = own_firmware_ != 0 ? own_firmware_ : host_log.firmware;
+    const diag::Notice notice = diag::notice(firmware, host_log, running);
+    // The host offers the report for some seconds after each of these.
+    bool served = false;
+    if (serve_ && running)
+    {
+        const io::Exchange offer = io::exchange(kControlPort, "REPORT\n", any_line, 1000);
+        served = !offer.lines.empty() && offer.lines.front().rfind("OK", 0) == 0;
+    }
     std::lock_guard<std::mutex> lock(mutex_);
+    state_.report_served = served;
+    state_.firmware = firmware;
+    state_.notice = notice;
     state_.polled = true;
     state_.running = running;
     state_.streaming = streaming;
@@ -478,6 +540,7 @@ void Host::do_start()
     }
     set_busy("Starting the host...");
     const std::string error = launch();
+    read_files();
     finish(error.empty() ? "The host is running" : "Start failed: " + error, error.empty());
 }
 
@@ -496,6 +559,7 @@ void Host::do_restart()
     {
         set_busy("Starting the host...");
         error = launch();
+        read_files();
     }
     finish(error.empty() ? "The host restarted with the saved settings" : "Restart failed: " + error,
            error.empty());
@@ -543,37 +607,144 @@ void Host::do_save(const Job &job)
     do_restart();
 }
 
-void Host::do_autoload(bool on)
+// The edit as this title may do it. Error text, empty on success.
+std::string Host::autoload_direct(bool on)
 {
-    set_busy(on ? "Turning autoload on..." : "Turning autoload off...");
     std::string list;
     const bool have = io::read_text(autoload::kListPath, &list);
     if (!have && io::exists(autoload::kListPath))
-    {
-        finish("Cannot read the Payload Manager's autoload.txt", false);
-        return;
-    }
+        return "cannot read autoload.txt: " + io::open_error(autoload::kListPath);
+    if (!on)
+        return have ? io::write_text(autoload::kListPath, autoload::without_entry(list, autoload::kSlotKey)) : std::string();
+    std::string error = sync_slot();
+    if (error.empty())
+        error = io::write_text(autoload::kListPath, autoload::with_entry(list, autoload::kSlotKey));
+    return error;
+}
+
+void Host::do_autoload(bool on)
+{
+    set_busy(on ? "Turning autoload on..." : "Turning autoload off...");
     std::string error;
-    if (on)
+    if (on && !io::exists("/data/pldmgr"))
+        error = "the Payload Manager is not installed (/data/pldmgr is missing)";
+    else if (on && !io::exists(kHostElf))
+        error = std::string("no host at ") + kHostElf;
+    else
     {
-        if (!io::exists("/data/pldmgr"))
-            error = "the Payload Manager is not installed (/data/pldmgr is missing)";
-        else if (!io::exists(kHostElf))
-            error = std::string("no host at ") + kHostElf;
-        else
-            error = sync_slot();
-        if (error.empty())
-            error = io::write_text(autoload::kListPath, autoload::with_entry(list, autoload::kSlotKey));
-    }
-    else if (have)
-    {
-        error = io::write_text(autoload::kListPath, autoload::without_entry(list, autoload::kSlotKey));
+        error = autoload_direct(on);
+        // The manager keeps files it saved to itself (mode 0600), and a title may not touch those. The
+        // host runs as root.
+        if (!error.empty())
+        {
+            hui::sys::log("[PSAPP] autoload directly: %s", error.c_str());
+            const io::Exchange reply = io::exchange(kControlPort, on ? "AUTOLOAD ON\n" : "AUTOLOAD OFF\n", any_line, 20000);
+            if (!reply.lines.empty() && reply.lines.front().rfind("OK ", 0) == 0)
+                error.clear();
+            else if (reply.connect_refused)
+                error += ". Start the host, then try again.";
+            else if (!reply.lines.empty())
+                error += " (host: " + reply.lines.front() + ")";
+        }
     }
     read_files();
     if (!error.empty())
         finish("Autoload: " + error, false);
     else
         finish(on ? "The Payload Manager starts the host at boot" : "The host no longer starts at boot", true);
+}
+
+// Everything someone else needs to tell why streaming fails here, fit to paste into a public issue:
+// no addresses, device names or ids (diag::scrub).
+std::string Host::build_report()
+{
+    const Snapshot snap = snapshot();
+    std::string app_version;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        app_version = app_version_;
+    }
+    std::string host_file, log_file;
+    const bool have_host_file = io::read_text(kHostDiagPath, &host_file);
+    const bool have_log_file = io::read_text(kHostLogPath, &log_file, 4u << 20);
+    const diag::HostLog host_log = diag::parse_host_log(host_file);
+
+    std::string out = "ProsperoSunshine diagnostics\n\n";
+    const auto line = [&out](const std::string &name, const std::string &value) { out += name + ": " + value + "\n"; };
+    line("App", app_version.empty() ? "unknown" : app_version);
+    char code[16];
+    std::snprintf(code, sizeof code, "%#x", snap.firmware);
+    line("Firmware", snap.firmware == 0 ? std::string("unknown")
+                                        : diag::firmware_text(snap.firmware) + " (" + code + ")" +
+                                              (diag::firmware_verified(snap.firmware) ? ", verified" : ", untested"));
+    line("Host", std::string(snap.running ? "running" : "not running") + (snap.streaming ? ", streaming" : "") +
+                     (host_log.version.empty() ? "" : ", version " + host_log.version));
+    line("Host ELF", std::to_string(snap.host_elf_size) + " bytes, " +
+                         (io::same_content(kBundledElf, kHostElf) ? "same as the app's" : "differs from the app's"));
+    const char *capture = host_log.capture == diag::Capture::ok        ? "last open ok"
+                          : host_log.capture == diag::Capture::failed  ? "last open failed"
+                          : host_log.capture == diag::Capture::opening ? "last open has no outcome"
+                                                                       : "not tried since the host started";
+    line("Capture", std::string(capture) +
+                        (host_log.capture == diag::Capture::failed
+                             ? " at " + host_log.failed_step + " (error " + std::to_string(host_log.failed_error) + ", rc " +
+                                   host_log.failed_rc + ")"
+                             : "") +
+                        (host_log.last_step.empty() ? "" : ", after: " + host_log.last_step));
+    line("Notice", snap.notice.text.empty() ? "none" : snap.notice.text);
+    line("Paired devices", std::to_string(snap.paired.size()));
+    line("Network", snap.address.empty() ? "no LAN address" : "has a LAN address");
+    const auto port = [](std::uint16_t number) { return std::string(io::port_open(number) ? "open" : "closed"); };
+    line("Ports", "ELF loader " + std::to_string(kLoaderPort) + " " + port(kLoaderPort) + ", control " +
+                      std::to_string(kControlPort) + " " + port(kControlPort) + ", stream " +
+                      std::to_string(kStreamPort) + " " + port(kStreamPort));
+    if (!snap.poll_error.empty())
+        line("Control socket", snap.poll_error);
+
+    out += "\nPaths (this title's view, uid " + std::to_string(::getuid()) + "):\n";
+    for (const char *path : {kDataDir, kConfPath, kHostElf, kHostDiagPath, kHostLogPath, "/data/pldmgr", autoload::kListPath,
+                             autoload::kConfigPath, autoload::kSlotDir, autoload::kSlotElf})
+        out += std::string("  ") + path + ": " + io::describe_path(path) + "\n";
+
+    out += "\nSettings changed from the defaults:\n";
+    bool any = false;
+    for (const auto &[key, value] : snap.config)
+    {
+        // The console's name stays out; the other options say nothing about anyone.
+        if (!value)
+            continue;
+        out += "  " + key + " = " + (key == "sunshine_name" ? std::string("<name>") : *value) + "\n";
+        any = true;
+    }
+    if (!any)
+        out += "  none\n";
+
+    std::vector<std::string> names = snap.paired;
+    const auto name = snap.config.find("sunshine_name");
+    if (name != snap.config.end() && name->second)
+        names.push_back(*name->second);
+    if (!snap.client.empty())
+        names.push_back(snap.client);
+    out += "\nHost breadcrumbs (host_diag.log):\n";
+    out += have_host_file ? diag::scrub(diag::tail(host_file, 120), names) : "  no file: " + io::open_error(kHostDiagPath) + "\n";
+    out += "\nsunshine.log, last lines:\n";
+    out += have_log_file ? diag::scrub(diag::tail(log_file, 80), names) : "  no file: " + io::open_error(kHostLogPath) + "\n";
+    return out;
+}
+
+void Host::do_report()
+{
+    set_busy("Collecting the report...");
+    read_files();
+    poll();
+    std::string text = build_report();
+    const std::string error = io::write_text(kReportPath, text);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        report_ = std::move(text);
+        ++state_.report_serial;
+    }
+    finish(error.empty() ? std::string("Report saved to ") + kReportPath : "Saving the report failed: " + error, error.empty());
 }
 
 } // namespace psapp

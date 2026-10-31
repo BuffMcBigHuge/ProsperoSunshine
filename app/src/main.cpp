@@ -92,6 +92,7 @@ int main()
     psapp::Screen screen(host, fonts);
     const std::string version = read_content_version("/app0/sce_sys/param.json");
     screen.set_version(version);
+    host.set_app_version(version);
     sys::log("[PSAPP] version %s", version.empty() ? "unknown" : version.c_str());
 
     gfx::BackdropSpec sky;

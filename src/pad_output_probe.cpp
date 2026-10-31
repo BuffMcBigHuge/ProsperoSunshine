@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Spike for rumble: logs what the system wants from a virtual controller, whoever added it, by polling
-// its handle the way Remote Play polls its own (docs/re/pad-output.md). The handle is the number in
-// /data/prosperosunshine/probe_handle. Read-only; it adds no controller and sends no input. Runs for
-// two minutes, so another tool can drive a title meanwhile.
+// Spike for rumble and trigger effects: logs what the system wants from a virtual controller, whoever added
+// it, by polling its handle the way Remote Play polls its own (docs/re/pad-output.md). The handle is the
+// number in /data/prosperosunshine/probe_handle. Read-only; it adds no controller and sends no input. Runs
+// for ten minutes, so another tool can drive a title meanwhile.
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -50,7 +50,7 @@ int main() {
     klog_printf("ProsperoSunshine: pad_output handle=%d\n", handle);
     Output last{};
     bool seen = false;
-    const auto end = std::chrono::steady_clock::now() + 120s;
+    const auto end = std::chrono::steady_clock::now() + 600s;
     while (std::chrono::steady_clock::now() < end) {
         Output out;
         if (read_output(fd, handle, out) == 0 && (!seen || std::memcmp(&out, &last, sizeof out))) {
@@ -60,6 +60,9 @@ int main() {
                         out.flag_a, out.flags[0], out.flags[1], out.motors[0], out.motors[1], out.color[0], out.color[1],
                         out.color[2], out.values[0], out.values[1], out.values[2], out.values[3], out.values[4], out.values[5],
                         out.flag_b);
+            char hex[2 * sizeof out.triggers + 1] = {};
+            for (size_t i = 0; i < sizeof out.triggers; ++i) std::snprintf(hex + 2 * i, 3, "%02x", out.triggers[i]);
+            klog_printf("ProsperoSunshine: pad_output triggers=%s\n", hex);
         }
         std::this_thread::sleep_for(10ms);
     }

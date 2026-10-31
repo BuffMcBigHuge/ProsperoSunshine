@@ -34,6 +34,8 @@ const Color kClear = Color::rgb(0x000000, 0.0f);
 
 constexpr float kMessageSeconds = 7.0f;
 constexpr float kArmSeconds = 4.0f;
+constexpr int kReportVisible = 19; // lines of the report on screen
+constexpr float kReportLine = 26.0f;
 
 const Icon kOptionIcons[] = {Icon::tag, Icon::log, Icon::timer, Icon::lock, Icon::globe, Icon::plug};
 
@@ -142,6 +144,8 @@ Rect Screen::focus_rect() const
 {
     if (page_ == Page::home)
         return home_row_ == 0 ? action_rect(home_action_) : pairing_rect(home_card_);
+    if (page_ == Page::diagnostics)
+        return {96.0f, 836.0f, 340.0f, 76.0f};
     return tile_ < 6 ? tile_rect(tile_) : settings_action_rect(tile_ - 6);
 }
 
@@ -163,6 +167,19 @@ void Screen::update(const hui::InputFrame &input, float dt, hui::ui::Feedback &f
         if (reload_edits_)
             edits_loaded_ = false;
         reload_edits_ = false;
+    }
+    if (snap_.report_serial != seen_report_)
+    {
+        seen_report_ = snap_.report_serial;
+        report_lines_.clear();
+        const std::string text = host_.report();
+        for (std::size_t at = 0; at < text.size();)
+        {
+            const std::size_t end = std::min(text.find('\n', at), text.size());
+            report_lines_.push_back(text.substr(at, end - at));
+            at = end + 1;
+        }
+        report_scroll_ = 0;
     }
     if (!edits_loaded_ && snap_.files_read && snap_.busy.empty())
     {
@@ -210,11 +227,16 @@ void Screen::update(const hui::InputFrame &input, float dt, hui::ui::Feedback &f
         if (sheet_ != Sheet::none)
             handle_sheet(in, feedback);
         else if (in.is_pressed(InputAction::page_prev) || in.is_pressed(InputAction::page_next))
-            switch_page(in.is_pressed(InputAction::page_prev) ? Page::home : Page::settings, feedback);
+        {
+            const int next = static_cast<int>(page_) + (in.is_pressed(InputAction::page_prev) ? -1 : 1);
+            switch_page(static_cast<Page>(std::clamp(next, 0, static_cast<int>(Page::diagnostics))), feedback);
+        }
         else if (page_ == Page::home)
             handle_home(in, feedback);
-        else
+        else if (page_ == Page::settings)
             handle_settings(in, feedback);
+        else
+            handle_diagnostics(in, feedback);
     }
 
     // Motion.
@@ -232,7 +254,8 @@ void Screen::update(const hui::InputFrame &input, float dt, hui::ui::Feedback &f
         card_amount_[i] = approach(card_amount_[i], page_ == Page::home && home_row_ == 1 && home_card_ == i ? 1.0f : 0.0f, dt, 14.0f);
     for (int i = 0; i < 9; ++i)
         tile_amount_[i] = approach(tile_amount_[i], page_ == Page::settings && tile_ == i ? 1.0f : 0.0f, dt, 14.0f);
-    const float tab_target = page_ == Page::home ? 0.0f : 1.0f;
+    report_amount_ = approach(report_amount_, page_ == Page::diagnostics ? 1.0f : 0.0f, dt, 14.0f);
+    const float tab_target = static_cast<float>(static_cast<int>(page_));
     tab_x_ = tab_x_ < 0.0f ? tab_target : approach(tab_x_, tab_target, dt, 16.0f);
     sheet_amount_ = approach(sheet_amount_, sheet_ == Sheet::none ? 0.0f : 1.0f, dt, 16.0f);
     if (sheet_ == Sheet::none && sheet_amount_ < 0.01f)
@@ -259,8 +282,12 @@ void Screen::switch_page(Page page, hui::ui::Feedback &feedback)
         feedback.play(hui::audio::Cue::error, 1.0f, 0.0f, 0.4f);
         return;
     }
-    page_direction_ = page == Page::settings ? 1 : -1;
+    page_direction_ = static_cast<int>(page) > static_cast<int>(page_) ? 1 : -1;
     page_ = page;
+    // The report is made when its page opens, and only then does the console offer it on the network.
+    host_.serve_report(page == Page::diagnostics);
+    if (page == Page::diagnostics)
+        host_.make_report();
     page_age_ = 0.0f;
     snap_highlight_ = true;
     armed_ = -1;
@@ -398,6 +425,35 @@ void Screen::handle_settings(const hui::InputFrame &input, hui::ui::Feedback &fe
     {
         host_.refresh();
         reload_edits_ = true;
+        feedback.play(hui::audio::Cue::select);
+    }
+}
+
+void Screen::handle_diagnostics(const hui::InputFrame &input, hui::ui::Feedback &feedback)
+{
+    const int last = std::max(0, static_cast<int>(report_lines_.size()) - kReportVisible);
+    int step = 0;
+    if (input.nav == Direction::up || input.nav == Direction::down)
+        step = input.nav == Direction::up ? -1 : 1;
+    if (input.nav == Direction::left || input.nav == Direction::right)
+        step = (input.nav == Direction::left ? -1 : 1) * kReportVisible;
+    if (step != 0)
+    {
+        const int next = std::clamp(report_scroll_ + step, 0, last);
+        if (next != report_scroll_)
+            feedback.play(hui::audio::Cue::focus);
+        else if (!input.nav_repeat)
+            feedback.play(hui::audio::Cue::error, 1.0f, 0.0f, 0.4f);
+        report_scroll_ = next;
+    }
+    if (input.is_pressed(InputAction::confirm) || input.is_pressed(InputAction::north))
+    {
+        if (busy())
+        {
+            feedback.play(hui::audio::Cue::error);
+            return;
+        }
+        host_.make_report();
         feedback.play(hui::audio::Cue::select);
     }
 }
@@ -692,12 +748,12 @@ void Screen::draw_button(hui::gfx::DrawList &list, std::uint32_t glass, const Re
 void Screen::draw_background(hui::gfx::DrawList &list) const
 {
     // Warm light behind the emblem (home) or the tiles (settings), stronger while the host runs.
-    const float home = 1.0f - tab_x_;
+    const float home = std::max(0.0f, 1.0f - tab_x_);
     const float strength = 0.25f + 0.45f * sun_glow_;
     list.glow({1320.0f, 200.0f, 360.0f, 360.0f}, 180.0f, 520.0f, kAccentDeep.with_alpha(0.16f * strength * home));
     list.glow({1380.0f, 260.0f, 240.0f, 240.0f}, 120.0f, 260.0f, kAccent.with_alpha(0.22f * strength * home));
     list.glow({200.0f, 640.0f, 600.0f, 300.0f}, 150.0f, 420.0f, Color::rgb(0x5b3cc4, 0.14f));
-    list.glow({900.0f, 300.0f, 600.0f, 300.0f}, 150.0f, 520.0f, kAccentDeep.with_alpha(0.10f * tab_x_));
+    list.glow({900.0f, 300.0f, 600.0f, 300.0f}, 150.0f, 520.0f, kAccentDeep.with_alpha(0.10f * std::min(1.0f, tab_x_)));
     // Faint drifting embers.
     for (int i = 0; i < 18; ++i)
     {
@@ -724,9 +780,9 @@ void Screen::draw_top_bar(hui::gfx::DrawList &list, std::uint32_t glass) const
     list.glass(glass, plate, 28.0f, Color::rgb(0xffffff));
     list.rounded_rect(plate, 28.0f, Color::rgb(0xffffff, 0.10f));
     list.bordered_rect(plate, 28.0f, kClear, 1.5f, kAccent.with_alpha(0.65f));
-    const char *names[2] = {"Home", "Settings"};
-    const Icon tab_icons[2] = {Icon::home, Icon::sliders};
-    for (int i = 0; i < 2; ++i)
+    const char *names[3] = {"Home", "Settings", "Diagnostics"};
+    const Icon tab_icons[3] = {Icon::home, Icon::sliders, Icon::log};
+    for (int i = 0; i < 3; ++i)
     {
         const float x = t0 + static_cast<float>(i) * (tw + 12.0f);
         const float selected = 1.0f - std::min(1.0f, std::fabs(tab_x_ - static_cast<float>(i)));
@@ -737,13 +793,13 @@ void Screen::draw_top_bar(hui::gfx::DrawList &list, std::uint32_t glass) const
         hui::ui::text(list, fonts_.semibold, names[i], start + 40.0f, 87.0f, 26.0f, ink);
     }
     // A pairing request waits while the settings are shown.
-    if (page_ == Page::settings && !snap_.pairings.empty())
+    if (page_ != Page::home && !snap_.pairings.empty())
     {
         const float pulse = 0.6f + 0.4f * std::sin(time_ * 5.0f);
         list.glow({t0 + tw - 30.0f, 56.0f, 12.0f, 12.0f}, 6.0f, 10.0f, kAccent.with_alpha(0.5f * pulse));
         list.circle(t0 + tw - 24.0f, 62.0f, 7.0f, kAccent);
     }
-    hui::ui::draw_button(list, fonts_, glyphs, hui::ui::Button::r1, t0 + 2.0f * tw + 12.0f + 18.0f, 78.0f, 30.0f);
+    hui::ui::draw_button(list, fonts_, glyphs, hui::ui::Button::r1, t0 + 3.0f * tw + 24.0f + 18.0f, 78.0f, 30.0f);
 
     // The console's address (what Moonlight needs), and the version.
     float right = 1824.0f;
@@ -835,6 +891,13 @@ void Screen::draw_footer(hui::gfx::DrawList &list, std::uint32_t glass) const
     {
         const hui::ui::Hint hints[] = {{hui::ui::Button::cross, "Select"},
                                        {hui::ui::Button::triangle, "Reload"},
+                                       {hui::ui::Button::l1, "Pages", hui::ui::Button::r1}};
+        hui::ui::draw_hints(list, fonts_, glyphs, hints, 3, 1824.0f, true, layout);
+    }
+    else if (page_ == Page::diagnostics)
+    {
+        const hui::ui::Hint hints[] = {{hui::ui::Button::dpad, "Scroll"},
+                                       {hui::ui::Button::cross, "Collect again"},
                                        {hui::ui::Button::l1, "Pages", hui::ui::Button::r1}};
         hui::ui::draw_hints(list, fonts_, glyphs, hints, 3, 1824.0f, true, layout);
     }
@@ -940,12 +1003,17 @@ void Screen::draw_home(hui::gfx::DrawList &list, std::uint32_t glass) const
         const float knob = snap_.autoload ? track.x + track.w - 19.0f : track.x + 19.0f;
         list.circle(knob, track.cy(), 15.0f, Color::rgb(0xffffff));
     }
+    // What the firmware or the last capture attempt means for streaming, above the boot hint.
+    if (!snap_.notice.text.empty())
+        hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, snap_.notice.text, 22.0f, 1728.0f), 96.0f, 660.0f, 22.0f,
+                      snap_.notice.bad ? kBad : kAccent);
+    const float boot_hint_y = snap_.notice.text.empty() ? 660.0f : 690.0f;
     if (snap_.autoload && snap_.manager_present && !snap_.manager_autoload)
         hui::ui::text(list, fonts_.regular, "The Payload Manager's own autoload is off, so nothing starts at boot.",
-                      action_rect(2).x, 660.0f, 20.0f, kAccent);
+                      action_rect(2).x, boot_hint_y, 20.0f, kAccent);
     else if (!snap_.manager_present)
         hui::ui::text(list, fonts_.regular, "Start at boot needs the Payload Manager (PLDM00001).", action_rect(2).x,
-                      660.0f, 20.0f, kFaint);
+                      boot_hint_y, 20.0f, kFaint);
     list.pop_transform();
     list.pop_opacity();
 
@@ -1134,19 +1202,75 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
     list.pop_opacity();
 }
 
+// ---- drawing: the diagnostics page ------------------------------------------------------------
+
+void Screen::draw_diagnostics(hui::gfx::DrawList &list, std::uint32_t glass) const
+{
+    float a = appear(0);
+    list.push_opacity(a);
+    list.push_transform(1.0f, 0.0f, 0.0f, static_cast<float>(page_direction_) * 40.0f * (1.0f - a), 0.0f);
+    const float tw = hui::ui::text(list, fonts_.display, "Diagnostics", 90.0f, 250.0f, 72.0f, kInk);
+    hui::ui::text(list, fonts_.regular, "For a bug report. No addresses, device names or ids in it.", 120.0f + tw, 248.0f, 24.0f,
+                  kMuted);
+    list.pop_transform();
+    list.pop_opacity();
+
+    a = appear(1);
+    list.push_opacity(a);
+    list.push_transform(1.0f, 0.0f, 0.0f, 0.0f, 30.0f * (1.0f - a));
+    const Rect panel{96.0f, 286.0f, 1728.0f, 530.0f};
+    glass_card(list, glass, panel, 24.0f, 0.0f);
+    const int count = static_cast<int>(report_lines_.size());
+    if (count == 0)
+        hui::ui::text(list, fonts_.regular, "Collecting...", panel.x + 30.0f, panel.y + 50.0f, 24.0f, kMuted);
+    for (int i = 0; i < kReportVisible && report_scroll_ + i < count; ++i)
+    {
+        const std::string &line = report_lines_[static_cast<std::size_t>(report_scroll_ + i)];
+        hui::ui::text(list, fonts_.mono, shorten(fonts_.mono, line, 19.0f, panel.w - 80.0f), panel.x + 30.0f,
+                      panel.y + 34.0f + static_cast<float>(i) * kReportLine, 19.0f, kInk);
+    }
+    if (count > kReportVisible)
+    {
+        // Where the visible part sits in the report.
+        const float track = panel.h - 40.0f;
+        const float size = std::max(30.0f, track * static_cast<float>(kReportVisible) / static_cast<float>(count));
+        const float at = (track - size) * static_cast<float>(report_scroll_) / static_cast<float>(count - kReportVisible);
+        list.rounded_rect({panel.x + panel.w - 18.0f, panel.y + 20.0f, 6.0f, track}, 3.0f, Color::rgb(0xffffff, 0.08f));
+        list.rounded_rect({panel.x + panel.w - 18.0f, panel.y + 20.0f + at, 6.0f, size}, 3.0f, kAccent);
+    }
+
+    const bool enabled = !busy();
+    draw_button(list, glass, focus_rect(), static_cast<int>(Icon::restart), "Collect again", false, report_amount_, enabled);
+    // Where to get it from: another device on the network, or the console's file system.
+    const float x = 470.0f;
+    std::string web;
+    if (snap_.report_served && !snap_.address.empty())
+        web = "On your phone or PC, open http://" + snap_.address + ":" + std::to_string(kReportPort) + " and copy the text.";
+    else if (snap_.polled && !snap_.running)
+        web = "Start the host to open this from a phone or PC.";
+    else
+        web = "The network copy is not available.";
+    hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, web, 25.0f, 1354.0f), x, 866.0f, 25.0f, kInk);
+    hui::ui::text(list, fonts_.regular, std::string("Or fetch the file ") + kReportPath + " over FTP.", x, 900.0f, 22.0f, kMuted);
+    list.pop_transform();
+    list.pop_opacity();
+}
+
 void Screen::draw_page(hui::gfx::DrawList &list, std::uint32_t glass) const
 {
     draw_top_bar(list, glass);
     if (page_ == Page::home)
         draw_home(list, glass);
-    else
+    else if (page_ == Page::settings)
         draw_settings(list, glass);
+    else
+        draw_diagnostics(list, glass);
 
     // The focus ring glides between the focused parts.
     if (sheet_ == Sheet::none)
     {
         const Rect h = highlight_.rect(time_);
-        const bool pill = page_ == Page::home ? home_row_ == 0 : tile_ >= 6;
+        const bool pill = page_ == Page::home ? home_row_ == 0 : page_ == Page::diagnostics || tile_ >= 6;
         const float radius = pill ? h.h / 2.0f + 6.0f : 30.0f;
         const float breathe = 0.75f + 0.25f * std::sin(time_ * 3.0f);
         list.bordered_rect(h.inset(-6.0f), radius, kClear, 3.0f, kAccent.with_alpha(0.95f * breathe));

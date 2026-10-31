@@ -1,22 +1,24 @@
 # ProsperoSunshine Roadmap und Umsetzungsplan
 
-Stand: 28. Oktober 2026. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
+Stand: 31. Oktober 2026, nach Release 0.1.2. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
 
-## Stand (28. Oktober 2026, abends)
+## Stand (31. Oktober 2026, nach Release 0.1.2)
 
-Erledigt und live belegt (Details in `STATUS.md`): Phase 0 komplett, Spikes R1–R5 positiv (R6 ohne mDNS), Phase 1 bis auf Spiele als Bildquelle, P2.1–P2.4, P3.1–P3.4, P4.1–P4.2, P5.1, aus P6 die 30-Minuten-Sitzung und zehn Wiederverbindungen, P6.4 (automatischer Testclient in `tools/moonlight/`), P4.3 geprüft (Pad wird nach Abbruch neutral, ≈ 5,6 s Nachlauf), P6.2 Paketverlust (10 % ohne Abbruch), P7.1 (CI-Workflow, noch nicht auf GitHub gelaufen). Ende-zu-Ende-Stream mit einem moonlight-common-c-Client funktioniert.
+Erledigt und live belegt (Details in `STATUS.md`): Phase 0 komplett, Spikes R1–R5 positiv (R6 ohne mDNS, das kam mit P9.2), Phase 1 komplett, P2.1–P2.4, P3.1–P3.4, P4.1–P4.2, P5.1, aus P6 die 30-Minuten-Sitzung und zehn Wiederverbindungen, P6.4 (automatischer Testclient in `tools/moonlight/`), P4.3 geprüft (Pad wird nach Abbruch neutral), P6.2 Paketverlust (10 % ohne Abbruch), P7.1 bis P7.5 und P8.1 bis P8.5, P8.7, P8.8. Ende-zu-Ende-Stream mit einem moonlight-common-c-Client funktioniert.
 
-P7.2 (Lizenzübersicht `docs/licenses.md`) und P7.3 (englische README mit Voraussetzungen, Ablauf und Grenzen) sind erledigt. Das Archiv für P7.4 baut `scripts/package.sh` (mit Prüfsummen, `CHANGELOG.md` und `THIRD_PARTY.md`). P7.1, P7.4, P7.5, P8.8: Release `v0.1.0` am 2026-10-30 auf GitHub, CI grün, Katalog-Eintrag `PPSA47989` gemergt. Offen für P8.9 ist nur die Probe, die App wirklich aus dem Store zu installieren.
+Releases: `v0.1.0` am 2026-10-30 auf GitHub (CI grün, Katalog-Eintrag `PPSA47989` gemergt), `v0.1.1` mit der PS-Taste über Select, `v0.1.2` am 2026-10-31 mit HEVC, Rumble und Lichtleiste. Die Store-API meldet `0.1.2`. Die Installation aus dem Store hat laut Nutzerbericht (2026-10-31) geklappt; die Installation von 0.1.2 selbst ist nicht eigens geprüft (P8.9).
 
-Inzwischen außerdem: echte Moonlight-Clients (Web und PC) gepairt und gestreamt, Spiele als Bildquelle (P1.4), automatischer Wiederanlauf bei Ressourcenentzug durch Spielstart/-ende, Begrenzung auf eine Sitzung, App-Cover.
+Echte Clients: Moonlight Web, Moonlight am PC und Moonlight auf dem iPhone sind gepairt und streamen, das iPhone findet die PS5 per mDNS von selbst. Spiele sind als Bildquelle möglich (P1.4), der Host stellt Bild und Ton nach Spielstart/-ende selbst wieder her, es läuft nur eine Sitzung gleichzeitig. HEVC bis 50 Mbit/s (Nutzertest mit GTA III am PC bei 15 und 49,5 Mbit/s, iPhone bei 7 Mbit/s), Rumble (Nutzertest) und Lichtleiste (am Testclient) sind drin.
 
-Als Nächstes: PS5-App (Phase 8), Bild-/Ton-Synchronisation (P5.2), früherer Eingabe-Watchdog (P4.3-Folgepunkt), weitere Fehlerinjektion wie Ruhemodus und Ressourcenentzug (P6.2), Host-API mit der PS5-App abstimmen (P2.5).
+Verifiziert ist nur Firmware 13.00. Auf anderen Versionen ist das Verhalten ungeprüft; es gibt Meldungen zu 13.60 (Issue #1) und 10.40 (Issue #2). Das bestimmt die nächsten Schritte, siehe „Nächste konkrete Schritte“ am Ende.
 
 ## Zielbild v1.0
 
 Ein unveränderter Moonlight-Client im lokalen Netz fügt die PS5 per IP hinzu, paart sich und streamt den PS5-Bildschirm mit H.264 1080p SDR, Stereo-Ton und einem Controller. Kein PC vermittelt im Betrieb. Nach Sitzungsende sind alle eigenen Ressourcen freigegeben.
 
 Nicht in v1.0: HEVC/AV1, HDR, 4K, mehrere Clients oder Controller, Mikrofon, Rumble, adaptive Trigger, Internetzugriff, Maus/Tastatur.
+
+Davon ist seit 0.1.2 HEVC (bis 50 Mbit/s), Rumble und die Lichtleiste des Pads dazugekommen, jeweils nur auf Firmware 13.00. Weiter nicht vorgesehen: AV1, HDR, 4K, mehrere Clients oder Controller, Mikrofon, adaptive Trigger, Internetzugriff, Maus/Tastatur.
 
 ## Architekturentscheidung (Vorschlag ADR-001, Abschluss in Phase 0)
 
@@ -173,7 +175,7 @@ Eine Homebrew-App auf der Konsole (Vorbild: PS5SD) macht den Host ohne PC bedien
 
 **Abnahme Phase 8:** Ein Nutzer ohne PC kann den Host einrichten, Moonlight pairen und Autoload festlegen.
 
-Stand: P8.1, P8.3, P8.4 und P8.5 live geprüft; P8.2 ebenfalls live geprüft. P8.6 läuft in der App-Session. P8.7 live geprüft (2026-10-29): Die App steht im Media-Tab (`applicationCategoryType` 65536, `contentBadgeType` 1, `launchActivity`) und startet von dort; der `amm`-Block musste dafür aus `param.json` raus, mit ihm scheitert der Start mit 0x80020016. Für P8.8 wurde am 2026-10-29 geprüft: `PPSA47989` kommt im Store-Katalog (156 Apps, Stand 2026-10-28) nicht vor.
+Stand: P8.1, P8.3, P8.4 und P8.5 live geprüft; P8.2 ebenfalls live geprüft. P8.6 läuft in der App-Session. P8.7 live geprüft (2026-10-29): Die App steht im Media-Tab (`applicationCategoryType` 65536, `contentBadgeType` 1, `launchActivity`) und startet von dort; der `amm`-Block musste dafür aus `param.json` raus, mit ihm scheitert der Start mit 0x80020016. Für P8.8 wurde am 2026-10-29 geprüft: `PPSA47989` kommt im Store-Katalog (156 Apps, Stand 2026-10-28) nicht vor. P8.9 (2026-10-31): Release 0.1.2 steht im Store (die Store-API meldet `0.1.2` und `01.000.003`); die Installation aus dem Store klappte laut Nutzerbericht.
 
 ## Phase 9: Feinschliff vor dem Release (nach dem ersten Handy-Test)
 
@@ -184,18 +186,20 @@ Stand: P8.1, P8.3, P8.4 und P8.5 live geprüft; P8.2 ebenfalls live geprüft. P8
 | P9.3 | Bildrate des Clients beachten (30 fps gehen); andere Auflösungen als 1080p startet Avcap2 in der jetzigen Konfiguration nicht (Spike `mode_spike`) | M | Client erhält die angeforderte Auflösung bzw. Bildrate, oder dokumentiert, warum nicht |
 | P9.4 | Bild/Ton-Drift über 10 Minuten messen (`tools/moonlight/av_sync.py`) | S | Drift pro Minute im Toleranzbereich |
 | P9.5 | Firmware-Porting vorbereiten: ResourceArbitrator-Funktionen per NID statt fester Adressen, Anleitung `docs/firmware-porting.md` | M | NID-Suche findet auf 13.00 die bekannten Adressen |
-| P9.6 | Weitere Clients: Android, TV/Shield, Steam Deck | S | Je ein Stream mit Bild, Ton und Eingabe |
+| P9.6 | Weitere Clients: Android, TV/Shield, Steam Deck (Moonlight Web, PC und iPhone laufen bereits) | S | Je ein Stream mit Bild, Ton und Eingabe |
 | P9.7 | Spike: HEVC über den PS5-Encoder (erledigt, `docs/re/hevc.md`) | M | Ergebnis dokumentiert |
-| P9.11 | HEVC im Host (eingebaut, am Testclient gemessen; Moonlight am PC mit GTA III bei 15 und 49,5 Mbit/s und auf dem iPhone bei 7 Mbit/s liefen im Nutzertest gut). Offen: ein Testclient außerhalb von Docker, um hohe Bitraten zu messen (in Docker verliert er dort Pakete); ob mehr als 50 Mbit/s sinnvoll sind | L | Moonlight streamt HEVC in einem Spiel, H.264-Clients laufen unverändert |
-| P9.10 | Rumble: Motorwerte des virtuellen Pads an den Client (erledigt, Nutzertest 2026-10-31); Lichtleiste erledigt (am Testclient gemessen); offen sind adaptive Trigger (`docs/re/pad-output.md`) | M | Controller am Client vibriert im Spiel |
+| P9.11 | HEVC im Host (erledigt, in 0.1.2; am Testclient gemessen; Moonlight am PC mit GTA III bei 15 und 49,5 Mbit/s und auf dem iPhone bei 7 Mbit/s liefen im Nutzertest gut). Offen: ein Testclient außerhalb von Docker, um hohe Bitraten zu messen (in Docker verliert er dort Pakete); ob mehr als 50 Mbit/s sinnvoll sind | L | Moonlight streamt HEVC in einem Spiel, H.264-Clients laufen unverändert |
+| P9.10 | Rumble: Motorwerte des virtuellen Pads an den Client (erledigt, Nutzertest 2026-10-31); Lichtleiste erledigt (am Testclient gemessen); offen sind adaptive Trigger: Format und Clients geklärt, vor dem Bau fehlt eine Messung im Spiel (`docs/re/adaptive-triggers.md`) | M | Controller am Client vibriert im Spiel |
 | P9.9 | PS-Taste für Clients ohne diese Taste: Select halten sendet PS, kurzer Druck Create | S | Kontrollzentrum und Create-Menü öffnen sich im Stream; Test in Moonlight am Handy |
 | P9.8 | Virtuelles Pad nach Sitzungsende: Laut App-Session bekam die App nach einem Handy-Stream (App blieb „running“, kein Client) keine Eingaben vom RemoteEye-Test-Pad, erst nach Host-Neustart. Prüfen, ob `free_gamepad` läuft (Log „detached“) oder ob sich Host-Pad und RemoteEye-Pad stören; ggf. „PS5 Screen“ nach Client-Abbruch beenden | S | Nach Streamende erreichen Eingaben wieder Apps, ohne Host-Neustart |
 
 Stand: P9.1 live geprüft (2026-10-29): Der Steuer-Socket ist vom PC aus abgewiesen, das Log meldet „local only“. Moonlight auf dem iPhone streamt seit 2026-10-29 mit Bild und Ton; vorher kam nur Ton, weil der Host fälschlich HEVC angeboten hatte (`STATUS.md`).
 
-Stand P9.5 (2026-10-29): erledigt für 13.00. Die vier ResourceArbitrator-Funktionen sind unter NIDs exportiert und werden jetzt per `kernel_dynlib_resolve` gefunden, abgeglichen mit der Offset-Tabelle je Firmware; `ra_nid_probe.elf` meldet auf 13.00 `result=PASS` mit `0xdb0`/`0xee0`/`0x10b0`/`0x11f0`. Byte-Signaturen wurden verworfen (Code nur über den Kernel lesbar, Muster wären Sony-Code-Auszüge). Andere Firmware bleibt ungeprüft; Avcap2-Konfiguration, Descriptor, Bitrate-Grenze und Pad-Layouts sind 13.00-Messungen (Checkliste in `docs/firmware-porting.md`).
+Stand P9.5 (2026-10-29): erledigt für 13.00. Die vier ResourceArbitrator-Funktionen sind unter NIDs exportiert und werden jetzt per `kernel_dynlib_resolve` gefunden, abgeglichen mit der Offset-Tabelle je Firmware; `ra_nid_probe.elf` meldet auf 13.00 `result=PASS` mit `0xdb0`/`0xee0`/`0x10b0`/`0x11f0`. Byte-Signaturen wurden verworfen (Code nur über den Kernel lesbar, Muster wären Sony-Code-Auszüge). Andere Firmware bleibt ungeprüft; Avcap2-Konfiguration, Descriptor, HEVC-Konfiguration (Encoder-Speicher, `ReadVideo2`) und Pad-Layouts sind 13.00-Messungen (Checkliste in `docs/firmware-porting.md`). HEVC bietet der Host nur auf 13.00 an.
 
-Stand P9.2 (2026-10-29): Responder gebaut, Tests grün; mit `mdns_probe` live geprüft (PC sieht PTR/SRV/TXT/A von der Konsole, `tools/mdns_query.py`). Am 2026-10-30 auch im echten Host bestätigt; am 2026-10-31 meldete der Nutzer, dass Moonlight auf dem iPhone die PS5 von selbst listet. Stand P9.4 (2026-10-29): 10 Minuten, Ton relativ zu Bild −0,01 ms/min, also kein Drift; Klickton im Home-Menü diesmal nicht erkannt (0/380) und Bildreaktion Median 265 ms statt früher 23–25 ms. Das ist noch zu klären, vermutlich Erkennung oder Fokus der Tastendrücke, nicht der Stream.
+Stand P9.2 (2026-10-29): Responder gebaut, Tests grün; mit `mdns_probe` live geprüft (PC sieht PTR/SRV/TXT/A von der Konsole, `tools/mdns_query.py`). Am 2026-10-30 auch im echten Host bestätigt; am 2026-10-31 meldete der Nutzer, dass Moonlight auf dem iPhone die PS5 von selbst listet. Stand P9.4 (2026-10-29): 10 Minuten, Ton relativ zu Bild −0,01 ms/min, also kein Drift; Klickton im Home-Menü diesmal nicht erkannt (0/380) und Bildreaktion Median 265 ms statt früher 23–25 ms. Neu gemessen (2026-10-31, `STATUS.md`): Die 23–25 ms waren keine Reaktion, der Detektor sprach auf die Schlüsselbilder an; `av_sync.py` überspringt sie jetzt. In der App liegt Taste → Bild im Median bei 57 ms, auf dem Home-Bildschirm bei 95 ms, Ton liegt ±10 ms um das Bild. Ein neuer 10-Minuten-Lauf am 2026-10-31 ergab Bild 96 ms (380/380), Ton 8,6 ms danach (221/380), kein Drift zwischen beiden. Die 265 ms kamen nicht wieder, P9.4 ist damit erledigt.
+
+Stand P9.3: nur die Bildrate wird beachtet, die Auflösung bleibt 1080p (Moonlight skaliert herunter). Stand P9.9 (2026-10-31): Select halten sendet PS, im Stream am Testclient gemessen und in Moonlight auf dem iPhone bestätigt. `back_button_timeout = -1` (PS-Taste aus) ist am 2026-10-31 live geprüft.
 
 Stand P9.8 (2026-10-30): behoben und live geprüft. Sunshine hielt Pads für ein späteres Fortsetzen, solange die App lief; jetzt endet „PS5 Screen“ mit dem letzten Client (Patch 0006). Lizenzen: Texte der SDK-Laufzeit liegen in `licenses/ps5-payload-sdk-runtime/` und werden von CI und App-Build mitgeliefert.
 
@@ -213,7 +217,9 @@ Ist R2 negativ, erscheint 0.1 als Vorschau ohne Ton und benennt das deutlich.
 
 ## Nach v1.0
 
-In dieser Reihenfolge, jeweils mit eigenem Spike: 60 FPS stabil, Moonlight-Discovery per mDNS, HEVC, Rumble und Feedback, weitere Firmware-Versionen (Checkliste `docs/firmware-porting.md`; ResourceArbitrator per NID, Rest live zu prüfen), HDR und 4K, mehrere Controller.
+Erledigt seit 0.1.0: 60 fps (59,94 fps in der 30-Minuten-Sitzung), Moonlight-Discovery per mDNS, HEVC, Rumble und Lichtleiste.
+
+Offen, in dieser Reihenfolge, jeweils mit eigenem Spike: weitere Firmware-Versionen (Checkliste `docs/firmware-porting.md`; ResourceArbitrator per NID, Rest live zu prüfen), adaptive Trigger (`docs/re/adaptive-triggers.md`; Haptik geht über Moonlight nicht), HDR und 4K (1440p und 4K scheitern in der jetzigen Konfiguration schon beim Öffnen, P9.3), mehrere Controller.
 
 ## Risikoregister
 
@@ -222,7 +228,8 @@ In dieser Reihenfolge, jeweils mit eigenem Spike: 60 FPS stabil, Moonlight-Disco
 | ~~Kein IDR auf Anforderung (R1)~~ | erledigt: `RequestKeyFrame` liefert IDR nach 2–3 Frames | – | – |
 | ~~Kein Audio-Zugang (R2)~~ | erledigt: PCM über `OpenAudio` mit RA-Id 180 | – | – |
 | ~~Boost-Teile bauen nicht (P0.2)~~ | erledigt: Boost 1.92 gebaut, ein Patch für Process v2 | – | – |
-| Encoder-Bitrate über 15 Mbit/s | Encoder stoppt | sicher bei > 15 Mbit/s | Host klemmt auf 15 Mbit/s (Spitze ×1,12) |
+| ~~Encoder-Bitrate über 15 Mbit/s~~ | erledigt: Der Host setzt die Bitrate beim Öffnen des Encoders (`cfg+0xc8/0xcc/0xd0`) statt per `SetVideoBitrate` und klemmt auf 50 Mbit/s (`docs/re/hevc.md`) | – | – |
+| Encoder-Last über 50 Mbit/s | Unbekannt; Mario 64 erzeugte bei 100 Mbit/s nur rund 33 Mbit/s | unbekannt | Klemme auf 50 Mbit/s; eine Szene, die sie voll ausschöpft, ist nicht gemessen |
 | Firmware-Update ändert Offsets oder Strukturen | Capture fällt aus | sicher bei Update | ResourceArbitrator per NID mit Tabellenabgleich, Ablehnung bei Fehlschlag; Avcap2-Konfiguration und Pad je Version live prüfen (`docs/firmware-porting.md`) |
 | Avcap2 im Spiel belegt oder gesperrt | Kein Bild in bestimmten Titeln | unbekannt | Früh mit regulärem Spiel testen (P1.4), Meldung statt Absturz |
 | Zuordnungsdialog des virtuellen Pads | Bedienung blockiert | mittel | R5, einmalige Bestätigung vor Streambeginn |
@@ -230,6 +237,8 @@ In dieser Reihenfolge, jeweils mit eigenem Spike: 60 FPS stabil, Moonlight-Disco
 
 ## Nächste konkrete Schritte
 
-1. P0.1 und P0.2 (Sunshine-Pin, Patch-Mechanismus, Boost).
-2. Parallel R1 und R2 als Spikes, weil sie den v1.0-Umfang bestimmen.
-3. P0.3 bis P0.6 bis zum gelinkten Host-ELF, dann ADR-001 festschreiben.
+1. Diagnosebericht und klare Meldung auf nicht unterstützter Firmware sind gebaut, aber noch in keinem Release. Danach Berichte aus den Issues #1 (13.60) und #2 (10.40) einholen.
+2. Portierung einzelner Firmwares, sobald Berichte vorliegen. Reihenfolge nach Bericht, Checkliste in `docs/firmware-porting.md`; eine Version gilt erst als unterstützt, wenn die Schritte 3 bis 6, 8 und 9 belegt sind (Schritt 7 nur für HEVC).
+3. Weitere Clients (P9.6): Android, TV/Shield, Steam Deck.
+4. Adaptive Trigger (P9.10): zuerst die Messung im Spiel mit Log-Stufe `debug`, gebaut wird nur bei positivem Ergebnis (`docs/re/adaptive-triggers.md`).
+5. Ungeklärtes aus `STATUS.md`: seltene Fehlstarts (1 in 86), ein Testclient außerhalb von Docker könnte Host und Client unterscheiden. Ruhemodus (nur nach Rückfrage testen).

@@ -5,8 +5,8 @@ Stand: 31. Oktober 2026. Statische Analyse der entschlüsselten `libScePad` und 
 
 ## Woher die Werte kommen
 
-`SceRemotePlay` liest für jedes seiner virtuellen Pads alle 10 ms den Ausgabezustand (`0x249ed0`) über einen
-unbenannten Export von `libScePad` (NID `LKXfw7VJYqg`, Modul-Offset `0xdd70`). Der Export ist ein einziger ioctl auf
+`SceRemotePlay` liest für jedes seiner virtuellen Pads alle 10 ms den Ausgabezustand (`0x249ed0`) über
+`scePadVirtualDeviceGetRemoteSetting` aus `libScePad` (NID `LKXfw7VJYqg`, Modul-Offset `0xdd70`). Der Export ist ein einziger ioctl auf
 `/dev/hid`:
 
 ```text
@@ -25,7 +25,7 @@ kleine Zahl.
 | 2 | 2 Bytes | unbekannt, immer 0 | gemessen |
 | 3 | 2 Bytes | **Motoren: groß, klein** | **sicher:** Stärke 0,25 aus `ps5-homebrew-ui` ergibt `0,63` (groß 0, klein 0,25 × 255) |
 | 4 | 3 Bytes | Lichtleiste RGB | sicher: Systemblau `0,0,255`, Farbe von Homebrew UI Lab `127,240,216` |
-| 5 | 24 Bytes | vermutlich zwei Trigger-Effekte | Vermutung: Remote Play wertet zwei Blöcke darin getrennt aus |
+| 5 | 24 Bytes | Trigger-Effekte: Maske, dann zwei Blöcke aus Modus und 10 Bytes | statisch belegt, gemessen nur der Ruhewert `03 05 … 05 …` (`adaptive-triggers.md`) |
 | 6 | u32 | Vibrationsmodus | wahrscheinlich: 1, nach `scePadSetVibrationMode(handle, 2)` dann 2 |
 | 7–12 | je u32 | unbekannt | gemessen: `1,0,1,1,0` in Titeln, sonst 0 |
 
@@ -54,5 +54,5 @@ Die Lichtleiste läuft denselben Weg: Der Host vergleicht die Farbe bei jeder Ab
 
 Ein Titel mit bekanntem Rumble ist „Homebrew UI Lab“: Links am linken Rand wird abgewiesen, das löst einen Puls von 0,25
 aus. Das Handle des RemoteEye-Pads steht in `ps5_status`; `pad_output_probe.elf` liest es aus
-`/data/prosperosunshine/probe_handle` und schreibt Änderungen zwei Minuten lang ins Kernel-Log. Die Einstellungen der
+`/data/prosperosunshine/probe_handle` und schreibt Änderungen zehn Minuten lang ins Kernel-Log. Die Einstellungen der
 ProsperoSunshine-App lösen kein Rumble aus.

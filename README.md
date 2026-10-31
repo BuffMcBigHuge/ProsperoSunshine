@@ -97,12 +97,15 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   limits).
 - **Other firmware:** only 13.00 is tested. On other versions capture is refused if the system-library lookups fail;
   if they succeed it runs, untested. The kernel log says which case applies.
-- **Diagnosis:** set `min_log_level = debug` in `/data/prosperosunshine/sunshine.conf`; messages go to the kernel log.
+- **Diagnosis:** the app's **Diagnostics** page collects a report for a bug report, without addresses, device names or
+  ids. While the page is open and the host runs, a phone or PC in the same network can open it at
+  `http://<console-ip>:47996`; it is also saved as `/data/prosperosunshine/diagnostics.txt`. For more detail, set `min_log_level = debug` in
+  `/data/prosperosunshine/sunshine.conf`; messages go to the kernel log and `sunshine.log`.
 
 ## Development control socket
 
-The host listens on TCP **47995** with a line-based control socket: `STATUS`, `PAIRINGS`, `PIN [<id>] <pin> [name]`
-and `QUIT`. It is **unauthenticated**. By default it listens on `127.0.0.1` only (ROADMAP P9.1), so the app on the
+The host listens on TCP **47995** with a line-based control socket: `STATUS`, `PAIRINGS`, `PIN [<id>] <pin> [name]`,
+`REPORT`, `AUTOLOAD [ON|OFF]` and `QUIT`. It is **unauthenticated**. By default it listens on `127.0.0.1` only (ROADMAP P9.1), so the app on the
 console can use it but the LAN cannot. Creating the empty file `/data/prosperosunshine/control_lan` re-enables LAN
 access for development. Do this only on trusted networks.
 

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "ra_resolve.h"
+#include "diag.h"
 #include <string.h>
 #include <ps5/kernel.h>
-#include <ps5/klog.h>
 
-#define LOG(...) klog_printf("ProsperoSunshine: ra " __VA_ARGS__)
+#define LOG(...) ps_diag_log("ProsperoSunshine: ra " __VA_ARGS__)
 // An NID hit outside this window behind the map base cannot be one of the module's own functions.
 #define MODULE_WINDOW 0x100000
 

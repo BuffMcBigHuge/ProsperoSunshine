@@ -8,6 +8,7 @@ console itself, with a controller:
   on-screen keyboard. This replaces Sunshine's web UI for pairing.
 - **Settings**: edits `/data/prosperosunshine/sunshine.conf`.
 - **Start at boot**: puts the host into the Payload Manager's autoload list, or takes it out.
+- **Diagnostics**: a report for a bug report, to read on the console, from a phone or PC, or as a file.
 
 It is drawn with [ps5-homebrew-ui](https://github.com/Phononenom/ps5-homebrew-ui) and built, packaged
 and installed the same way as [PS5SD](https://github.com/Darkatek7/PS5SD): a title folder for
@@ -38,7 +39,7 @@ app.
 
 ## Using it
 
-Everything works with the controller. L1 and R1 switch between the two pages in the tab bar; the
+Everything works with the controller. L1 and R1 switch between the three pages in the tab bar; the
 D-pad moves the focus, which glides between the parts; Cross acts; Triangle reads the files again
 (for example after editing them over FTP). The bar above the button hints shows what is being done
 and how the last request went.
@@ -50,7 +51,8 @@ and how the last request went.
 | Hero | Host stopped, ready to stream, streaming (which app, and which client when the host reports it), or session paused (the host still has "PS5 Screen" open for a client that left; only hosts that report `client=` tell this apart), polled every two seconds through the host's control socket. The sun turns while the host runs and sends out rings while it streams. The chips under it: the port, LAN encryption, whether the host starts at boot, how many devices are paired. The console's IP address is in the top bar. |
 | Start host / Stop host | Start sends the host ELF to the ELF loader (`127.0.0.1:9021`) and waits until the host answers. Stop sends `QUIT` and waits until it is gone. |
 | Restart host | Stop, then start: the way new settings take effect. |
-| Start at boot | The switch for the Payload Manager's autoload (below). A line under it warns when the Payload Manager's own autoload is off (only when the app can read `pldmgr_config.txt`; on the test console a title may not). |
+| Start at boot | The switch for the Payload Manager's autoload (below). A line under it warns when the Payload Manager's own autoload is off (with a running host, which can read `pldmgr_config.txt`; a title may not). |
+| Notice | One line above the pairing part when there is something to know about this console: the firmware is untested, or the last capture attempt failed, and why (HDR on, capture in use, firmware not supported, the step that failed). It comes from the firmware and the host's `host_diag.log`. |
 | Pairing | A card per Moonlight client waiting to pair, with its name and address; a new request takes the focus and chimes. Cross opens the PIN keyboard: type the four digits Moonlight shows and press Done (or Options). The app waits until Moonlight has finished pairing and says whether it worked. Beside it, the paired devices (from `sunshine_state.json`). |
 
 While a stream runs, Stop, Restart and Save and restart need a second Cross within four seconds: the
@@ -84,6 +86,14 @@ The names, ranges and defaults are Sunshine's (`src/config.cpp` at a679b059). Ev
 file, comments included, is kept as it is. Sunshine uses the first line of a key; when the app sets a
 key that appears more than once, it keeps the first line's place and removes the others.
 
+**Diagnostics** collects a report when the page opens, and again on Cross. It says which app, host and
+firmware run, how the last capture attempt ended, which ports answer, how each file the app and host need
+looks from the title, which settings differ from the defaults, the host's `host_diag.log` and the end of
+`sunshine.log`. Addresses, device names, the console's name and long ids are taken out, so it can go into a
+public issue. It is saved as `/data/prosperosunshine/diagnostics.txt`. While the page is open and the host
+runs, a phone or PC in the same network can open it at `http://<console-ip>:47996`: a title may not listen on
+the network (bind fails with errno 13), so the host answers there, for a few seconds after each `REPORT`.
+
 ## Start at boot: how the Payload Manager is set up
 
 The Payload Manager keeps its payloads in `/data/pldmgr/payloads/`, one folder ("slot") each with the
@@ -106,6 +116,10 @@ Turning it off removes that line and leaves everything else in the list as it wa
 the host can still be started from the Payload Manager's own page. When the app installs a new host,
 it updates the slot's copy too. Each file is written as `<name>.tmp` and renamed over the old one.
 
+Files the Payload Manager saves itself are for its own user only (mode 0600), and a title runs as another
+one: `autoload.txt` can then not be read from the app, the way `pldmgr_config.txt` never can. The running host
+may, so the app then asks it (`AUTOLOAD`). With the host stopped, the app says to start it first.
+
 ## The host's control socket
 
 The app talks to the host on `127.0.0.1:47995` (`src/control/control_server.hpp`), one line per
@@ -116,6 +130,8 @@ request:
 | `STATUS` | `OK running=<0\|1> app=<name> pending=<n>` |
 | `PAIRINGS` | `OK <id> <name> <address>` per pending request, then `END` |
 | `PIN <id> <pin> [name]` | `OK paired` or `ERR ...`, once Moonlight has finished the handshake |
+| `REPORT` | `OK port=47996`: for 8 s the host answers there with `diagnostics.txt` |
+| `AUTOLOAD [ON\|OFF]` | `OK list=<0\|1> manager=<0\|1> slot=<0\|1>` or `ERR ...`: the autoload list, as the host sees it or after its change |
 | `QUIT` | `OK bye`, then the host ends |
 
 The socket serves one client at a time and has no authentication; it is meant for the local network
@@ -174,7 +190,7 @@ docker run --rm -v "${PWD}:/repo" prosperosunshine-app:2 bash app/tests/run.sh
 | File | What it is |
 | --- | --- |
 | `src/main.cpp` | The frame loop: display, fonts, pad, sound, the screen. Ends itself when `/data/prosperosunshine/app.quit` appears (for unattended tests). |
-| `src/psapp/screen.*` | The two pages, the sheets, the motion. Drawn in three layers: the light behind the page, the page (frosted cards over the first layer), the sheet (over the frosted page). |
+| `src/psapp/screen.*` | The three pages, the sheets, the motion. Drawn in three layers: the light behind the page, the page (frosted cards over the first layer), the sheet (over the frosted page). |
 | `src/psapp/icons.*` | Line icons and the sun, from the kit's shapes. |
 | `src/psapp/host.*` | The worker thread: polls the control socket, starts and stops the host, saves the settings, switches autoload. The screen reads a snapshot of its state every frame and never waits. |
 | `src/psapp/conf.*` | `sunshine.conf`: the offered options, their checks, line-preserving edits. |

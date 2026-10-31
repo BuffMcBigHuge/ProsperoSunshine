@@ -1,6 +1,6 @@
 # Arbeitsstand
 
-Stand: 30. Oktober 2026. Plan und Reihenfolge: `ROADMAP.md`. Ziel und Regeln: `PLAN.md`. Architektur: `docs/adr/001-sunshine-port.md`.
+Stand: 31. Oktober 2026. Plan und Reihenfolge: `ROADMAP.md`. Ziel und Regeln: `PLAN.md`. Architektur: `docs/adr/001-sunshine-port.md`.
 
 ## Kurzfassung
 
@@ -95,9 +95,21 @@ Live auf der Konsole geprüft mit dem aktuellen Host (Testclient vom PC):
 - **Codec-Wechsel:** H.264 → HEVC → HEVC → H.264 in aufeinanderfolgenden Sitzungen fehlerfrei. Öffnet der Ton den Kanal zuerst, öffnet ihn das Bild mit dem richtigen Modus neu (`ps_capture_mode_current`).
 - **Encoder ohne Netz (`hevc_spike`, Mario 64, 3 s je Stufe):** HEVC 6–100 Mbit/s und H.264 15–50 Mbit/s ohne Fehler; bei 100 Mbit/s entstanden 33 Mbit/s, größter Frame 239 KB. Eine Szene, die 50 Mbit/s voll ausschöpft, wurde nicht gemessen.
 - **Netz (`udp_burst.py`, je 180 Bursts zu 1024 Byte, 60 pro Sekunde):** Windows nativ empfängt 60, 100, 150 und 250 Pakete je Burst vollständig (bis 122 Mbit/s). Im Docker-Container kommen 60 vollständig an, von größeren Bursts nur 67–93 Pakete. Bei 55 Mbit/s angefordert und viel Bewegung bricht der Testclient daher ab (6 von 600 Frames), obwohl der Host fehlerfrei sendet. Über 31 Mbit/s liegt daher nur der Nutzertest vor.
-- **Nicht geprüft:** `hevc_mode = 1` und das Verhalten auf anderer Firmware (beides nur im Code).
+- **Nicht geprüft:** das Verhalten auf anderer Firmware (nur im Code).
 
 **Release 0.1.2:** App aus dem Release-Build installiert (`01.000.003`, in der App angezeigt), „Restart host“ ausgelöst, das Log meldet „H.264 and HEVC“. Danach mit Homebrew UI Lab je 15 s Stream über `stream_test`: HEVC 879 und H.264 897 Frames, fehlerfrei decodierbar, 0 Frame-Lücken, je 6 von 6 Rumble-Pulsen, Lichtleiste `0,0,255` und `127,240,216`. Das Archiv prüft `sha256sum -c` ohne Fehler, im ELF stehen keine lokalen Pfade oder Konsolenadresse (per `grep -a`). Veröffentlicht am 2026-10-31: Die Store-API (`/api/v1/apps/PPSA47989.json`) meldet `0.1.2`, `01.000.003` und die sha256 des Release-Zips. Die Installation dieser Version aus dem Store ist nicht geprüft.
+
+**Diagnose und Nachprüfungen (2026-10-31, nach 0.1.2, noch in keinem Release):**
+
+- **Diagnosebericht:** Die Seite „Diagnostics“ zeigt den Bericht auf der Konsole; per `curl http://<console>:47996/` kam er mit HTTP 200 an, während die Seite offen war. `grep` auf Konsolenadresse und Gerätenamen: 0 Treffer. Er nennt Firmware `13.00 (0x13000040), verified`.
+- **„Start at boot“ bei fremder Datei (Issue 2):** `autoload.txt` per FTP als uid 0, Modus 0600 nachgestellt, wie sie der Payload Manager laut Quelle anlegt. Mit laufendem Host liest die App den Stand über den Host, der Schalter klappt, die Datei hat danach Modus 0666 und den Eintrag. Ohne Host meldet die App `errno 13` und bittet, den Host zu starten. Das ist die Bedingung der gemeldeten Meldung; dass auf 10.40 dieselbe Ursache vorliegt, ist nicht belegt. Der Moonlight-Fehler aus Issue 2 bleibt ungeklärt.
+- **Hinweise zur Capture:** `avcap_spike.elf` hielt die Capture, ein Stream endete mit `stream_test` Exit 4; der Bericht zeigte `open failed`, Fehler -2 und den Hinweis auf eine belegte Capture. Nach einem normalen Stream steht dort `last open ok`. Die Zeile auf der Startseite ist für diesen Fall nicht fotografiert (Screenshot in dem Zustand verweigert). Die Fälle „failed“ und „abgewiesene Firmware“ wurden mit einer gefälschten `host_diag.log` angezeigt, HDR nur im Unit-Test.
+- **`hevc_mode = 1`:** `ServerCodecModeSupport` ist 1 (sonst 257), ein H.264-Stream läuft, eine HEVC-Anfrage liefert keine Daten.
+- **`back_button_timeout = -1`:** Mit dem Standard öffnet Select 800 ms halten das Kontrollzentrum (Frame 600 des Streams), ein zweiter Halt schließt es. Mit `-1` öffnet es sich nicht, oben rechts erscheint das Capture-Symbol, der kurze Druck „Create“ wirkt also weiter.
+- **Bildreaktion und Takt (`av_sync.py`, 600 s, Home-Bildschirm):** Bild 380/380, Median 96,0 ms (86,2–135,9, sd 6,3). Ton 221/380, Median 105,2 ms, also 8,6 ms nach dem Bild, Trend +0,00 ms/min. Bild und Ton driften beide +2,39 ms/min gegen die Uhr des PCs, gegeneinander +0,00. Die 265 ms vom 2026-10-29 kamen mit `--no-script` nicht wieder. Das passt zur Startsequenz als Ursache (Korrektur oben), direkt belegt ist sie weiterhin nicht.
+- **Fehlstart:** Der ENet-Fehler nach dem Schließen des ProsperoStore kam in 6 von 6 Versuchen nicht wieder. In einer Reihe von 20 Starts scheiterte Lauf 7 anders: RTSP `SETUP streamid=video` lief nach dem erfolgreichen Audio-SETUP in den Fehler 110, der Host beendete „PS5 Screen“ nach seinen 10 s ohne Sitzung (Patch 0007). 60 weitere Starts mit Debug-Log liefen fehlerfrei. Zusammen 1 Fehlschlag in 86 Starts; ob Host oder Testclient in Docker schuld war, ist offen.
+- **Trigger-Feld des Pads:** Im Ruhezustand steht dort `030500000000000000000000050000000000000000000000`, zuletzt auch am Host-Pad im Stream (Log-Stufe `debug`, Zeile `PS5 virtual pad 0 triggers ...`). GTA III (PS5-Fassung) setzt den Vibrationsmodus 2, R2 und L2 mit Fäusten ändern das Feld nicht. Das ist **ohne Aussage**, weil im Spielstand keine Waffe und kein Fahrzeug erreichbar waren. Ob Spiele Effekte an das virtuelle Pad senden, ist weiter offen (`docs/re/adaptive-triggers.md`).
+- **Tests:** `scripts/test.sh` und `app/tests/run.sh` bestanden. Letzter Stand der App auf der Konsole, 8 s Stream: 473 Frames, `stream_test` Exit 0.
 
 Noch offen:
 
@@ -107,9 +119,8 @@ Noch offen:
 4. **Eigene Werkzeuge vom PC:** `PIN`/`QUIT` und `pair.py status` über den Steuer-Socket gehen vom PC aus nur noch mit der leeren Datei `/data/prosperosunshine/control_lan` (danach Host neu starten). Sonst geht der Host-Neustart über die App.
 5. **Store-Installation (P8.9):** Die Installation aus dem ProsperoStore klappt (Nutzerbericht, 2026-10-31).
 6. **Rumble je Spiel:** Im Nutzertest (2026-10-31) vibrierte der Controller in Moonlight beim Streamen. Welche Spiele den klassischen Modus nutzen und welche nur die Haptik, ist offen.
-7. **PS-Taste abschalten:** `back_button_timeout = -1` ist nur im Code nachgelesen, nicht live geprüft.
-8. **Einmaliger Fehlstart:** Ein Stream direkt nach dem Schließen des ProsperoStore scheiterte (`stream_test` Exit 3: `Failed to establish ENet connection on UDP port 47999`, Fehler 11; im Host-Log `Ping Timeout` und `Initial Ping Timeout`). Der Host blieb betriebsbereit, die Wiederholung lief fehlerfrei. Die Ursache ist nicht geklärt.
-6. **Weiter offen wie bisher:** Ruhemodus (nur mit Rückfrage testen), Android/TV-Clients, andere Firmwares (Checkliste in `docs/firmware-porting.md`), MAC-Adresse 0 (kein Wake-on-LAN).
+7. **Seltene Fehlstarts:** Ein Stream direkt nach dem Schließen des ProsperoStore scheiterte (`stream_test` Exit 3: `Failed to establish ENet connection on UDP port 47999`, Fehler 11; im Host-Log `Ping Timeout` und `Initial Ping Timeout`). Der Host blieb betriebsbereit, die Wiederholung lief fehlerfrei. Nachgeprüft: 1 anderer Fehlschlag in 86 Starts (oben). Die Ursachen sind nicht geklärt.
+8. **Weiter offen wie bisher:** Ruhemodus (nur mit Rückfrage testen), Android/TV-Clients, andere Firmwares (Checkliste in `docs/firmware-porting.md`), MAC-Adresse 0 (kein Wake-on-LAN).
 
 - **MAC-Adresse** in `/serverinfo` ist 0: weder `getifaddrs` noch `sceNetGetMacAddress` liefern sie im Payload. Betrifft nur Wake-on-LAN.
 - **Boost.Filesystem `create_directories`** scheitert bei neuen verschachtelten Pfaden, wenn `errno` vorher belegt ist (ein Libc-Aufruf setzt kein `errno`). Der Host nutzt nur `std::filesystem` und ist nicht betroffen.

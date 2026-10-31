@@ -15,6 +15,7 @@
 #include "src/process.h"
 #include "src/rtsp.h"
 #include "src/video.h"
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <boost/core/null_deleter.hpp>
@@ -24,7 +25,10 @@
 #include <rs.h>
 #include <thread>
 extern "C" {
+#include <ps5/kernel.h>
 #include <ps5/klog.h>
+#include "platform/ps5/diag.h"
+#include "platform/ps5/ra_nids.h"
 }
 
 using namespace std::literals;
@@ -53,7 +57,13 @@ int main(int argc, char *argv[]) {
     const auto klog = add_klog_sink();
     std::error_code ec;
     std::filesystem::create_directories(platf::appdata(), ec);
-    klog_printf("ProsperoSunshine: host appdata=%s mkdir_ec=%d config=%s\n", platf::appdata().c_str(), ec.value(),
+    // Before anything that can fail: the app's diagnostic report reads this file, also after a crash.
+    const uint32_t firmware = kernel_get_fw_version();
+    char header[128];
+    std::snprintf(header, sizeof header, "ProsperoSunshine: host version=%s firmware=%#x known=%d", PROJECT_VERSION, firmware,
+                  ps_ra_find_known(firmware) != nullptr);
+    ps_diag_open((platf::appdata() / "host_diag.log").c_str(), header);
+    ps_diag_log("ProsperoSunshine: host appdata=%s mkdir_ec=%d config=%s\n", platf::appdata().c_str(), ec.value(),
                 config::sunshine.config_file.c_str());
     // config::parse copies a template apps.json from Sunshine's assets when none exists; there are
     // no assets on the console, and the app list is fixed in process_ps5.cpp anyway.
@@ -68,13 +78,13 @@ int main(int argc, char *argv[]) {
     config::input.back_button_timeout = 500ms;
     mail::man = std::make_shared<safe::mail_raw_t>();
     if (const int rc = config::parse(argc, argv)) {
-        klog_printf("ProsperoSunshine: host config::parse returned %d\n", rc);
+        ps_diag_log("ProsperoSunshine: host config::parse returned %d\n", rc);
         return rc < 0 ? 1 : 0;
     }
     // From here on the kernel log follows min_log_level from sunshine.conf like the file log.
     klog->set_filter(boost::log::expressions::attr<int>("Severity") >= config::sunshine.min_log_level);
     auto log_guard = logging::init(config::sunshine.min_log_level, config::sunshine.log_file);
-    if (!log_guard) klog_printf("ProsperoSunshine: host logging failed to initialize\n");
+    if (!log_guard) ps_diag_log("ProsperoSunshine: host logging failed to initialize\n");
     BOOST_LOG(info) << "ProsperoSunshine host starting, data in "sv << platf::appdata().string();
 
     task_pool.start(1);
@@ -85,10 +95,12 @@ int main(int argc, char *argv[]) {
     reed_solomon_init();
     auto input_guard = input::init();
     if (video::probe_encoders()) {
+        ps_diag_log("ProsperoSunshine: host video capture unavailable\n");
         BOOST_LOG(fatal) << "Video capture unavailable"sv;
         return 1;
     }
     if (http::init()) {
+        ps_diag_log("ProsperoSunshine: host HTTP interface failed to initialize\n");
         BOOST_LOG(fatal) << "HTTP interface failed to initialize"sv;
         return 1;
     }
@@ -97,15 +109,17 @@ int main(int argc, char *argv[]) {
     std::jthread rtsp_thread{rtsp_stream::start};
     prospero::ControlServer control(shutdown_event);
     std::jthread control_thread([&](std::stop_token stop) { control.run(stop); });
+    std::jthread report_thread([&](std::stop_token stop) { control.run_report(stop); });
     // Moonlight discovery (P9.2); on any socket problem the responder logs and ends, the host runs on.
     std::jthread mdns_thread([name = config::nvhttp.sunshine_name](std::stop_token stop) {
         prospero::mdns::run_responder(stop, name, net::map_port(nvhttp::PORT_HTTP));
     });
-    klog_printf("ProsperoSunshine: host ready control_port=%u\n", prospero::ControlServer::port);
+    ps_diag_log("ProsperoSunshine: host ready control_port=%u\n", prospero::ControlServer::port);
 
     shutdown_event->view();
     BOOST_LOG(info) << "ProsperoSunshine host shutting down"sv;
     control_thread.request_stop();
+    report_thread.request_stop();
     mdns_thread.request_stop();
     proc::proc.terminate();
     mdns_thread.join();
@@ -113,6 +127,6 @@ int main(int argc, char *argv[]) {
     rtsp_thread.join();
     task_pool.stop();
     task_pool.join();
-    klog_printf("ProsperoSunshine: host stopped\n");
+    ps_diag_log("ProsperoSunshine: host stopped\n");
     return 0;
 }

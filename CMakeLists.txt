@@ -38,7 +38,7 @@ set_target_properties(dep::ssl PROPERTIES INTERFACE_LINK_LIBRARIES "dep::crypto;
 
 # Platform layer.
 # ResourceArbitrator lookup by NID; never calls into the module.
-add_library(prospero_ra STATIC src/platform/ps5/ra_resolve.c)
+add_library(prospero_ra STATIC src/platform/ps5/ra_resolve.c src/platform/ps5/diag.c)
 target_include_directories(prospero_ra PUBLIC src)
 target_compile_options(prospero_ra PRIVATE ${PROSPERO_WARNINGS})
 
@@ -128,7 +128,8 @@ if(EXISTS "${PROSPERO_DEPS}/include/boost" AND EXISTS "${PROSPERO_DEPS}/lib/liba
         ${SUNSHINE_KEPT}
         "${MOONLIGHT_SRC}/src/RtspParser.c"
         src/sunshine/main_ps5.cpp src/sunshine/video_ps5.cpp src/sunshine/process_ps5.cpp
-        src/sunshine/platform_ps5.cpp src/sunshine/stubs_ps5.cpp src/control/control_server.cpp)
+        src/sunshine/platform_ps5.cpp src/sunshine/stubs_ps5.cpp src/control/control_server.cpp
+        src/control/autoload_host.cpp app/src/psapp/autoload.cpp)
     # Sunshine includes its own headers as "src/..." and "..."; FFmpeg's internal headers include a
     # "config.h" that must not resolve to Sunshine's, hence -idirafter for the Sunshine tree.
     target_include_directories(prospero_sunshine PRIVATE src "${SUNSHINE_SRC}" "${CMAKE_BINARY_DIR}/third-party")
@@ -137,6 +138,9 @@ if(EXISTS "${PROSPERO_DEPS}/include/boost" AND EXISTS "${PROSPERO_DEPS}/lib/liba
     # Sunshine expects moonlight-common-c headers under <moonlight-common-c/src/...>.
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/third-party")
     file(CREATE_LINK "${MOONLIGHT_SRC}" "${CMAKE_BINARY_DIR}/third-party/moonlight-common-c" SYMBOLIC)
+    # The autoload list's text edits are the app's; it includes them as "app/psapp/...".
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/third-party/app")
+    file(CREATE_LINK "${CMAKE_SOURCE_DIR}/app/src/psapp" "${CMAKE_BINARY_DIR}/third-party/app/psapp" SYMBOLIC)
     target_compile_definitions(prospero_sunshine PRIVATE
         PROJECT_NAME="ProsperoSunshine" PROJECT_VERSION="0.1.2" PROJECT_VERSION_MAJOR="0"
         PROJECT_VERSION_MINOR="1" PROJECT_VERSION_PATCH="2" PROJECT_VERSION_COMMIT="dev"

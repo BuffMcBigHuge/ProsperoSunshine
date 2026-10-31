@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Diagnostics page in the app: a report for bug reports, without addresses, device names or ids. Read it on the console,
+  open it from a phone or PC at `http://<console-ip>:47996` while the page is open and the host runs, or fetch
+  `/data/prosperosunshine/diagnostics.txt`.
+- The home page says when the firmware is untested, and why capture failed: HDR on, capture in use, firmware not
+  supported, or the step that failed.
+- The host writes its steps to `/data/prosperosunshine/host_diag.log`, which survives a crash.
+- At log level `debug` the host logs the trigger effects the console sends to a virtual pad. Nothing is passed to the
+  client yet; this is to find out which games send any.
+
+### Fixed
+
+- "Start at boot" failed with "Cannot read the Payload Manager's autoload.txt" once the Payload Manager had saved that
+  file itself, for root only. The host now makes the change when the app may not, so the host has to run for it.
+
 ## 0.1.2 (2026-10-31)
 
 ### Added

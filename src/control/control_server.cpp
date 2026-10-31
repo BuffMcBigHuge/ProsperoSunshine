@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "control/control_server.hpp"
+#include "control/autoload_host.hpp"
 #include "src/logging.h"
 #include "src/platform/common.h"
 #include "src/nvhttp.h"
 #include "src/process.h"
 #include "src/rtsp.h"
 #include <cerrno>
+#include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <netinet/in.h>
 #include <poll.h>
 #include <sstream>
@@ -55,11 +58,69 @@ std::string ControlServer::handle(const std::string &line) {
         BOOST_LOG(info) << "Control: PIN submitted for a pending pairing"sv;
         return nvhttp::pin(id, pin, name) ? "OK paired" : "ERR pairing failed";
     }
+    if (command == "REPORT") {
+        if (!report_listening_) return "ERR report port not open";
+        report_until_ = std::chrono::steady_clock::now().time_since_epoch().count() +
+                        std::chrono::duration_cast<std::chrono::steady_clock::duration>(report_window).count();
+        return "OK port=" + std::to_string(report_port);
+    }
+    if (command == "AUTOLOAD") {
+        std::string action;
+        in >> action;
+        if (action.empty()) return autoload_host::status();
+        if (action != "ON" && action != "OFF") return "ERR usage: AUTOLOAD [ON|OFF]";
+        BOOST_LOG(info) << "Control: autoload "sv << action;
+        return autoload_host::set(action == "ON");
+    }
     if (command == "QUIT") {
         shutdown_->raise(true);
         return "OK bye";
     }
     return "ERR unknown command";
+}
+
+// The app's diagnostic report for a phone or PC. A title may not listen on the network (bind fails with
+// EACCES), so the host does, and only answers while the app's page keeps asking for it.
+void ControlServer::run_report(std::stop_token stop) {
+    const int listener = socket(AF_INET, SOCK_STREAM, 0);
+    if (listener < 0) return;
+    int one = 1;
+    setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(report_port);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (bind(listener, reinterpret_cast<sockaddr *>(&addr), sizeof addr) || listen(listener, 4)) {
+        BOOST_LOG(warning) << "Report port "sv << report_port << " failed to bind"sv;
+        close(listener);
+        return;
+    }
+    report_listening_ = true;
+    while (!stop.stop_requested()) {
+        pollfd pfd{listener, POLLIN, 0};
+        if (poll(&pfd, 1, 250) <= 0) continue;
+        const int client = accept(listener, nullptr, nullptr);
+        if (client < 0) continue;
+        if (std::chrono::steady_clock::now().time_since_epoch().count() < report_until_) {
+            setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
+            // The request does not matter; reading it keeps the close from resetting the answer.
+            pollfd cfd{client, POLLIN, 0};
+            char request[2048];
+            if (poll(&cfd, 1, 500) > 0) (void)!recv(client, request, sizeof request, 0);
+            std::ostringstream body;
+            body << std::ifstream(platf::appdata() / "diagnostics.txt", std::ios::binary).rdbuf();
+            const std::string text = body.str();
+            const std::string answer = "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: " +
+                                       std::to_string(text.size()) + "\r\nConnection: close\r\n\r\n" + text;
+            for (size_t sent = 0; sent < answer.size();) {
+                const ssize_t n = send(client, answer.data() + sent, answer.size() - sent, 0);
+                if (n <= 0) break;
+                sent += static_cast<size_t>(n);
+            }
+        }
+        close(client);
+    }
+    close(listener);
 }
 
 void ControlServer::run(std::stop_token stop) {

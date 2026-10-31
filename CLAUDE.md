@@ -44,7 +44,8 @@ Toolchain: PS5 Payload SDK v0.45 in the Docker image `prosperosunshine-sdk:v0.45
 
 - The host is an ELF payload (ELF loader on port 9021); state lives in `/data/prosperosunshine/`.
   Control socket on TCP 47995, 127.0.0.1 only (the empty file `control_lan` there opens it to the LAN):
-  `STATUS`, `PAIRINGS`, `PIN [<id>] <pin> [name]`, `QUIT` (one client at a time).
+  `STATUS`, `PAIRINGS`, `PIN [<id>] <pin> [name]`, `REPORT`, `AUTOLOAD [ON|OFF]`, `QUIT` (one client at a time). `REPORT` makes the
+  host answer on TCP 47996 for some seconds with `diagnostics.txt` (a title may not listen on the network).
 - Autoload through the Payload Manager: `/data/pldmgr/autoload.txt`, slot `local/prospero-sunshine`.
 - The app is installed at `/data/homebrew/PPSA47989`. A ShadowMountPlus scan does **not** pick up changes to
   `sce_sys` (param.json, icon, background) of an already registered title. Re-register it:
