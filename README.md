@@ -61,9 +61,9 @@ Start **"PS5 Screen"** in Moonlight to stream what the console shows, or pick a 
 console asks **"Who's using this controller?"** inside the stream; answer it with your Moonlight controller.
 
 The host never closes a game, because that could lose unsaved progress. Quitting in Moonlight ends the stream, and the game
-keeps running on the console. If another game is in front, picking a game fails (Moonlight reports error 409) and starts
-nothing: close the running game first, on the console or in a "PS5 Screen" stream, then pick the game again. Media apps
-aren't listed; start those through "PS5 Screen".
+keeps running on the console. If another game is open, in front or behind the settings app, picking a game fails (Moonlight
+reports error 409) and starts nothing: close the running game first, on the console or in a "PS5 Screen" stream, then pick the
+game again. Media apps aren't listed; start those through "PS5 Screen".
 
 **PS button:** Moonlight's on-screen controller on a phone has none, so holding Select for half a second sends it. A
 short press of Select sends Create when you let go, which means Create cannot be held. To get a plain Create button

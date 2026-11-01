@@ -62,6 +62,7 @@ std::vector<ctx_t> all_apps() {
 // every later start until a restart (STATUS.md).
 constexpr auto settings_app = "PPSA47989"sv;
 constexpr auto settings_app_quit = "/data/prosperosunshine/app.quit";
+constexpr int launch_mount_busy = static_cast<int>(0x80940033);
 
 bool settings_app_closed() {
     std::ofstream(settings_app_quit).flush();
@@ -73,7 +74,27 @@ bool settings_app_closed() {
     return false;
 }
 
-// False when another title is in front and stays there: the stream would show that one, not the title the client asked for.
+// A title other than id that is still open, from the folder the system keeps for each running title. A game opened before the
+// settings app stays open behind it, but isn't the running big app once the app is gone: starting another title could close
+// it. A title that is just ending gets a moment to go. Empty when /mnt/sandbox can't be read.
+std::string other_open_title(const std::string &id) {
+    for (int i = 0;; i++) {
+        std::string open;
+        std::error_code ec;
+        for (const auto &entry : std::filesystem::directory_iterator("/mnt/sandbox", ec)) {
+            // <title id>_000: 9 characters, an underscore and an instance number.
+            const auto name = entry.path().filename().string();
+            if (name.size() != 13 || name[9] != '_') continue;
+            const auto title = name.substr(0, 9);
+            if (!title.starts_with("NPXS") && title != settings_app && title != id) open = title;
+        }
+        if (open.empty() || i == 8) return open;
+        std::this_thread::sleep_for(250ms);
+    }
+}
+
+// False when another title is open and stays so: the stream would show that one, not the title the client asked for, or
+// starting the new one could close it.
 bool start_title(const std::string &id) {
     char running[16];
     if (ps_title_running(running) > 0) {
@@ -86,8 +107,20 @@ bool start_title(const std::string &id) {
             return false;
         }
     }
+    if (const auto open = other_open_title(id); !open.empty()) {
+        BOOST_LOG(warning) << "Not starting "sv << id << ": "sv << open << " is still open and starting another title could close it"sv;
+        return false;
+    }
     // Without a title the stream still shows the console.
-    const int rc = ps_title_launch(id.c_str());
+    int rc = ps_title_launch(id.c_str());
+    // ShadowMountPlus releases a title about a second after it ends, and refuses starts until then ("launch mount
+    // unavailable ... Device busy" in its log). Seen right after the settings app closed itself, on firmware 10.20. Retried
+    // only while nothing else is open: once ShadowMountPlus lets a start through, the system could close that title.
+    for (auto until = std::chrono::steady_clock::now() + 3s;
+         rc == launch_mount_busy && std::chrono::steady_clock::now() < until && other_open_title(id).empty();) {
+        std::this_thread::sleep_for(500ms);
+        rc = ps_title_launch(id.c_str());
+    }
     if (rc < 0) BOOST_LOG(warning) << "Starting "sv << id << " failed: "sv << util::hex(rc).to_string_view();
     else BOOST_LOG(info) << "Started "sv << id;
     return true;
