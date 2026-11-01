@@ -151,6 +151,10 @@ void ps_capture_override_config(size_t field, uint32_t value)
     atomic_store(&override_field, field);
 }
 
+// Firmware 13.60: the block at 0xb8 is 8 bytes larger, and what 13.00 keeps from 0x198 on sits 8 higher. Not measured
+// here, taken from two public projects that run on it (docs/firmware-porting.md). HEVC isn't offered there, so its fields stay.
+static size_t record_shift(void) { return (kernel_get_fw_version() & 0xffff0000u) == 0x13600000u ? 8 : 0; }
+
 static void configure(uint8_t *p, uint32_t mode)
 {
     static const struct { size_t at; uint64_t size; } headers[] = {
@@ -159,8 +163,12 @@ static void configure(uint8_t *p, uint32_t mode)
         {0xe0, 0x20}, {0x100, 0x20}, {0x120, 0x18}, {0x1e8, 0xf8},
         {0x1f0, 0x28}, {0x218, 0x88}, {0x2a8, 0x10}
     };
-    memset(p, 0, 0x2e0);
-    for (size_t i = 0; i < sizeof headers / sizeof headers[0]; i++) u64(p, headers[i].at, headers[i].size);
+    const size_t shift = record_shift();
+    memset(p, 0, 0x2e0 + shift);
+    for (size_t i = 0; i < sizeof headers / sizeof headers[0]; i++) {
+        const size_t at = headers[i].at;
+        u64(p, at >= 0x198 ? at + shift : at, at == 0 || at == 0xb8 ? headers[i].size + shift : headers[i].size);
+    }
     u32(p, 0x10, 0);
     // Purpose: Remote Play. HEVC above 1080p with it needs the service's memory pools, which are missing (docs/re/hevc.md);
     // video chat has the same encoder preset and allocates per request.
@@ -177,10 +185,10 @@ static void configure(uint8_t *p, uint32_t mode)
     u32(p, 0xc8, atomic_load(&opening_average));
     u32(p, 0xcc, (uint32_t)peak);
     u32(p, 0xd0, (uint32_t)(peak * 1001 / (fps * 1000)));
-    u32(p, 0x2a0, mode);
-    u32(p, 0x2a4, 2); // composited screen, including home menu
-    u32(p, 0x2b0, 1);
-    p[0x2b4] = 1;
+    u32(p, 0x2a0 + shift, mode);
+    u32(p, 0x2a4 + shift, 2); // composited screen, including home menu
+    u32(p, 0x2b0 + shift, 1);
+    p[0x2b4 + shift] = 1;
     if (atomic_load(&video_codec) == 1) {
         // Remote Play's values (SceRemotePlay 0x6f7f0). With only the fields it sets for HEVC alone,
         // sceAvcap2Start returns 0x80c78000. The set is not minimised.
@@ -339,7 +347,7 @@ int ps_capture_open(ps_capture **out)
     if (mode(&output)) goto fail;
     LOG("video out mode %#x\n", output);
     if (output & 3) { error = PS_CAPTURE_HDR; goto fail; }
-    uint8_t config[0x2e0];
+    uint8_t config[0x2e8];
     mode_snapshot(s->mode);
     configure(config, (uint32_t)output);
     if (atomic_load(&video_codec) == 1) {

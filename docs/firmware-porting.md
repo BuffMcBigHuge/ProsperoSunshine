@@ -21,7 +21,7 @@ Zusage, dass andere Versionen funktionieren.
 
 ## Berichte zum Video-Datensatz anderer Firmwares
 
-Nicht selbst gemessen. Der Block bei `0xb8` wächst mit der Firmware, alles ab `0x198` verschiebt sich mit ihm:
+Nicht selbst gemessen. Der Block bei `0xb8` wächst mit der Firmware, alles ab `0x198` verschiebt sich mit ihm. Der Host setzt die Verschiebung für 13.60 um (`record_shift` in `capture.c`), ungetestet, weil keine Konsole mit 13.60 vorliegt:
 
 | Firmware | Gesamt | Block `0xb8` | Ab `0x198` | Quelle |
 | --- | --- | --- | --- | --- |

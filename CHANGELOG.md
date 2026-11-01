@@ -6,6 +6,8 @@
 
 - HEVC at 1440p and 4K on firmware 13.00, when the client asks for it. The console's fallback to 1080p in some titles applies
   here too. Measured on the home screen, in a quiet game scene and with noise in the console's browser; not yet during active play.
+- First attempt at firmware 13.60, for H.264 at 1080p: the capture record there is larger. The layout comes from public projects
+  that run on 13.60, and it's untested here, because no 13.60 console is available.
 
 ### Fixed
 
