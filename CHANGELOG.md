@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.7 (2026-11-01)
 
 ### Added
 
@@ -51,6 +51,13 @@
 - A start refused while ShadowMountPlus still releases a title (`0x80940033`, about a second after the settings app closed
   itself, seen once on firmware 10.20 with ShadowMountPlus 1.7beta11) is retried for up to 3 seconds when nothing else is
   open. The retry itself is not yet seen working: in the next try the first start went through.
+
+### Known limits
+
+- The Experimental switches have only run on firmware 13.00, where they change nothing. On other firmware they are untested.
+- Firmware 10.40 is unconfirmed. One report from 0.1.6 failed waiting for the capture resource, and the 10.x change has not been
+  confirmed to run there.
+- Rest mode with a game open and a stream running can still leave the host unreachable until it is restarted. End the stream first.
 
 ## 0.1.6 (2026-11-01)
 
