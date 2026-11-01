@@ -113,6 +113,10 @@ int main(int argc, char *argv[]) {
     auto log_guard = logging::init(config::sunshine.min_log_level, config::sunshine.log_file);
     if (!log_guard) ps_diag_log("ProsperoSunshine: host logging failed to initialize\n");
     BOOST_LOG(info) << "ProsperoSunshine host starting, data in "sv << platf::appdata().string();
+    if (config::ps5.close_game_on_quit) {
+        BOOST_LOG(info) << "Terminate App in Moonlight closes the session's game (close_game_on_quit)"sv;
+        ps_diag_log("ProsperoSunshine: host close_game_on_quit=1\n");
+    }
     // The app's Experimental switches. Sunshine doesn't know these keys and leaves them alone.
     const auto settings = config::parse_config(file_handler::read_file(config::sunshine.config_file.c_str()));
     const auto switched_on = [&](const char *key) {

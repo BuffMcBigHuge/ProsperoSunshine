@@ -256,6 +256,44 @@ Gemessen auf einer PS5 Pro mit 10.20 (Datensatz von 10.x, `record_shift`). Eine 
   der Checkliste (Bitrate beim Öffnen) ist auf 10.x nicht erfüllbar; Modi über 1080p bleiben auf 10.x aus (`ps_capture_large_modes_verified`); die Bitrate,
   die der Encoder auf 10.x wie bei H.264 nicht aus der Konfiguration übernimmt.
 
+### Terminate App schließt das Spiel (2026-11-01, nicht veröffentlicht)
+
+Gemessen auf der PS5 Pro mit 10.20 und ShadowMountPlus 1.7beta11.
+
+- **Schließen:** `sceSystemServiceKillApp(app, -1, 0, 0)` schließt den Titel im Vordergrund wie „Spiel schließen“ im
+  Startbildschirm. Sonde `close_probe.elf`: `rc=0`, der Aufruf kehrt nach 1,0 bis 1,2 s zurück, dann sind der Titel aus dem
+  Vordergrund und sein Ordner in `/mnt/sandbox` weg (GTA III dreimal, Wolverine einmal).
+- **ShadowMountPlus danach:** Es gibt den Titel frei, sobald kein Eintrag `/mnt/sandbox/<Titel>_*` mehr da ist, nach einer
+  Sekunde Karenz, sonst nach 10 s. Ein Neustart desselben Titels vor dieser Freigabe läuft, aber ShadowMountPlus bindet den neuen
+  Prozess nicht („runtime preparation timed out“) und sieht später auch sein Ende nicht; zurück bleibt ein leerer Ordner
+  `<Titel>_000`. Das löste sich, als ein anderer Titel startete. Mit Warten bis zur Freigabe lief der Neustart sauber
+  (`GAME started`); bei Wolverine war das 2,8 s nach dem Schließen.
+- **Host mit `close_game_on_quit = enabled`, Moonlight unter Windows:** Ctrl+Alt+Shift+E im Stream von GTA III ergab „Closing
+  PPSA03527 for Terminate App“, nach 1073 und 1137 ms geschlossen, ShadowMountPlus gab ihn frei. Ctrl+Alt+Shift+Q (mit
+  „Quit app on host PC after ending stream“ aus, Vorgabe von Moonlight) beendet nur den Stream, das Spiel läuft weiter. GTA III
+  danach erneut gewählt: startete normal.
+- **Beenden aus der App-Liste von Moonlight, ohne das Spiel weiter als laufend zu melden:** kam nicht beim Host an. Der Host
+  meldete nach dem Stream kein laufendes Spiel (Patch 0006), Moonlight übersprang `/cancel` und blieb unter Windows bei
+  „Quitting…“ stehen (zweimal gesehen, mit It Takes Two und GTA III). Ohne `close_game_on_quit` gilt das weiter.
+- **Mit `close_game_on_quit` meldet der Host das Spiel nach dem Stream weiter als laufend** (`serverinfo`, `/resume`), solange es
+  vorn ist. Moonlight unter Windows, nach einem Neustart der Konsole: It Takes Two aus Moonlight gestartet, mit Ctrl+Alt+Shift+Q
+  verlassen, in der Liste als laufend gezeigt, fortgesetzt („Session app [It Takes Two] resumed“), wieder verlassen. Dann GTA III
+  gewählt und das Beenden von It Takes Two bestätigt: „Closed PPSA02343 in 1069 ms“, ShadowMountPlus gab es 1 s später frei, GTA III
+  startete und wurde gebunden (`GAME started`). Stopp-Knopf auf GTA III in der Liste: „Closed PPSA03527 in 962 ms“, freigegeben,
+  danach keine Ordner mehr in `/mnt/sandbox`.
+- **Moonlight unter iOS und Android, gleicher Host:** iOS: It Takes Two gestartet, verlassen, „Quit App“: „Closed PPSA02343 in
+  1049 ms“. Sofort wieder gestartet: Der Host wartete auf die Freigabe („Starting PPSA02343 4411 ms after Terminate App closed
+  it“), ShadowMountPlus band ihn. „Resume App“ setzte fort, „Quit Running App and Start“ auf GTA III schloss It Takes Two
+  (1137 ms) und startete GTA III. Android: „Quit Current Game and Start“ zweimal, GTA III → It Takes Two (1059 ms, während iOS
+  GTA III noch streamte; dessen Stream endete, denn `cancel()` beendet alle Sitzungen und prüft nicht, welcher Client die App
+  gestartet hat) und It Takes Two → GTA III (835 ms); „Resume Session“ setzte GTA III fort. Während Android streamte, kam iOS
+  nicht dazu („PS5 capture busy with another session“, wie vorher). Ein letztes Beenden schloss GTA III mitten im Stream von
+  Android (1167 ms). ShadowMountPlus band jeden Start und gab jeden geschlossenen Titel frei, ohne „runtime preparation timed
+  out“ oder „Device busy“; danach keine Spielordner in `/mnt/sandbox`. „Quit Session“ unter Android nicht einzeln geprüft; es
+  ruft dasselbe `NvHTTP.quitApp()` auf wie „Quit Current Game and Start“.
+- **Offen:** Firmware 13.00 und der Fall, in dem der Host bis zur Obergrenze von 11 s wartet (ein leerer Ordner `<Titel>_000`
+  ist noch da).
+
 ## Bauen und testen
 
 ```powershell

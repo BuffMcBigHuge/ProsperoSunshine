@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `close_game_on_quit = enabled` in `sunshine.conf`, off by default: quitting in Moonlight (`/cancel`) closes the game the
+  stream started or found in front, through the system's own close as from the home screen. After the stream the game stays
+  listed as running while it is in front, as Sunshine on a PC keeps its app, so Moonlight offers Resume and Quit and asks to
+  quit it before starting another game. Only `/cancel` closes it, never a stream's end or the host's shutdown. Starting the same
+  game again right after waits until ShadowMountPlus has released it. Measured on 10.20 with Moonlight for PC, Android and
+  iOS: resume, quit and switching games work, and a close took about 1 s.
+
+### Fixed
+
+- An empty `/mnt/sandbox/<title>_000`, left behind when ShadowMountPlus missed a title's exit, no longer counts as an open
+  title. It made the check for a game open in the background refuse every other start with 409.
+
+### Known limits
+
+- Without `close_game_on_quit`, quitting a game from Moonlight for PC's app list, also by picking another game and confirming,
+  sends nothing to the host: it reports no running game once the stream has ended, so Moonlight skips its `/cancel` and waits at
+  "Quitting…". Other clients are untested.
+
 ## 0.1.7 (2026-11-01)
 
 ### Added

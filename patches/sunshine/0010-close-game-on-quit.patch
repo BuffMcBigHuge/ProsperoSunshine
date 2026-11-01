@@ -1,0 +1,139 @@
+ProsperoSunshine: Terminate App closes the session's game, if sunshine.conf asks for it
+
+Upstream ends the app on /cancel. On the PS5 the host never closes a game by default, because that would lose unsaved
+progress. With close_game_on_quit = enabled, /cancel (Moonlight's Terminate App) closes the game the session started or found
+in front, through the system as from the home screen. Only /cancel calls it: a session's end and the host's shutdown leave
+the game running. The game then also stays listed as running after the stream while it is in front (serverinfo, resume), as
+upstream keeps its app, so Moonlight offers Resume and Quit for it. running() itself still turns 0 when the stream ends, so the
+virtual pads go as before.
+
+--- a/src/config.h
++++ b/src/config.h
+@@ -414,6 +414,17 @@
+   extern input_t input;
+   extern sunshine_t sunshine;
+ 
++#ifdef __SCE__
++  /**
++   * @brief PS5 host options.
++   */
++  struct ps5_t {
++    bool close_game_on_quit;  ///< Moonlight's Terminate App closes the session's game too (off by default).
++  };
++
++  extern ps5_t ps5;
++#endif
++
+ #ifdef SUNSHINE_TESTS
+   /**
+    * @brief Parse and apply serialized configuration text for unit tests.
+--- a/src/config.cpp
++++ b/src/config.cpp
+@@ -902,6 +902,15 @@
+     true,  // native pen/touch support
+   };
+ 
++#ifdef __SCE__
++  /**
++   * @brief Default PS5 host options.
++   */
++  ps5_t ps5 {
++    false,  // close_game_on_quit
++  };
++#endif
++
+   /**
+    * @brief Default top-level Sunshine configuration values used before file and CLI overrides.
+    */
+@@ -1759,6 +1768,9 @@
+       }
+     }
+     bool_f(vars, "dd_config_revert_on_disconnect", video.dd.config_revert_on_disconnect);
++#ifdef __SCE__
++    bool_f(vars, "close_game_on_quit", ps5.close_game_on_quit);
++#endif
+     generic_f(vars, "dd_mode_remapping", video.dd.mode_remapping, dd::mode_remapping_from_view);
+     {
+       int value = 0;
+--- a/src/process.h
++++ b/src/process.h
+@@ -149,6 +149,13 @@
+      */
+     void terminate();
+ 
++#ifdef __SCE__
++    /**
++     * @brief Marks the game a finished session left in front as running again, for /resume (process_ps5.cpp).
++     */
++    void resume_left_game();
++#endif
++
+     /**
+      * @brief Update the cached app list and environment without disturbing running process state.
+      *
+@@ -243,4 +250,16 @@
+   void terminate_process_group(boost::process::v1::child &child_process, boost::process::v1::group &group, std::chrono::seconds exit_timeout);
+ 
+   extern proc_t proc;
++
++#ifdef __SCE__
++  /**
++   * @brief Terminate App: with close_game_on_quit, closes the game the session started or found in front (process_ps5.cpp).
++   */
++  void close_game_on_quit();
++
++  /**
++   * @brief With close_game_on_quit, the app ID of the game a finished session left in front, else 0 (process_ps5.cpp).
++   */
++  int game_left_running();
++#endif
+ }  // namespace proc
+--- a/src/nvhttp.cpp
++++ b/src/nvhttp.cpp
+@@ -1313,6 +1313,12 @@
+     }
+ 
+     auto current_appid = proc::proc.running();
++#ifdef __SCE__
++    // With close_game_on_quit, the game stays listed as running after the stream, so Moonlight offers Resume and Quit.
++    if (current_appid == 0) {
++      current_appid = proc::game_left_running();
++    }
++#endif
+     tree.put("root.PairStatus", pair_status);
+     tree.put("root.currentgame", current_appid);
+     tree.put("root.state", current_appid > 0 ? "SUNSHINE_SERVER_BUSY" : "SUNSHINE_SERVER_FREE");
+@@ -1516,6 +1522,11 @@
+     });
+ 
+     auto current_appid = proc::proc.running();
++#ifdef __SCE__
++    if (current_appid == 0) {
++      current_appid = proc::game_left_running();
++    }
++#endif
+     if (current_appid == 0) {
+       tree.put("root.resume", 0);
+       tree.put("root.<xmlattr>.status_code", 503);
+@@ -1588,6 +1599,10 @@
+     );
+     tree.put("root.resume", 1);
+ 
++#ifdef __SCE__
++    // The stream ends while no app is running, so a game left in front is marked running again.
++    proc::proc.resume_left_game();
++#endif
+     rtsp_stream::launch_session_raise(launch_session);
+   }
+ 
+@@ -1617,6 +1632,10 @@
+     if (proc::proc.running() > 0) {
+       proc::proc.terminate();
+     }
++#ifdef __SCE__
++    // Only here: a session's end and the host's shutdown also call terminate(), and they must leave the game running.
++    proc::close_game_on_quit();
++#endif
+ 
+     // The config needs to be reverted regardless of whether "proc::proc.terminate()" was called or not.
+     display_device::revert_configuration();

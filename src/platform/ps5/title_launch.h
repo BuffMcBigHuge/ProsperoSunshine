@@ -9,6 +9,9 @@ extern "C" {
 int ps_title_running(char title_id[16]);
 // Starts a title for the user in front. The new app's ID, or a negative error code from the system.
 int ps_title_launch(const char *title_id);
+// Closes title_id through the system, as from the home screen, if it is the title in front: 1 once it has ended, 0 if it
+// isn't in front, or a negative error code from the system. Its unsaved progress is lost.
+int ps_title_close(const char *title_id);
 
 #ifdef __cplusplus
 }

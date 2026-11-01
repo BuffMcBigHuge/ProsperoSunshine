@@ -31,3 +31,4 @@ run_test capture_mode_test
 run_test titles_test "$root/src/apps/titles.cpp"
 run_test mdns_test "$root/src/net/mdns.cpp"
 run_test ra_choose_test
+run_test quit_policy_test
