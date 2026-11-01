@@ -4,27 +4,60 @@
 
 ### Added
 
-- Firmware 10.x at 1080p, H.264, and on 10.20 also HEVC (8 bit and HDR): the capture record there is smaller, the encoder
-  keeps its own default bitrate, and HEVC starts with `cfg+0x24` alone. Measured on a 10.20 console (issue #2): Moonlight
-  streams on Android and iOS (tested with H.264) and on Windows (H.264 and HEVC, also HDR). H.264 there comes as 34 slices per
-  frame, more than FFmpeg's hardware decoders on Windows take (32), so Moonlight on Windows needs software decoding for it; HEVC
-  comes as 17 and decodes by hardware. Other 10.x versions are untested and get H.264 only.
 - `close_game_on_quit = enabled` in `sunshine.conf`, off by default: quitting in Moonlight (`/cancel`) closes the game the
   stream started or found in front, through the system's own close as from the home screen. After the stream the game stays
   listed as running while it is in front, as Sunshine on a PC keeps its app, so Moonlight offers Resume and Quit and asks to
   quit it before starting another game. Only `/cancel` closes it, never a stream's end or the host's shutdown. Starting the same
-  game again right after waits until ShadowMountPlus has released it. Measured on 10.20 with Moonlight for PC: resume, quit and
-  switching games work, and a close took about 1 s.
-
-### Changed
-
-- Firmware 10.20 counts as verified: the app no longer calls it untested, and the host knows its ResourceArbitrator offsets.
-  Moonlight on Android, iOS, Windows and Nintendo Switch streamed from a 10.20 console.
+  game again right after waits until ShadowMountPlus has released it. Measured on 10.20 with Moonlight for PC, Android and
+  iOS: resume, quit and switching games work, and a close took about 1 s.
 
 ### Fixed
 
 - An empty `/mnt/sandbox/<title>_000`, left behind when ShadowMountPlus missed a title's exit, no longer counts as an open
   title. It made the check for a game open in the background refuse every other start with 409.
+
+### Known limits
+
+- Without `close_game_on_quit`, quitting a game from Moonlight for PC's app list, also by picking another game and confirming,
+  sends nothing to the host: it reports no running game once the stream has ended, so Moonlight skips its `/cancel` and waits at
+  "Quitting…". Other clients are untested.
+
+## 0.1.7 (2026-11-01)
+
+### Added
+
+- Firmware 10.x at 1080p, H.264, and on 10.20 also HEVC (8 bit and HDR): the capture record there is smaller, the encoder
+  keeps its own default bitrate, and HEVC starts with `cfg+0x24` alone. Measured on a 10.20 console (issue #2): Moonlight
+  streams on Android and iOS (tested with H.264) and on Windows (H.264 and HEVC, also HDR). H.264 there comes as 34 slices per
+  frame, more than FFmpeg's hardware decoders on Windows take (32), so Moonlight on Windows needs software decoding for it; HEVC
+  comes as 17 and decodes by hardware. Other 10.x versions are untested and get H.264 only.
+- An **Experimental** section in the app's Settings, for testers on firmware where a function isn't verified: one switch each for
+  HEVC (8 bit), HDR (HEVC 10 bit), 1440p and 4K, and a bitrate cap of 150 instead of 50 Mbit/s, all off by default. They go to
+  `sunshine.conf` as `experimental_hevc`, `experimental_hdr`, `experimental_large_modes` and `experimental_high_bitrate`. On verified
+  firmware (13.00; 10.20 for HEVC and HDR) a switch shows as not needed and changes nothing. The bitrate switch has no effect on any
+  10.x, whose encoder keeps its own rate, and says so. HEVC tries `cfg+0x24` alone first, then 13.00's full setup. A function whose every
+  try fails is off until the host restarts, and the host offers H.264, 1080p and 50 Mbit/s again: a lower rate or mode takes over in the
+  same stream, while a stream that failed on HEVC or HDR ends and the next one works. The
+  diagnostics report lists the switches, each function's result and code, and every try (codec, mode, variant, the step that failed and
+  its code), and the Home
+  page asks for it to be posted, also after a success. None of this has run on a console yet. The switches come from one list,
+  `app/src/psapp/experimental_list.h`, so a new lock starts with one entry there.
+- `host version=` in `host_diag.log` and the diagnostics report name the build's commit, so a test build can be told from the
+  release. Without git data it says `unknown`.
+- When the wait for the capture resource ends without it, `host_diag.log` and the report say which case it was: no answer within
+  2 seconds, refused (with the value) or taken away, how long it waited and which resources were active. The report also says outright
+  when the firmware is refused because the ResourceArbitrator calls can't be found, which no switch changes.
+
+### Changed
+
+- The bitrate cap is 150 Mbit/s on firmware 13.00, up from 50, and stays at 50 elsewhere. Measured with a test client on wired LAN
+  and a noise image at 4K: HEVC follows the setting up to about 151 Mbit/s with no missing frames. Not yet tested with Moonlight or
+  in a game, and games may stay well below the setting.
+- Firmware 10.20 counts as verified: the app no longer calls it untested, and the host knows its ResourceArbitrator offsets.
+  Moonlight on Android, iOS, Windows and Nintendo Switch streamed from a 10.20 console.
+
+### Fixed
+
 - Game audio no longer stays silent after the capture is reopened, as happens when a title starts during a stream. The
   microphone read the session's generation before taking the lock that opens its channel; a reopen in between left the new
   channel marked as old, and every later open failed on it until the capture was reopened again or the stream ended.
@@ -43,9 +76,10 @@
 
 ### Known limits
 
-- Without `close_game_on_quit`, quitting a game from Moonlight for PC's app list, also by picking another game and confirming,
-  sends nothing to the host: it reports no running game once the stream has ended, so Moonlight skips its `/cancel` and waits at
-  "Quitting…" until it is restarted. Other clients are untested.
+- The Experimental switches have only run on firmware 13.00, where they change nothing. On other firmware they are untested.
+- Firmware 10.40 is unconfirmed. One report from 0.1.6 failed waiting for the capture resource, and the 10.x change has not been
+  confirmed to run there.
+- Rest mode with a game open and a stream running can still leave the host unreachable until it is restarted. End the stream first.
 
 ## 0.1.6 (2026-11-01)
 

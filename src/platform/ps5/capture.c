@@ -2,7 +2,10 @@
 // Derived from ps5-mcp/payload/avcap_probe/avcap_probe.c, FW 13.00 research.
 #include "capture.h"
 #include "diag.h"
+#include "experimental.h"
 #include "ra_resolve.h"
+#include <fcntl.h>
+#include <pthread.h>
 #include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -44,7 +47,7 @@ struct ps_capture {
     int (*free_memory)(void *, void *);
     uint8_t memory[0x40];
     int has_memory;
-    uint32_t mode[6];  // what mode_snapshot() returned at open
+    uint32_t mode[7];  // what mode_snapshot() returned at open
 };
 
 // Callback ABI currently has no verified instance context, so resource ownership
@@ -53,11 +56,15 @@ static atomic_flag owned = ATOMIC_FLAG_INIT;
 static atomic_int granted;
 static atomic_int revoked;
 static atomic_int refused;
+static atomic_int refused_value;  // data[0] of the answer that refused
 static int resource_event(int id, int event, const uint8_t *data)
 {
     if (id == atomic_load(&session_resource) && event == 1 && data) {
         atomic_store(&granted, data[0] == 1);
-        if (data[0] != 1) atomic_store(&refused, 1);
+        if (data[0] != 1) {
+            atomic_store(&refused_value, data[0]);
+            atomic_store(&refused, 1);
+        }
     }
     if (id == atomic_load(&session_resource) && event == 2) {
         atomic_store(&revoked, 1);
@@ -93,6 +100,8 @@ void ps_capture_set_opening_bitrate(uint32_t average, uint32_t peak)
     atomic_store(&opening_peak, peak);
 }
 
+uint32_t ps_capture_opening_average(void) { return atomic_load(&opening_average); }
+
 int ps_capture_set_codec(uint32_t codec)
 {
     if (codec > 1) return PS_CAPTURE_ERROR;
@@ -104,15 +113,49 @@ void ps_capture_set_ten_bit(uint32_t ten_bit) { atomic_store(&video_ten_bit, ten
 
 int ps_capture_last_open_rc(void) { return atomic_load(&last_open_rc); }
 
-int ps_capture_hevc_verified(void)
+int ps_capture_hevc_verified(void) { return ps_exp_hevc_verified(kernel_get_fw_version()); }
+
+int ps_capture_large_modes_verified(void) { return ps_exp_large_verified(kernel_get_fw_version()); }
+
+int ps_capture_high_bitrate_verified(void) { return ps_exp_bitrate_verified(kernel_get_fw_version()); }
+
+// The Experimental switches (experimental.h). The lock also covers what the failure handling below changes.
+static pthread_mutex_t experiment_lock = PTHREAD_MUTEX_INITIALIZER;
+static ps_experiment experiment;
+
+static ps_experiment experiment_now(void)
 {
-    const uint32_t firmware = kernel_get_fw_version();
-    return (firmware & 0xffff0000u) == 0x13000000u || (firmware & 0xffff0000u) == 0x10200000u;
+    pthread_mutex_lock(&experiment_lock);
+    const ps_experiment now = experiment;
+    pthread_mutex_unlock(&experiment_lock);
+    return now;
 }
 
-int ps_capture_large_modes_verified(void) { return (kernel_get_fw_version() & 0xffff0000u) == 0x13000000u; }
+int ps_capture_hevc_allowed(void)
+{
+    const ps_experiment now = experiment_now();
+    return ps_capture_hevc_verified() || ps_exp_hevc_offered(&now);
+}
 
-static void mode_snapshot(uint32_t mode[6])
+int ps_capture_hdr_allowed(void)
+{
+    const ps_experiment now = experiment_now();
+    return ps_capture_hevc_verified() || ps_exp_hdr_offered(&now);
+}
+
+int ps_capture_large_modes_allowed(void)
+{
+    const ps_experiment now = experiment_now();
+    return ps_capture_large_modes_verified() || ps_exp_large_offered(&now);
+}
+
+int ps_capture_high_bitrate_allowed(void)
+{
+    const ps_experiment now = experiment_now();
+    return ps_capture_high_bitrate_verified() || ps_exp_bitrate_offered(&now);
+}
+
+static void mode_snapshot(uint32_t mode[7])
 {
     mode[5] = atomic_load(&video_ten_bit);
     mode[0] = atomic_load(&video_resolution);
@@ -120,11 +163,13 @@ static void mode_snapshot(uint32_t mode[6])
     mode[2] = atomic_load(&video_codec);
     mode[3] = atomic_load(&opening_average);
     mode[4] = atomic_load(&opening_peak);
+    const ps_experiment now = experiment_now();
+    mode[6] = (uint32_t)ps_exp_variant_for(&now, mode[2], mode[5]);
 }
 
 int ps_capture_mode_current(const ps_capture *s)
 {
-    uint32_t mode[6];
+    uint32_t mode[7];
     mode_snapshot(mode);
     return s && !memcmp(mode, s->mode, sizeof mode);
 }
@@ -165,7 +210,8 @@ void ps_capture_override_config(size_t field, uint32_t value)
 // 13.00's rate fields land on other encoder fields there (Start returns 0x80c78000). The measured record also leaves out
 // 13.00's inner sub-block headers, so 10.x writes neither, and the encoder keeps its default rate.
 // HEVC is offered on 13.00 and 10.20 (ps_capture_hevc_verified). On 10.20 cfg+0x24 alone starts it, 8 and 10 bit, so
-// Remote Play's fields and the encoder memory are left out on 10.x. On 13.60 its fields would stay at 13.00's offsets.
+// Remote Play's fields and the encoder memory are left out on 10.x. On 13.60 its fields would stay at 13.00's offsets;
+// PS_EXP_FULL moves those from 0x198 on with the rest. Where the inner ones sit there is unknown.
 static ptrdiff_t record_shift(void)
 {
     const uint32_t firmware = kernel_get_fw_version();
@@ -173,7 +219,7 @@ static ptrdiff_t record_shift(void)
     return (firmware & 0xffff0000u) == 0x13600000u ? 8 : 0;
 }
 
-static void configure(uint8_t *p, uint32_t mode)
+static void configure(uint8_t *p, uint32_t mode, int variant)
 {
     static const struct { size_t at; uint64_t size; } headers[] = {
         {0, 0x2e0}, {8, 0x28}, {0x30, 0x58}, {0x38, 0x18},
@@ -213,7 +259,8 @@ static void configure(uint8_t *p, uint32_t mode)
     u32(p, 0x2a4 + shift, 2); // composited screen, including home menu
     u32(p, 0x2b0 + shift, 1);
     p[0x2b4 + shift] = 1;
-    if (shift >= 0 && atomic_load(&video_codec) == 1) {
+    if (shift >= 0 && atomic_load(&video_codec) == 1 && variant != PS_EXP_MINIMAL) {
+        const ptrdiff_t high = variant == PS_EXP_FULL ? shift : 0;
         // Remote Play's values (SceRemotePlay 0x6f7f0). With only the fields it sets for HEVC alone,
         // sceAvcap2Start returns 0x80c78000. The set is not minimised.
         u32(p, 0x44, 1);
@@ -236,10 +283,10 @@ static void configure(uint8_t *p, uint32_t mode)
         u64(p, 0x188, 0x10);
         p[0x190] = 1;
         u32(p, 0x194, 1);
-        memset(p + 0x220, 0xff, 0x80);
-        u64(p, 0x2b8, 0x10);
-        u32(p, 0x2c0, 1);
-        u32(p, 0x2c4, 0x6e);
+        memset(p + 0x220 + high, 0xff, 0x80);
+        u64(p, 0x2b8 + high, 0x10);
+        u32(p, 0x2c0 + high, 1);
+        u32(p, 0x2c4 + high, 0x6e);
     }
     if (atomic_load(&override_field)) u32(p, atomic_load(&override_field), atomic_load(&override_value));
 }
@@ -271,10 +318,66 @@ int ps_capture_close(ps_capture *s)
     return failed ? PS_CAPTURE_ERROR : 0;
 }
 
+// For the attempt's outcome line: where the last open stopped, its raw code, and whether it got as far as the encoder.
+static const char *_Atomic failure_step = "";
+static _Atomic int failure_rc, reached_encoder;
+static _Atomic int check_first_frame;
+
+// How long a first frame may take before an unproven open counts as failed. A frame takes 17 ms at 60 fps.
+#ifndef PS_FIRST_FRAME_MS
+#define PS_FIRST_FRAME_MS 3000
+#endif
+
+// Headers and a frame, as the stream will read them. The frame is lost, which costs nothing: the stream asks for an IDR
+// when it starts. Returns 0 or the reader's error.
+static int first_frame(ps_capture *s, const char **step)
+{
+    enum { capacity = 4 * 1024 * 1024 };
+    uint8_t *buffer = malloc(capacity);
+    if (!buffer) return 0;
+    uint8_t descriptor[0x88];
+    *step = "headers";
+    int rc = ps_capture_headers(s, buffer, capacity);
+    if (rc > 0) {
+        rc = 0;
+        *step = "first frame";
+        int waited = 0;
+        while (!rc && waited < PS_FIRST_FRAME_MS) {
+            rc = s->mode[2] == 1 ? ps_capture_read2(s, buffer, capacity, descriptor) : ps_capture_read(s, buffer, capacity, descriptor);
+            if (!rc) {
+                usleep(2000);
+                waited += 2;
+            }
+        }
+        LOG("first frame rc=%#x after %d ms\n", rc, waited);
+        rc = rc > 0 ? 0 : rc ? rc : PS_CAPTURE_ERROR;
+    } else if (!rc) {
+        rc = PS_CAPTURE_ERROR;
+    }
+    free(buffer);
+    return rc;
+}
+
+// The resources the arbitrator lists as active, for the log. Returns list()'s result.
+static int active_resources(int (*list)(int32_t *), char *out, size_t size, char separator)
+{
+    int32_t now[32] = {0};
+    const int rc = list(now);
+    const char between[2] = {separator, 0};
+    size_t used = 0;
+    out[0] = 0;
+    for (size_t i = 0; i < 32; i++)
+        if (now[i]) used += (size_t)snprintf(out + used, size - used, "%s%d", used ? between : "", now[i]);
+    return rc;
+}
+
 int ps_capture_open(ps_capture **out)
 {
     if (!out) return PS_CAPTURE_ERROR;
     *out = NULL;
+    atomic_store(&failure_rc, 0);
+    atomic_store(&reached_encoder, 0);
+    atomic_store(&failure_step, "in use");
     if (atomic_flag_test_and_set(&owned)) return PS_CAPTURE_BUSY;
     ps_capture *s = calloc(1, sizeof *s);
     if (!s) { atomic_flag_clear(&owned); return PS_CAPTURE_ERROR; }
@@ -287,6 +390,7 @@ int ps_capture_open(ps_capture **out)
     atomic_store(&granted, 0);
     atomic_store(&revoked, 0);
     atomic_store(&refused, 0);
+    atomic_store(&refused_value, -1);
     int error = PS_CAPTURE_ERROR;
     load_fn load = NULL;
     const char *kernels[] = {"libkernel_web.sprx", "libkernel_sys.sprx", "libkernel.sprx"};
@@ -359,8 +463,17 @@ int ps_capture_open(ps_capture **out)
     rc = s->request(s->resource, "RUNNING", NULL, getpid());
     LOG("RUNNING rc=%#x\n", rc);
     if (rc < 0) goto fail;
-    for (int i = 0; i < 200 && !atomic_load(&granted) && !atomic_load(&revoked) && !atomic_load(&refused); i++) usleep(10000);
-    if (!atomic_load(&granted) || atomic_load(&revoked)) goto fail;
+    int waited_ms = 0;
+    for (; waited_ms < 2000 && !atomic_load(&granted) && !atomic_load(&revoked) && !atomic_load(&refused); waited_ms += 10) usleep(10000);
+    if (!atomic_load(&granted) || atomic_load(&revoked)) {
+        // The app's report reads this line (parse_host_log): no answer, refused or taken away are different problems.
+        char ids[32 * 12];
+        const int list_rc = active_resources(list, ids, sizeof ids, ',');
+        LOG("RUNNING outcome=%s value=%d waited_ms=%d list_rc=%#x active=%s\n",
+            atomic_load(&revoked) ? "revoked" : atomic_load(&refused) ? "refused" : "timeout", atomic_load(&refused_value), waited_ms,
+            list_rc, ids[0] ? ids : "none");
+        goto fail;
+    }
     step = "Initialize";
     rc = init();
     LOG("Initialize rc=%#x\n", rc);
@@ -380,12 +493,14 @@ int ps_capture_open(ps_capture **out)
     }
     LOG("video out mode %#x\n", output);
     if (output & 3) { error = PS_CAPTURE_VR; goto fail; }
+    atomic_store(&reached_encoder, 1);
     uint8_t config[0x2e8] = {0};
     mode_snapshot(s->mode);
-    configure(config, (uint32_t)output);
-    if (atomic_load(&video_codec) == 1 && record_shift() >= 0) {
+    configure(config, (uint32_t)output, (int)s->mode[6]);
+    if (atomic_load(&video_codec) == 1 && record_shift() >= 0 && s->mode[6] != PS_EXP_MINIMAL) {
         // Memory Mode 1 as Remote Play sets it up (SceRemotePlay 0x6fb83..0x6fc65).
         step = "encoder memory";
+        const ptrdiff_t high = s->mode[6] == PS_EXP_FULL ? record_shift() : 0;
         int (*reserve)(const void *, void *, void *) = (void *)kernel_dynlib_resolve(-1, av, "yN0w4tWivqs");
         s->free_memory = (void *)kernel_dynlib_resolve(-1, av, "96UQhNnBlxc");
         if (!reserve || !s->free_memory) goto fail;
@@ -393,12 +508,12 @@ int ps_capture_open(ps_capture **out)
         u64(request, 0, sizeof request);
         memcpy(request + 8, config + 8, 0x28);
         memcpy(request + 0x30, config + 0x30, 0x58);
-        u64(config, 0x198, 0x50);
-        u32(config, 0x1a0, 1);
-        rc = reserve(request, config + 0x1a8, config + 0x1c8);
+        u64(config, 0x198 + high, 0x50);
+        u32(config, 0x1a0 + high, 1);
+        rc = reserve(request, config + 0x1a8 + high, config + 0x1c8 + high);
         LOG("encoder memory rc=%#x\n", rc);
-        if (rc) { atomic_store(&last_open_rc, rc); goto fail; }
-        memcpy(s->memory, config + 0x1a8, sizeof s->memory);
+        if (rc) { atomic_store(&last_open_rc, rc); atomic_store(&failure_rc, rc); goto fail; }
+        memcpy(s->memory, config + 0x1a8 + high, sizeof s->memory);
         s->has_memory = 1;
     }
     step = "OpenVideo";
@@ -421,33 +536,194 @@ int ps_capture_open(ps_capture **out)
         }
     }
     atomic_store(&last_open_rc, rc);
+    atomic_store(&failure_rc, rc);
     LOG("OpenVideo rc=%#x\n", rc);
     if (rc) atomic_store(&refused, 1);
     if (rc == RESOURCE_NOT_ACTIVE) {
         // For the app's report: is our resource listed, and which others are?
-        int32_t now[32] = {0};
-        const int list_rc = list(now);
-        char ids[32 * 12] = "";
-        size_t used = 0;
-        for (size_t i = 0; i < 32; i++)
-            if (now[i]) used += (size_t)snprintf(ids + used, sizeof ids - used, " %d", now[i]);
-        LOG("active resources rc=%#x:%s\n", list_rc, ids);
+        char ids[32 * 12];
+        const int list_rc = active_resources(list, ids, sizeof ids, ' ');
+        LOG("active resources rc=%#x:%s%s\n", list_rc, ids[0] ? " " : "", ids);
     }
     if (rc) goto fail;
     s->opened = 1;
     step = "Start";
     rc = start(s->handle);
     LOG("Start rc=%#x\n", rc);
+    atomic_store(&failure_rc, rc);
     if (rc) { atomic_store(&refused, 1); goto fail; }
     s->started = 1;
     if (!atomic_load(&granted) || atomic_load(&revoked)) { error = PS_CAPTURE_REVOKED; goto fail; }
+    if (atomic_load(&check_first_frame)) {
+        rc = first_frame(s, &step);
+        if (rc == PS_CAPTURE_REVOKED) { error = PS_CAPTURE_REVOKED; goto fail; }
+        if (rc) { atomic_store(&refused, 1); goto fail; }
+    }
     *out = s;
     LOG("open ok\n");
     return 0;
 fail:
+    atomic_store(&failure_step, step);
     LOG("open failed step=%s error=%d rc=%#x\n", step, error, atomic_load(&last_open_rc));
     ps_capture_close(s);
     return error;
+}
+
+// host_diag.log gets a line for each attempt while a switch counts, and the app's parser reads them
+// (parse_host_log in app/src/psapp/diag.cpp), so its field names and this have to agree.
+static void names(char *out, size_t size, const uint8_t flags[PS_EXP_SWITCH_COUNT])
+{
+    size_t used = 0;
+    out[0] = 0;
+    for (int i = 0; i < PS_EXP_SWITCH_COUNT; i++)
+        if (flags[i]) used += (size_t)snprintf(out + used, size - used, "%s%s", used ? "," : "", ps_exp_switch_at(i)->name);
+    if (!used) snprintf(out, size, "none");
+}
+
+static void describe_attempt(char *out, size_t size, const ps_experiment *e, uint32_t codec, uint32_t ten_bit, uint32_t resolution,
+                             uint32_t timing, uint32_t average)
+{
+    static const char *const variants[] = {"standard", "minimal", "full"};
+    char on[64], trial[64];
+    names(on, sizeof on, e->on);
+    const int unproven = ps_exp_unproven_codec(e, codec, ten_bit);
+    uint8_t proving[PS_EXP_SWITCH_COUNT] = {0};
+    proving[PS_EXP_HEVC] = unproven && !ten_bit;
+    proving[PS_EXP_HDR] = unproven && ten_bit;
+    proving[PS_EXP_LARGE] = (uint8_t)ps_exp_unproven_mode(e, resolution);
+    proving[PS_EXP_BITRATE] = (uint8_t)ps_exp_unproven_rate(e, average);
+    names(trial, sizeof trial, proving);
+    snprintf(out, size, "switches=%s firmware=%#x trial=%s codec=%s bits=%d mode=%s fps=%d kbit=%u variant=%s", on, kernel_get_fw_version(), trial,
+             codec == 1 ? "hevc" : "h264", ten_bit ? 10 : 8,
+             resolution == 6 ? "3840x2160" : resolution == 5 ? "2560x1440" : "1920x1080", timing ? 60 : 30, average / 1000,
+             variants[ps_exp_variant_for(e, codec, ten_bit)]);
+}
+
+// A file names the attempt under way: a step that takes the host down leaves no outcome, and without this the next host
+// would take the same way. The next start reads it and keeps that function off for its run.
+static char marker_path[256];
+
+static void marker_write(const char *fields)
+{
+    if (!marker_path[0]) return;
+    const int fd = open(marker_path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (fd < 0) return;
+    if (write(fd, fields, strlen(fields)) < 0) LOG("experimental attempt not noted\n");
+    fsync(fd);
+    close(fd);
+}
+
+static void marker_clear(void)
+{
+    if (marker_path[0]) unlink(marker_path);
+}
+
+static void log_disabled(const ps_experiment *before, const ps_experiment *after)
+{
+    for (int i = 0; i < PS_EXP_SWITCH_COUNT; i++)
+        if (after->failed[i] && !before->failed[i]) ps_diag_log("ProsperoSunshine: experimental disabled feature=%s\n", ps_exp_switch_at(i)->name);
+}
+
+void ps_capture_set_experimental(const int switches[PS_EXP_SWITCH_COUNT], const char *marker)
+{
+    const uint32_t firmware = kernel_get_fw_version();
+    ps_experiment now;
+    ps_exp_init(&now, firmware, switches);
+    uint8_t asked[PS_EXP_SWITCH_COUNT];
+    int any = 0;
+    for (int i = 0; i < PS_EXP_SWITCH_COUNT; i++) any |= asked[i] = switches[i] != 0;
+    if (any) {
+        char set[64], on[64];
+        names(set, sizeof set, asked);
+        names(on, sizeof on, now.on);
+        ps_diag_log("ProsperoSunshine: experimental switches=%s set=%s firmware=%#x\n", on, set, firmware);
+    }
+    snprintf(marker_path, sizeof marker_path, "%s", marker ? marker : "");
+    char left[256] = "";
+    const int fd = marker_path[0] ? open(marker_path, O_RDONLY) : -1;
+    if (fd >= 0) {
+        const ssize_t got = read(fd, left, sizeof left - 1);
+        left[got > 0 ? got : 0] = 0;
+        close(fd);
+    }
+    const ps_experiment before = now;
+    if (left[0]) {
+        ps_diag_log("ProsperoSunshine: experimental result=failed %s error=0 rc=0 step=host went down\n", left);
+        const char *trial = strstr(left, " trial=");
+        if (trial) {
+            const char *const end = strchr(trial + 1, ' ');
+            const size_t length = end ? (size_t)(end - trial) : strlen(trial);
+            char words[80];
+            snprintf(words, sizeof words, "%.*s", (int)length, trial);
+            for (int i = 0; i < PS_EXP_SWITCH_COUNT; i++) {
+                // The HDR switch alone also offers HEVC.
+                const int counts = now.on[i] || (i == PS_EXP_HEVC && now.on[PS_EXP_HDR]);
+                if (counts && strstr(words, ps_exp_switch_at(i)->name)) now.failed[i] = 1;
+            }
+        }
+    }
+    marker_clear();
+    log_disabled(&before, &now);
+    pthread_mutex_lock(&experiment_lock);
+    experiment = now;
+    pthread_mutex_unlock(&experiment_lock);
+}
+
+int ps_capture_open_or_fall_back(ps_capture **out)
+{
+    for (;;) {
+        const uint32_t codec = atomic_load(&video_codec), ten_bit = atomic_load(&video_ten_bit);
+        const uint32_t resolution = atomic_load(&video_resolution), timing = atomic_load(&video_timing);
+        const uint32_t average = atomic_load(&opening_average);
+        const ps_experiment before = experiment_now();
+        const int logged = ps_exp_any(&before);
+        const int unproven = ps_exp_unproven_codec(&before, codec, ten_bit) || ps_exp_unproven_mode(&before, resolution) ||
+                             ps_exp_unproven_rate(&before, average);
+        char fields[192] = "";
+        if (logged) {
+            describe_attempt(fields, sizeof fields, &before, codec, ten_bit, resolution, timing, average);
+            ps_diag_log("ProsperoSunshine: experimental attempt %s\n", fields);
+            if (unproven) marker_write(fields);
+        }
+        atomic_store(&check_first_frame, unproven);
+        const int rc = ps_capture_open(out);
+        atomic_store(&check_first_frame, 0);
+        if (logged) {
+            if (rc)
+                ps_diag_log("ProsperoSunshine: experimental result=failed %s error=%d rc=%#x step=%s\n", fields, rc,
+                            (unsigned)atomic_load(&failure_rc), atomic_load(&failure_step));
+            else
+                ps_diag_log("ProsperoSunshine: experimental result=ok %s error=0 rc=0 step=none\n", fields);
+            if (unproven) marker_clear();
+        }
+        pthread_mutex_lock(&experiment_lock);
+        enum ps_exp_next next = PS_EXP_GIVE_UP;
+        if (rc) {
+            const int attributable = rc == PS_CAPTURE_ERROR && atomic_load(&reached_encoder);
+            next = ps_exp_failed(&experiment, codec, ten_bit, average, attributable, atomic_load(&refused) && resolution >= 5);
+        } else {
+            ps_exp_succeeded(&experiment, codec, ten_bit, resolution, average);
+        }
+        const ps_experiment after = experiment;
+        pthread_mutex_unlock(&experiment_lock);
+        log_disabled(&before, &after);
+        if (!rc) return 0;
+        if (next == PS_EXP_NEXT_VARIANT) continue;
+        if (next == PS_EXP_LOWER_RATE) {
+            // The peak keeps its share of the average. The client needs no word of this: it gets fewer bits, nothing else.
+            const uint64_t peak = atomic_load(&opening_peak);
+            atomic_store(&opening_peak, (uint32_t)(peak * PS_EXP_SAFE_AVERAGE / average));
+            atomic_store(&opening_average, PS_EXP_SAFE_AVERAGE);
+            continue;
+        }
+        if (next == PS_EXP_FALL_BACK && ps_capture_fall_back_mode()) continue;
+        // Audio may open next, for the stream that is about to end: not with what just failed.
+        if (after.failed[PS_EXP_HEVC] != before.failed[PS_EXP_HEVC] || after.failed[PS_EXP_HDR] != before.failed[PS_EXP_HDR]) {
+            atomic_store(&video_ten_bit, 0);
+            if (!ps_capture_hevc_allowed()) atomic_store(&video_codec, 0);
+        }
+        return rc;
+    }
 }
 
 int ps_capture_change_scan_in(ps_capture *s, uint32_t resolution)
@@ -466,7 +742,7 @@ int ps_capture_headers(ps_capture *s, void *destination, size_t capacity)
     uint8_t nal[0x1a8] = {0};
     u64(nal, 0, sizeof nal);
     int rc = s->headers(s->handle, nal);
-    if (rc) { LOG("headers rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
+    if (rc) { atomic_store(&failure_rc, rc); LOG("headers rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
     size_t used = 0;
     // The console lists HEVC's as SPS, PPS, VPS; decoders and moonlight-common-c want the VPS first.
     static const size_t order[][3] = {{0x10, 0x98, 0x120}, {0x120, 0x10, 0x98}};
@@ -491,7 +767,7 @@ int ps_capture_read(ps_capture *s, void *destination, size_t capacity, uint8_t d
     u64(descriptor, 0, 0x70);
     int rc = s->read(s->handle, destination, capacity, descriptor, 1);
     if (rc == AGAIN || rc == 0) return 0;
-    if (rc < 0 || (size_t)rc > capacity) { LOG("ReadVideo rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
+    if (rc < 0 || (size_t)rc > capacity) { atomic_store(&failure_rc, rc); LOG("ReadVideo rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
     return rc;
 }
 
@@ -503,7 +779,7 @@ int ps_capture_read2(ps_capture *s, void *destination, size_t capacity, uint8_t 
     u64(descriptor, 0, 0x88);
     int rc = s->read2(s->handle, destination, capacity, descriptor, 1);
     if (rc == AGAIN || rc == 0) return 0;
-    if (rc < 0 || (size_t)rc > capacity) { LOG("ReadVideo2 rc=%#x\n", rc); return rc < 0 ? rc : PS_CAPTURE_ERROR; }
+    if (rc < 0 || (size_t)rc > capacity) { atomic_store(&failure_rc, rc); LOG("ReadVideo2 rc=%#x\n", rc); return rc < 0 ? rc : PS_CAPTURE_ERROR; }
     return rc;
 }
 

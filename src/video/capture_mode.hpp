@@ -14,8 +14,8 @@ inline constexpr CaptureMode mode_1080p{4, 1920, 1080}, mode_1440p{5, 2560, 1440
 
 // The largest mode that doesn't exceed the request, at least 1080p: smaller requests get 1080p and the client scales it,
 // because Avcap2 doesn't start below that.
-constexpr CaptureMode choose_capture_mode(int requested_height, bool large_modes_verified) {
-    if (!large_modes_verified) return mode_1080p;
+constexpr CaptureMode choose_capture_mode(int requested_height, bool large_modes_allowed) {
+    if (!large_modes_allowed) return mode_1080p;
     if (requested_height >= mode_2160p.height) return mode_2160p;
     if (requested_height >= mode_1440p.height) return mode_1440p;
     return mode_1080p;

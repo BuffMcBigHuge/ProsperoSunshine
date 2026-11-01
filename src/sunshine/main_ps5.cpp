@@ -5,7 +5,10 @@
 #include "control/control_server.hpp"
 #include "control/listener_watch.hpp"
 #include "platform/ps5/mdns_responder.hpp"
+#include "platform/ps5/capture.h"
+#include "platform/ps5/experimental.h"
 #include "src/config.h"
+#include "src/file_handler.h"
 #include "src/globals.h"
 #include "src/httpcommon.h"
 #include "src/input.h"
@@ -82,8 +85,9 @@ int main(int argc, char *argv[]) {
     std::filesystem::create_directories(platf::appdata(), ec);
     // Before anything that can fail: the app's diagnostic report reads this file, also after a crash.
     const uint32_t firmware = kernel_get_fw_version();
-    char header[128];
-    std::snprintf(header, sizeof header, "ProsperoSunshine: host version=%s firmware=%#x known=%d", PROJECT_VERSION, firmware,
+    char header[160];
+    std::snprintf(header, sizeof header, "ProsperoSunshine: host version=%s commit=%s firmware=%#x known=%d", PROJECT_VERSION,
+                  PROJECT_VERSION_COMMIT, firmware,
                   ps_ra_find_known(firmware) != nullptr);
     ps_diag_open((platf::appdata() / "host_diag.log").c_str(), header);
     ps_diag_log("ProsperoSunshine: host appdata=%s mkdir_ec=%d config=%s\n", platf::appdata().c_str(), ec.value(),
@@ -113,6 +117,15 @@ int main(int argc, char *argv[]) {
         BOOST_LOG(info) << "Terminate App in Moonlight closes the session's game (close_game_on_quit)"sv;
         ps_diag_log("ProsperoSunshine: host close_game_on_quit=1\n");
     }
+    // The app's Experimental switches. Sunshine doesn't know these keys and leaves them alone.
+    const auto settings = config::parse_config(file_handler::read_file(config::sunshine.config_file.c_str()));
+    const auto switched_on = [&](const char *key) {
+        const auto it = settings.find(key);
+        return it != settings.end() && it->second == "1";
+    };
+    int switches[PS_EXP_SWITCH_COUNT];
+    for (int i = 0; i < PS_EXP_SWITCH_COUNT; ++i) switches[i] = switched_on(ps_exp_switch_at(i)->key);
+    ps_capture_set_experimental(switches, (platf::appdata() / "experimental_attempt").c_str());
 
     task_pool.start(1);
     auto shutdown_event = mail::man->event<bool>(mail::shutdown);

@@ -229,7 +229,7 @@ Offen, in dieser Reihenfolge, jeweils mit eigenem Spike: weitere Firmware-Versio
 | ~~Kein Audio-Zugang (R2)~~ | erledigt: PCM über `OpenAudio` mit RA-Id 180 | – | – |
 | ~~Boost-Teile bauen nicht (P0.2)~~ | erledigt: Boost 1.92 gebaut, ein Patch für Process v2 | – | – |
 | ~~Encoder-Bitrate über 15 Mbit/s~~ | erledigt: Der Host setzt die Bitrate beim Öffnen des Encoders (`cfg+0xc8/0xcc/0xd0`) statt per `SetVideoBitrate` und klemmt auf 50 Mbit/s (`docs/re/hevc.md`) | – | – |
-| Encoder-Last über 50 Mbit/s | Unbekannt; Mario 64 erzeugte bei 100 Mbit/s nur rund 33 Mbit/s | unbekannt | Klemme auf 50 Mbit/s; eine Szene, die sie voll ausschöpft, ist nicht gemessen |
+| Encoder-Last über 50 Mbit/s | Am Testclient mit Rauschbild bis rund 151 Mbit/s sauber, in einem Spiel oder mit echtem Moonlight nicht gemessen; Mario 64 erzeugte bei 100 Mbit/s nur rund 33 Mbit/s | unbekannt | Klemme auf 150 Mbit/s nur auf 13.00, sonst 50; das Nutzer-Setting von Moonlight entscheidet, wie viel ein Client anfragt |
 | Firmware-Update ändert Offsets oder Strukturen | Capture fällt aus | sicher bei Update | ResourceArbitrator per NID mit Tabellenabgleich, Ablehnung bei Fehlschlag; Avcap2-Konfiguration und Pad je Version live prüfen (`docs/firmware-porting.md`) |
 | Avcap2 im Spiel belegt oder gesperrt | Kein Bild in bestimmten Titeln | unbekannt | Früh mit regulärem Spiel testen (P1.4), Meldung statt Absturz |
 | Zuordnungsdialog des virtuellen Pads | Bedienung blockiert | mittel | R5, einmalige Bestätigung vor Streambeginn |

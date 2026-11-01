@@ -36,7 +36,7 @@ jobs:
         run: docker run --rm --mount type=bind,source="$PWD",target=/repo prosperosunshine-sdk:v0.45 bash scripts/test.sh
 
       - name: Build host and probes
-        run: docker run --rm --mount type=bind,source="$PWD",target=/repo prosperosunshine-sdk:v0.45 bash scripts/build.sh
+        run: docker run --rm -e PROSPERO_COMMIT="${GITHUB_SHA::8}" --mount type=bind,source="$PWD",target=/repo prosperosunshine-sdk:v0.45 bash scripts/build.sh
 
       - name: Package
         run: bash scripts/package.sh "${GITHUB_REF_NAME//\//-}-${GITHUB_SHA::8}"

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "app/psapp/conf.hpp"
 
+#include "app/psapp/experimental_list.h"
+
 #include <cstdlib>
 
 namespace psapp
@@ -35,7 +37,8 @@ const std::vector<Choice> kEncryption = {
 // host's own (src/sunshine/main_ps5.cpp sets 2 s before the file is read).
 const std::vector<OptionSpec> &option_specs()
 {
-    static const std::vector<OptionSpec> specs = {
+    static const std::vector<OptionSpec> specs = [] {
+        std::vector<OptionSpec> list = {
         {"sunshine_name", "Host name", "The name Moonlight shows.", OptionKind::text,
          "network name", {}, 0, 0, 1, 0},
         {"min_log_level", "Log level", "Detail in sunshine.log and the kernel log.", OptionKind::choice, "Info",
@@ -59,7 +62,15 @@ const std::vector<OptionSpec> &option_specs()
         {"port", "Base port",
          "Moonlight's ports count from here.",
          OptionKind::number, "47989", {}, 1025, 65514, 1, 47989},
-    };
+        };
+        // The Experimental switches, which the host reads itself (src/sunshine/main_ps5.cpp), not Sunshine.
+        for (int i = 0; i < PS_EXP_SWITCH_COUNT; ++i)
+        {
+            const ps_exp_switch_info *info = ps_exp_switch_at(i);
+            list.push_back({info->key, info->label, info->help, OptionKind::toggle, "Off", {}, 0, 0, 1, 0});
+        }
+        return list;
+    }();
     return specs;
 }
 
@@ -110,6 +121,10 @@ std::optional<std::string> validate(const OptionSpec &spec, std::string_view val
             return "must be between " + std::to_string(spec.min) + " and " + std::to_string(spec.max);
         return std::nullopt;
     }
+    case OptionKind::toggle:
+        if (value == "0" || value == "1")
+            return std::nullopt;
+        return std::string("must be 0 or 1");
     }
     return std::string("unknown option");
 }
