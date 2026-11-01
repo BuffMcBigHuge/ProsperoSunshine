@@ -215,6 +215,8 @@ Moonlight bekommt nun HEVC Main 10 angeboten (`ServerCodecModeSupport` 769), `he
 | Home, 4K, 12 s | `hdr mode: 1` | wie oben, 3840x2160 | 19 ms |
 | Mario 64 aus Moonlight gestartet, 1080p, 25 s | `hdr mode: 1` | wie oben | 22 ms |
 | Titel mitten im Stream geschlossen, 22 s | `hdr mode: 1` | wie oben, auch nach dem Wiederöffnen | 1785 ms (Wiederöffnen nach 1750 ms) |
+| 4K, Rauschen auf einem Teil der Fläche (Browser-Karte), 40 Mbit/s verlangt, 20 s | `hdr mode: 1` | wie oben, 3840x2160; rund 20,7 Mbit/s, 1171 Bilder, keine fehlend | 19 ms |
+| dasselbe in 8 Bit als Vergleich | `hdr mode: 0` | Main, `yuv420p`, bt709; rund 29,9 Mbit/s, 1183 Bilder, keine fehlend | 19 ms |
 | danach HEVC 8 Bit, 8 s | `hdr mode: 0` | Main, `yuv420p`, bt709 | 19 ms |
 | danach H.264, 8 s | `hdr mode: 0` | h264 | 19 ms |
 
