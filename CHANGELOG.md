@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.6 (2026-11-01)
 
 ### Added
 
@@ -17,6 +17,12 @@
 
 - The capture check that told users to turn HDR off was about PS VR, as the system's own names for those bits show. The app's message
   now says so.
+
+### Known limits
+
+- Rest mode with a game open and a stream running: in one test the console and the game came back, but the host stayed unreachable
+  until it was restarted. End the stream before rest mode.
+- Waking the console from Moonlight did not work in the one try, from a PC in the same network.
 
 ## 0.1.5 (2026-11-01)
 
