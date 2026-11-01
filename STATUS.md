@@ -278,8 +278,18 @@ Gemessen auf der PS5 Pro mit 10.20 und ShadowMountPlus 1.7beta11.
   gewählt und das Beenden von It Takes Two bestätigt: „Closed PPSA02343 in 1069 ms“, ShadowMountPlus gab es 1 s später frei, GTA III
   startete und wurde gebunden (`GAME started`). Stopp-Knopf auf GTA III in der Liste: „Closed PPSA03527 in 962 ms“, freigegeben,
   danach keine Ordner mehr in `/mnt/sandbox`.
-- **Offen:** Android und iOS (ob ihr „Terminate App“ `/cancel` sendet), Firmware 13.00, und der Fall, in dem der Host bis zur
-  Obergrenze von 11 s wartet (ein leerer Ordner `<Titel>_000` ist noch da).
+- **Moonlight unter iOS und Android, gleicher Host:** iOS: It Takes Two gestartet, verlassen, „Quit App“: „Closed PPSA02343 in
+  1049 ms“. Sofort wieder gestartet: Der Host wartete auf die Freigabe („Starting PPSA02343 4411 ms after Terminate App closed
+  it“), ShadowMountPlus band ihn. „Resume App“ setzte fort, „Quit Running App and Start“ auf GTA III schloss It Takes Two
+  (1137 ms) und startete GTA III. Android: „Quit Current Game and Start“ zweimal, GTA III → It Takes Two (1059 ms, während iOS
+  GTA III noch streamte; dessen Stream endete, denn `cancel()` beendet alle Sitzungen und prüft nicht, welcher Client die App
+  gestartet hat) und It Takes Two → GTA III (835 ms); „Resume Session“ setzte GTA III fort. Während Android streamte, kam iOS
+  nicht dazu („PS5 capture busy with another session“, wie vorher). Ein letztes Beenden schloss GTA III mitten im Stream von
+  Android (1167 ms). ShadowMountPlus band jeden Start und gab jeden geschlossenen Titel frei, ohne „runtime preparation timed
+  out“ oder „Device busy“; danach keine Spielordner in `/mnt/sandbox`. „Quit Session“ unter Android nicht einzeln geprüft; es
+  ruft dasselbe `NvHTTP.quitApp()` auf wie „Quit Current Game and Start“.
+- **Offen:** Firmware 13.00 und der Fall, in dem der Host bis zur Obergrenze von 11 s wartet (ein leerer Ordner `<Titel>_000`
+  ist noch da).
 
 ## Bauen und testen
 
