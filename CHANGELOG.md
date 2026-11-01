@@ -9,6 +9,12 @@
   streams on Android and iOS (tested with H.264) and on Windows (H.264 and HEVC, also HDR). H.264 there comes as 34 slices per
   frame, more than FFmpeg's hardware decoders on Windows take (32), so Moonlight on Windows needs software decoding for it; HEVC
   comes as 17 and decodes by hardware. Other 10.x versions are untested and get H.264 only.
+- `close_game_on_quit = enabled` in `sunshine.conf`, off by default: quitting in Moonlight (`/cancel`) closes the game the
+  stream started or found in front, through the system's own close as from the home screen. After the stream the game stays
+  listed as running while it is in front, as Sunshine on a PC keeps its app, so Moonlight offers Resume and Quit and asks to
+  quit it before starting another game. Only `/cancel` closes it, never a stream's end or the host's shutdown. Starting the same
+  game again right after waits until ShadowMountPlus has released it. Measured on 10.20 with Moonlight for PC: resume, quit and
+  switching games work, and a close took about 1 s.
 
 ### Changed
 
@@ -17,6 +23,8 @@
 
 ### Fixed
 
+- An empty `/mnt/sandbox/<title>_000`, left behind when ShadowMountPlus missed a title's exit, no longer counts as an open
+  title. It made the check for a game open in the background refuse every other start with 409.
 - Game audio no longer stays silent after the capture is reopened, as happens when a title starts during a stream. The
   microphone read the session's generation before taking the lock that opens its channel; a reopen in between left the new
   channel marked as old, and every later open failed on it until the capture was reopened again or the stream ended.
@@ -32,6 +40,12 @@
 - A start refused while ShadowMountPlus still releases a title (`0x80940033`, about a second after the settings app closed
   itself, seen once on firmware 10.20 with ShadowMountPlus 1.7beta11) is retried for up to 3 seconds when nothing else is
   open. The retry itself is not yet seen working: in the next try the first start went through.
+
+### Known limits
+
+- Without `close_game_on_quit`, quitting a game from Moonlight for PC's app list, also by picking another game and confirming,
+  sends nothing to the host: it reports no running game once the stream has ended, so Moonlight skips its `/cancel` and waits at
+  "Quitting…" until it is restarted. Other clients are untested.
 
 ## 0.1.6 (2026-11-01)
 

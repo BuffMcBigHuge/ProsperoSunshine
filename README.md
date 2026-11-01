@@ -60,10 +60,18 @@ Pairing survives host restarts.
 Start **"PS5 Screen"** in Moonlight to stream what the console shows, or pick a game to start it as well. The first time, the
 console asks **"Who's using this controller?"** inside the stream; answer it with your Moonlight controller.
 
-The host never closes a game, because that could lose unsaved progress. Quitting in Moonlight ends the stream, and the game
-keeps running on the console. If another game is open, in front or behind the settings app, picking a game fails (Moonlight
-reports error 409) and starts nothing: close the running game first, on the console or in a "PS5 Screen" stream, then pick the
-game again. Media apps aren't listed; start those through "PS5 Screen".
+By default the host never closes a game, because that could lose unsaved progress. Quitting in Moonlight ends the stream, and
+the game keeps running on the console. If another game is open, in front or behind the settings app, picking a game fails
+(Moonlight reports error 409) and starts nothing: close the running game first, on the console or in a "PS5 Screen" stream,
+then pick the game again. Media apps aren't listed; start those through "PS5 Screen".
+
+**Closing the game from Moonlight:** with `close_game_on_quit = enabled` in `sunshine.conf`, the host behaves like Sunshine on
+a PC for the game the stream started, or the one already in front when you picked it. After the stream it stays listed as
+running while it is in front, so Moonlight offers to resume or quit it, and picking another game asks to quit it first.
+Quitting closes it as "Close Game" on the console does, and unsaved progress is lost. On Moonlight for PC, the stop button on
+the running game quits it; so does Ctrl+Alt+Shift+E during the stream, which doesn't ask and also closes Moonlight, or any end
+of the stream when "Quit app on host PC after ending stream" is on. With that option off (Moonlight's default),
+Ctrl+Alt+Shift+Q only ends the stream and the game keeps running. "PS5 Screen" closes nothing.
 
 **PS button:** Moonlight's on-screen controller on a phone has none, so holding Select for half a second sends it. A
 short press of Select sends Create when you let go, which means Create cannot be held. To get a plain Create button
@@ -85,6 +93,9 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
 - The bitrate is capped at 50 Mbit/s. The encoder holds it in normal scenes, but extreme images can exceed it: full-screen
   random noise reached about 130 Mbit/s at 4K and 35 Mbit/s at 1080p, whatever was set.
 - One streaming session at a time. More than one Moonlight controller is untested.
+- Without `close_game_on_quit`, Moonlight for PC can still offer to quit a game from its app list, also when you pick another
+  game, but that sends nothing to the host: it reports no running game once the stream has ended, so Moonlight skips its quit
+  request and waits at "Quitting…" until it is restarted. Close the game on the console instead. Other clients are untested.
 - A real DualSense disconnects when the stream controller connects. Turned back on during the stream it stays without
   effect, because apps read only the controller that connected first; after the stream it works normally. The other way
   round, a controller that is already connected and not disconnected (seen with a second virtual pad) keeps the app, and

@@ -59,6 +59,7 @@ third-party (MIT).
 | `patches/sunshine/0007-launch-timeout.patch` | ProsperoSunshine | Separates the launch timeout from the short `ping_timeout` and ends the session app when no client comes. |
 | `patches/sunshine/0008-feedback-latency.patch` | ProsperoSunshine | Shortens the wait in the control loop so rumble and light bar changes reach the client quickly. |
 | `patches/sunshine/0009-rtsp-restart.patch` | ProsperoSunshine | Lets the RTSP server start again after rest mode took its socket. |
+| `patches/sunshine/0010-close-game-on-quit.patch` | ProsperoSunshine | Adds `close_game_on_quit`: `/cancel` then also closes the session's game. |
 | `patches/boost/0001-process-v2-no-close-range-on-prospero.patch` | ProsperoSunshine | The PS5 libc has no `close_range()`; makes that path opt-in so the portable fallback is used (Boost.Process v2 is built but unused). |
 | `patches/ffmpeg/0001-remove-register.patch` | LizardByte/build-deps `d0ac5ef4` (MIT), unchanged | Removes the `register` storage class in `get_bits.h`, ill-formed in the C++23 code that includes it. |
 

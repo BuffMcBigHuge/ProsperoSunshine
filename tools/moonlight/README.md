@@ -90,6 +90,8 @@ burst-aligned estimate that subtracts 5 ms per packet still to come in the burst
 `LiSendMultiControllerEvent` returned on the client; the real input path adds network and host latency.
 
 Manual steps: `pair.py launch` prints JSON (`sessionUrl0`, `rikey`, `rikeyid`, `appversion`, `gfe`, `codec_mode`) that
-`stream_test` takes as arguments (`stream_test --help` lists them); `pair.py cancel` ends the host session.
+`stream_test` takes as arguments (`stream_test --help` lists them); `pair.py cancel` ends the host session. With
+`close_game_on_quit = enabled` in `sunshine.conf`, that `/cancel`, also the one at the end of `run_smoke.sh`, closes the game the
+session started or found in front.
 `stream_test` scripted input: controller arrival, A press/release, stick moves, D-pad and R2, `LiRequestIdrFrame()` at
 half time.
