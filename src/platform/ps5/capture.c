@@ -194,7 +194,11 @@ static void configure(uint8_t *p, uint32_t mode)
         u32(p, 0xd4, 35);
         u32(p, 0xd8, 0x33);
         p[0x108] = 1;
-        u32(p, 0x10c, (uint32_t)(peak * 1001 / (fps * 1000) / 8)); // bytes per frame
+        // Bytes a frame may cost before the encoder skips frames to catch up. Remote Play's one frame's share of the peak
+        // lost a frame per IDR. These are the largest values measured to start; above them, Start returns 0x80c78000
+        // (docs/re/hevc.md).
+        const uint32_t resolution = atomic_load(&video_resolution);
+        u32(p, 0x10c, resolution >= 6 ? 0x100000 : resolution == 5 ? 0xc0000 : 0x60000);
         p[0x128] = 1;
         u32(p, 0x12c, 0x19);
         u64(p, 0x188, 0x10);
@@ -333,6 +337,7 @@ int ps_capture_open(ps_capture **out)
     step = "video out mode";
     int output = 0;
     if (mode(&output)) goto fail;
+    LOG("video out mode %#x\n", output);
     if (output & 3) { error = PS_CAPTURE_HDR; goto fail; }
     uint8_t config[0x2e0];
     mode_snapshot(s->mode);
@@ -357,10 +362,12 @@ int ps_capture_open(ps_capture **out)
     }
     step = "OpenVideo";
     // The service refuses while it doesn't list our resource as active. Seen on firmware 10.40, which may just need a
-    // moment; stay below the 2 s a client waits for the stream (Initial Ping Timeout).
+    // moment; stay below the 2 s a client waits for the stream (Initial Ping Timeout). A larger mode gets the same code
+    // when the console's output is too small for it, and needs the time left for the open at 1080p.
+    const int repeats = atomic_load(&video_resolution) >= 5 ? 5 : 25;
     for (int attempt = 0;; attempt++) {
         rc = open_video(&s->handle, config, 0);
-        if (rc != RESOURCE_NOT_ACTIVE || attempt == 25 || atomic_load(&revoked)) {
+        if (rc != RESOURCE_NOT_ACTIVE || attempt == repeats || atomic_load(&revoked)) {
             if (attempt) LOG("OpenVideo repeated %d times\n", attempt);
             break;
         }
@@ -368,6 +375,7 @@ int ps_capture_open(ps_capture **out)
     }
     atomic_store(&last_open_rc, rc);
     LOG("OpenVideo rc=%#x\n", rc);
+    if (rc) atomic_store(&refused, 1);
     if (rc == RESOURCE_NOT_ACTIVE) {
         // For the app's report: is our resource listed, and which others are?
         int32_t now[32] = {0};
@@ -383,7 +391,7 @@ int ps_capture_open(ps_capture **out)
     step = "Start";
     rc = start(s->handle);
     LOG("Start rc=%#x\n", rc);
-    if (rc) goto fail;
+    if (rc) { atomic_store(&refused, 1); goto fail; }
     s->started = 1;
     if (!atomic_load(&granted) || atomic_load(&revoked)) { error = PS_CAPTURE_REVOKED; goto fail; }
     *out = s;

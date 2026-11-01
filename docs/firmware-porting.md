@@ -19,6 +19,19 @@ Zusage, dass andere Versionen funktionieren.
 | Virtuelles Pad | `pad.c`, `pad.h` | ioctls auf `/dev/hid`: add `0xC018482A`, insert `0x8018482C`, delete `0x80104850`; Blöcke 0xA8 Bytes, Layout im Kopfkommentar von `pad.c` | Fest, auf 13.00 gemessen; unverändert |
 | Kernel-Zugriffe des SDK | PS5 Payload SDK v0.45 | `kernel_dynlib_*`, `kernel_get_fw_version` nutzen SDK-interne Kernel-Offsets je Firmware | Vom SDK abgedeckt, sofern es die Version kennt |
 
+## Berichte zum Video-Datensatz anderer Firmwares
+
+Nicht selbst gemessen. Der Block bei `0xb8` wächst mit der Firmware, alles ab `0x198` verschiebt sich mit ihm:
+
+| Firmware | Gesamt | Block `0xb8` | Ab `0x198` | Quelle |
+| --- | --- | --- | --- | --- |
+| 10.20 (Pro) | `0x2c8` | `0xc8` | −`0x18`, außerdem ohne die inneren Köpfe und Rate-Felder von 13.00 | Bericht in Issue 2, dort auch offene Punkte: Rate, 34 Slices je Bild, PCM-Ton zu langsam |
+| 12.40 | `0x2e0` | nicht genannt | nicht genannt | Log in PBS-Public-Issues-Tracker, Issue 1 |
+| 13.00 | `0x2e0` | `0xe0` | – | gemessen, `configure()` |
+| 13.60 | `0x2e8` | `0xe8` | +8 | Quelltext von PlayBridge und ps5-stream8 |
+
+`0x81950008` hat laut ps5-web-stream mehrere Zweige (Bildausgabe passt nicht, Größen im Datensatz fehlen, Ressource nicht aktiv). Laut PlayBridge erlaubt in `GetVideoOutMode` Bit `0x20` 1440p und Bit `0x08` 4K. Der Host prüft das nicht vorab, sondern fällt beim Scheitern zurück: Die Berichte passen dazu nicht vollständig (`0x13c` wird für 1080p und für 4K genannt). `host_diag.log` nennt den Wert seit diesem Stand als `video out mode`.
+
 ## ResourceArbitrator: Suche per NID
 
 `libSceResourceArbitrator.sprx` exportiert die vier Funktionen, aber nur unter NIDs, deren

@@ -7,6 +7,14 @@
 - HEVC at 1440p and 4K on firmware 13.00, when the client asks for it. The console's fallback to 1080p in some titles applies
   here too. Measured on the home screen, in a quiet game scene and with noise in the console's browser; not yet during active play.
 
+### Fixed
+
+- HEVC no longer skips frames after a key frame or an oversized frame: the frame budget is now as large as the encoder accepts, and
+  the bitrate still holds. Measured longest gap under load: about 19 ms, was 33 to 37 ms.
+- A 1440p or 4K request falls back to 1080p also when opening or starting the capture fails, not only when the console refuses the
+  resource. Others report this failure for a console output smaller than the request, which ended the stream. A real smaller output
+  is not tested here.
+
 ## 0.1.4 (2026-10-31)
 
 ### Added

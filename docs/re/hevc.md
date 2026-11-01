@@ -64,7 +64,7 @@ Zum Vergleich Zweck 2 in Modus 4: 363 Bilder, 23 ms. Unter den dreien gibt die T
 (`docs/re/avcap2-exports.md`, Abschnitt 8.1).
 
 Der Validator `0x17aa0` lässt `cfg+0x14 < 8` zu, 8 nur mit Sonderprüfung. In manchen Titeln verweigert die Konsole 4K unabhängig vom Codec; dann fällt der Host auf 1080p und damit
-auf Zweck 2 zurück.
+auf Zweck 2 zurück. Dasselbe gilt, wenn `OpenVideo` oder `Start` in Modus 5 oder 6 scheitert. Nach PlayBridge und PBS ist das der Fall, wenn die Bildausgabe der Konsole kleiner ist als der Modus (`0x81950008`). Selbst nachgestellt ist nur das Scheitern von `Start` mit Modus 6 auf Profil 180, nicht eine kleine Ausgabe.
 
 Die Systemmeldung „Gameplay recording paused because you entered a blocked scene“ erschien im Vorspann von GTA III mit HEVC Zweck 5, 6, 7 in Modus 6 und ebenso mit H.264 Zweck 2 in Modus 6,
 nicht in Modus 4 (HEVC Zweck 2 und 6, je 40 s, jedes 200. Bild angesehen). Sie hängt also am Modus, nicht am Zweck. In beiden Fällen stand sie auf Bild 200 nach dem Öffnen, an verschiedenen
@@ -80,10 +80,23 @@ Der HEVC-Encoder lässt nach einem IDR Bilder aus, um dessen Bytes auszugleichen
 Mit dem alten Abstand von einer Sekunde, gemessen über die Zeitstempel am Client: bei 15 und 20 Mbit/s ein Bild je IDR (Abstand
 33 ms, 59 statt 60 fps), bei 5 Mbit/s fünf Bilder (100 ms, 54 fps). H.264 lässt keine aus. Das Überschreiben von `cfg+0x10c`
 (Byte je Bild) mit dem Vierfachen beseitigte die Lücken im selben Spike, auch bei 5 Mbit/s, ebenso `cfg+0xd4 = 51` bei 15, nicht
-bei 5 Mbit/s; beide bleiben ungenutzt, weil die Wirkung auf Bilder in Bewegung nicht gemessen ist.
+bei 5 Mbit/s.
 
 Der Host setzt deshalb `cfg+0x94` auf zehn Sekunden (`fps * 10`), für beide Codecs, und fordert zu Beginn des Streams ein IDR an, weil
 der Tonkanal den Kanal schon früher geöffnet haben kann. Clients fordern nach Verlust ohnehin selbst eines an.
+
+`cfg+0x10c` ist ein Budget: PlayBridge (öffentlich, 13.60, H.264) beschreibt, dass ein Bild, das N Budgets kostet, N−1 Bilder auslässt, und setzt 1 MiB. Bei HEVC auf 13.00 startet das
+nicht in jedem Modus. Gemessen je Modus mit 5 und 50 Mbit/s, ohne Unterschied zwischen den Bitraten, 0x20000 bis 0x100000:
+
+| Modus | startet bis | `Start` meldet `0x80c78000` ab |
+| --- | --- | --- |
+| 4 (1080p) | `0x60000` | `0x80000` |
+| 5 (1440p) | `0xc0000` | `0x100000` |
+| 6 (4K) | `0x100000` (mehr nicht geprüft) | – |
+
+Der Host setzt diese Höchstwerte. Die Bitrate hält trotzdem, Messwerte in `STATUS.md`.
+
+Nicht geprüft: Die öffentlichen Quellen nennen `cfg+0x5c = 4` statt 9 bei 4K, damit H.264 unter Level 6.0 bleibt (ps5-web-stream). Bei uns meldet `ffprobe` in 4K für beide Codecs Level 6.0. Ob Clients daran scheitern, ist nicht gemessen.
 
 ## H.264
 

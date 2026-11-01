@@ -70,7 +70,8 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   firmware stays at 1080p. A client asking for less than 1080p gets 1080p and scales it. The frame rate follows the client:
   30 or 60 fps.
 - The console refuses 1440p and 4K capture in some titles (seen in a Mario 64 port and Teardown; GTA III works). The stream
-  then runs at 1080p, also when such a title starts during a stream, and stays there until the next stream.
+  then runs at 1080p, also when such a title starts during a stream, and stays there until the next stream. The same should
+  apply when the console's video output is smaller than the request; that is not tested yet.
 - At 4K the console can show "Gameplay recording paused because you entered a blocked scene" shortly after the stream starts
   (seen in GTA III). The stream keeps running.
 - HEVC (8-bit) is offered on firmware 13.00 only, elsewhere H.264. Clients that prefer HEVC pick it on their own. To
