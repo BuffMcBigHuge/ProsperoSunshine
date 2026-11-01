@@ -19,6 +19,8 @@ public:
     // the error. Audio usually gets here first, so a session whose mode differs from what was set
     // since (codec, bitrate, frame rate) is reopened; audio follows through generation().
     static std::shared_ptr<SharedCapture> acquire(int &rc);
+    // The open session if there is one, without opening it or waiting for an open in progress; else null.
+    static std::shared_ptr<SharedCapture> attach();
     ~SharedCapture();
     SharedCapture(const SharedCapture &) = delete;
     SharedCapture &operator=(const SharedCapture &) = delete;
