@@ -43,7 +43,7 @@ struct ps_capture {
     int (*free_memory)(void *, void *);
     uint8_t memory[0x40];
     int has_memory;
-    uint32_t mode[5];  // what mode_snapshot() returned at open
+    uint32_t mode[6];  // what mode_snapshot() returned at open
 };
 
 // Callback ABI currently has no verified instance context, so resource ownership
@@ -81,7 +81,7 @@ static uint32_t module(load_fn load, const char *name)
 static void u32(uint8_t *p, size_t at, uint32_t value) { memcpy(p + at, &value, 4); }
 static void u64(uint8_t *p, size_t at, uint64_t value) { memcpy(p + at, &value, 8); }
 
-static _Atomic uint32_t video_resolution = 4, video_timing = 1, video_codec = 0;
+static _Atomic uint32_t video_resolution = 4, video_timing = 1, video_codec = 0, video_ten_bit = 0;
 static _Atomic int last_open_rc = 0;
 
 static _Atomic uint32_t opening_average = 6000000, opening_peak = 0;
@@ -99,14 +99,17 @@ int ps_capture_set_codec(uint32_t codec)
     return 0;
 }
 
+void ps_capture_set_ten_bit(uint32_t ten_bit) { atomic_store(&video_ten_bit, ten_bit != 0); }
+
 int ps_capture_last_open_rc(void) { return atomic_load(&last_open_rc); }
 
 int ps_capture_hevc_verified(void) { return (kernel_get_fw_version() & 0xffff0000u) == 0x13000000u; }
 
 int ps_capture_large_modes_verified(void) { return (kernel_get_fw_version() & 0xffff0000u) == 0x13000000u; }
 
-static void mode_snapshot(uint32_t mode[5])
+static void mode_snapshot(uint32_t mode[6])
 {
+    mode[5] = atomic_load(&video_ten_bit);
     mode[0] = atomic_load(&video_resolution);
     mode[1] = atomic_load(&video_timing);
     mode[2] = atomic_load(&video_codec);
@@ -116,7 +119,7 @@ static void mode_snapshot(uint32_t mode[5])
 
 int ps_capture_mode_current(const ps_capture *s)
 {
-    uint32_t mode[5];
+    uint32_t mode[6];
     mode_snapshot(mode);
     return s && !memcmp(mode, s->mode, sizeof mode);
 }
@@ -175,6 +178,7 @@ static void configure(uint8_t *p, uint32_t mode)
     u32(p, 0x14, atomic_load(&video_codec) == 1 && atomic_load(&video_resolution) >= 5 ? 6 : 2);
     u32(p, 0x18, atomic_load(&video_resolution));
     u32(p, 0x1c, atomic_load(&video_timing));
+    u32(p, 0x20, atomic_load(&video_ten_bit));
     u32(p, 0x24, atomic_load(&video_codec));
     u32(p, 0x28, atomic_load(&session_resource));
     const uint64_t peak = atomic_load(&opening_peak), fps = atomic_load(&video_timing) ? 60 : 30;
@@ -344,9 +348,18 @@ int ps_capture_open(ps_capture **out)
     s->initialized = 1;
     step = "video out mode";
     int output = 0;
-    if (mode(&output)) goto fail;
+    // While a title comes up the output has no mode (0) for about a second, and the service refuses a config whose mode isn't
+    // the current one. Stay below the 2 s a client waits for the stream.
+    for (int attempt = 0; attempt < 50; attempt++) {
+        if (mode(&output)) goto fail;
+        if (output) {
+            if (attempt) LOG("video out mode appeared after %d ms\n", attempt * 20);
+            break;
+        }
+        usleep(20000);
+    }
     LOG("video out mode %#x\n", output);
-    if (output & 3) { error = PS_CAPTURE_HDR; goto fail; }
+    if (output & 3) { error = PS_CAPTURE_VR; goto fail; }
     uint8_t config[0x2e8];
     mode_snapshot(s->mode);
     configure(config, (uint32_t)output);
@@ -371,7 +384,8 @@ int ps_capture_open(ps_capture **out)
     step = "OpenVideo";
     // The service refuses while it doesn't list our resource as active. Seen on firmware 10.40, which may just need a
     // moment; stay below the 2 s a client waits for the stream (Initial Ping Timeout). A larger mode gets the same code
-    // when the console's output is too small for it, and needs the time left for the open at 1080p.
+    // when the console's output is too small for it, and needs the time left for the open at 1080p. It also answers this when
+    // the output's mode changed since it was read, as while a title comes up, so that is read anew.
     const int repeats = atomic_load(&video_resolution) >= 5 ? 5 : 25;
     for (int attempt = 0;; attempt++) {
         rc = open_video(&s->handle, config, 0);
@@ -380,6 +394,11 @@ int ps_capture_open(ps_capture **out)
             break;
         }
         usleep(40000);
+        const int before = output;
+        if (mode(&output) == 0 && output != before) {
+            LOG("video out mode now %#x\n", output);
+            u32(config, 0x2a0 + record_shift(), (uint32_t)output);
+        }
     }
     atomic_store(&last_open_rc, rc);
     LOG("OpenVideo rc=%#x\n", rc);

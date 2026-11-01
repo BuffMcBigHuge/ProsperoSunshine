@@ -143,7 +143,7 @@ static void diag_tests()
 
     // Causes the user can act on, whatever the firmware.
     log = diag::parse_host_log("capture open start codec=0\ncapture open failed step=video error=-4 rc=0\n");
-    CHECK(diag::notice(0x13000040, log, true).text.find("HDR") != std::string::npos);
+    CHECK(diag::notice(0x13000040, log, true).text.find("PS VR") != std::string::npos);
     log = diag::parse_host_log("capture open start codec=0\ncapture open failed step=resource list error=-2 rc=0\n");
     CHECK(log.failed_step == "resource list");
     CHECK(diag::notice(0x13000040, log, true).text.find("Something else") == 0);

@@ -4,7 +4,8 @@
 //   add     0xC018482A  { u32 op = 3; u64 desc*; u64 int* handleOut }
 //           desc (0xA8 bytes): u8 class @0, u32 userId @0x1C, u8 subtype @0x20
 //   insert  0x8018482C  { u32 handle; u64 state*; u8 0 }
-//           state (0xA8 bytes): u32 buttons @0xC, u8 lx ly rx ry @0x10, u8 l2 r2 @0x14, u8 1 @0x17
+//           state (0xA8 bytes): u32 buttons @0xC, u8 lx ly rx ry @0x10, u8 l2 r2 @0x14, u8 1 @0x17, touch from @0x1C,
+//           motion from @0x78 (docs/re/pad-input.md)
 //   delete  0x80104850  { u8 op = 5; u32 handle @8 }
 //   output  0x80684830  { u32 handle; u64 pointers to 12 out-fields } (libScePad 0xdd70, Remote Play's only reader)
 #include "pad.h"
@@ -24,11 +25,29 @@
 // Public device type 1 (standard controller) maps to class 3, subtype 1.
 #define TYPE_CLASS 3
 #define TYPE_SUBTYPE 1
+#define TOUCH_COUNT 0x1C
+#define TOUCH_POINTS 0x20
+#define TOUCH_POINT_SIZE 8
+#define ORIENTATION 0x78
+#define ANGULAR_VELOCITY 0x88
+#define ACCELERATION 0x94
 
 struct ps_pad {
     int fd;
     int handle;
+    // Each insert replaces the whole state, so what arrives separately has to be kept for the next one.
+    uint8_t block[BLOCK];
 };
+
+// No fingers, and at rest as Remote Play sets it (SceRemotePlay 0x40790): level, not turning, gravity along y.
+static void rest(ps_pad *pad)
+{
+    const float orientation[4] = {0, 0, 0, 1}, turning[3] = {0, 0, 0}, gravity[3] = {0, 1, 0};
+    pad->block[TOUCH_COUNT] = 0;
+    memcpy(pad->block + ORIENTATION, orientation, sizeof orientation);
+    memcpy(pad->block + ANGULAR_VELOCITY, turning, sizeof turning);
+    memcpy(pad->block + ACCELERATION, gravity, sizeof gravity);
+}
 
 uint32_t ps_pad_default_user(void)
 {
@@ -74,22 +93,56 @@ int ps_pad_open(uint32_t user_id, ps_pad **out)
     }
     pad->fd = fd;
     pad->handle = handle;
+    memset(pad->block, 0, sizeof pad->block);
+    pad->block[0x17] = 1;
+    rest(pad);
     *out = pad;
     return 0;
+}
+
+static int insert(ps_pad *pad)
+{
+    struct { uint32_t handle; uint32_t pad; uint64_t state; uint8_t zero; uint8_t pad2[7]; } request = {
+        (uint32_t)pad->handle, 0, (uint64_t)(uintptr_t)pad->block, 0, {0}
+    };
+    return ioctl(pad->fd, IOCTL_INSERT, &request) == 0 ? 0 : (errno ? -errno : -EIO);
 }
 
 int ps_pad_send(ps_pad *pad, const ps_pad_state *state)
 {
     if (!pad || !state) return -EINVAL;
-    uint8_t block[BLOCK] = {0};
-    memcpy(block + 0xC, &state->buttons, 4);
+    memcpy(pad->block + 0xC, &state->buttons, 4);
     const uint8_t analog[6] = {state->lx, state->ly, state->rx, state->ry, state->l2, state->r2};
-    memcpy(block + 0x10, analog, sizeof analog);
-    block[0x17] = 1;
-    struct { uint32_t handle; uint32_t pad; uint64_t state; uint8_t zero; uint8_t pad2[7]; } request = {
-        (uint32_t)pad->handle, 0, (uint64_t)(uintptr_t)block, 0, {0}
-    };
-    return ioctl(pad->fd, IOCTL_INSERT, &request) == 0 ? 0 : (errno ? -errno : -EIO);
+    memcpy(pad->block + 0x10, analog, sizeof analog);
+    return insert(pad);
+}
+
+int ps_pad_set_touch(ps_pad *pad, uint8_t count, const ps_pad_touch points[2])
+{
+    if (!pad || count > 2 || (count && !points)) return -EINVAL;
+    pad->block[TOUCH_COUNT] = count;
+    memset(pad->block + TOUCH_POINTS, 0, 2 * TOUCH_POINT_SIZE);
+    for (uint8_t i = 0; i < count; i++) {
+        uint8_t *point = pad->block + TOUCH_POINTS + i * TOUCH_POINT_SIZE;
+        point[0] = points[i].id;
+        memcpy(point + 4, &points[i].x, 2);
+        memcpy(point + 6, &points[i].y, 2);
+    }
+    return insert(pad);
+}
+
+int ps_pad_set_angular_velocity(ps_pad *pad, const float xyz[3])
+{
+    if (!pad || !xyz) return -EINVAL;
+    memcpy(pad->block + ANGULAR_VELOCITY, xyz, 3 * sizeof(float));
+    return insert(pad);
+}
+
+int ps_pad_set_acceleration(ps_pad *pad, const float xyz[3])
+{
+    if (!pad || !xyz) return -EINVAL;
+    memcpy(pad->block + ACCELERATION, xyz, 3 * sizeof(float));
+    return insert(pad);
 }
 
 int ps_pad_read_output(ps_pad *pad, ps_pad_output *output)
@@ -119,7 +172,15 @@ int ps_pad_read_output(ps_pad *pad, ps_pad_output *output)
 int ps_pad_neutral(ps_pad *pad)
 {
     const ps_pad_state neutral = {0, 128, 128, 128, 128, 0, 0};
+    if (pad) rest(pad);
     return ps_pad_send(pad, &neutral);
+}
+
+int ps_pad_rest(ps_pad *pad)
+{
+    if (!pad) return -EINVAL;
+    rest(pad);
+    return insert(pad);
 }
 
 int ps_pad_close(ps_pad *pad)

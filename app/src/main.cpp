@@ -8,6 +8,7 @@
 // is removed first), as PS5SD does with its quit file.
 
 #include "app/psapp/host.hpp"
+#include "app/psapp/pad_log.hpp"
 #include "app/psapp/screen.hpp"
 #include "audio/cues.hpp"
 #include "audio/mixer.hpp"
@@ -79,6 +80,7 @@ int main()
 
     ps5::Pad pad;
     pad.open();
+    psapp::PadLog pad_log;
     InputTracker tracker;
     audio::Mixer mixer;
     ps5::AudioOut audio_out;
@@ -116,6 +118,7 @@ int main()
         if (dt > 0.05f)
             dt = 0.05f; // a hitch must not teleport the animations
         const std::size_t count = pad.read(samples);
+        pad_log.tick(now);
         const InputFrame input =
             tracker.update(std::span<const PadSample>(samples, count), static_cast<std::uint64_t>(now));
 

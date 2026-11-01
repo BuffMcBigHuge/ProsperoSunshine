@@ -14,10 +14,10 @@ the PS5 screen, game audio and controller input over your LAN.
 ProsperoSunshine builds [Sunshine](https://github.com/LizardByte/Sunshine) (pinned commit, small documented
 patches) for the console and replaces the parts that talk to PC hardware:
 
-- **Video:** the console's hardware encoder (Avcap2) delivers H.264 or HEVC straight into Sunshine's packetiser.
+- **Video:** the console's hardware encoder (Avcap2) delivers H.264 or HEVC, 8 bit or HDR, straight into Sunshine's packetiser.
 - **Audio:** game audio as PCM from the same capture service, encoded by Sunshine's Opus path.
-- **Input:** a native virtual DualSense per Moonlight gamepad.
-- **App list:** a single app, "PS5 Screen". There is no web UI.
+- **Input:** a native virtual DualSense per Moonlight gamepad, with touchpad and motion sensors.
+- **App list:** "PS5 Screen" and the console's installed games, with their covers. There is no web UI.
 
 Details: `docs/adr/001-sunshine-port.md`. Roadmap: `ROADMAP.md`; verified state: `STATUS.md`;
 reverse-engineering notes: `docs/` (German).
@@ -28,7 +28,7 @@ reverse-engineering notes: `docs/` (German).
   system-library lookups fail (`docs/firmware-porting.md`, German).
 - A homebrew environment with an **ELF loader** (for example one listening on port 9021). The app also needs
   [ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus), which registers titles from `/data/homebrew/`.
-- SDR output (HDR is not supported).
+- No PS VR session while streaming.
 - A wired or good wireless LAN, and a Moonlight client in the same network.
 
 ## Install
@@ -57,8 +57,12 @@ Pairing survives host restarts.
 
 ## Streaming
 
-Start the app **"PS5 Screen"** in Moonlight. The first time, the console asks **"Who's using this controller?"**
-inside the stream; answer it with your Moonlight controller.
+Start **"PS5 Screen"** in Moonlight to stream what the console shows, or pick a game to start it as well. The first time, the
+console asks **"Who's using this controller?"** inside the stream; answer it with your Moonlight controller.
+
+The host never closes a game, because that could lose unsaved progress. Quitting in Moonlight ends the stream, and the game
+keeps running on the console. If another game is in front, picking a game doesn't start it: the stream shows the running
+one, so close that one with the controller first. Media apps aren't listed; start those through "PS5 Screen".
 
 **PS button:** Moonlight's on-screen controller on a phone has none, so holding Select for half a second sends it. A
 short press of Select sends Create when you let go, which means Create cannot be held. To get a plain Create button
@@ -84,7 +88,9 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   round, a controller that is already connected and not disconnected (seen with a second virtual pad) keeps the app, and
   only the console's home screen still reacts to Moonlight. If the stream controller does nothing in an app, turn the
   other controller off.
-- No HDR, AV1, mouse, keyboard, touch or microphone.
+- No AV1, mouse, keyboard, touchscreen or microphone.
+- HDR and the pad's touchpad and motion sensors are measured with the test client only, not yet with a real Moonlight client on an
+  HDR screen or in a game that uses them. Motion has no orientation, because Moonlight sends none.
 - Rumble is the classic two-motor kind only. Games that drive the DualSense's haptics send nothing to your controller.
   Whether your device vibrates also depends on the Moonlight client.
 - Rest mode is young. The host starts its services again after waking, which worked in two tests on the home screen, with no

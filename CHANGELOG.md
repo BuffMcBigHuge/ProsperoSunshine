@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The console's installed games appear in Moonlight's app list with their covers, after "PS5 Screen". Picking one starts it.
+  The host never closes a game: quitting in Moonlight ends the stream only, and with another game in front the new one doesn't
+  start.
+- HDR: HEVC Main 10 in BT.2020 and PQ when the client asks for it, up to 4K. Measured with the test client; not yet on a real
+  Moonlight client with an HDR screen. `hevc_mode = 2` in `sunshine.conf` turns it off.
+- Touchpad and motion sensors of the Moonlight controller reach the console's virtual pad. Measured as a title reads them; not yet
+  in a game that uses them.
+
+### Changed
+
+- The capture check that told users to turn HDR off was about PS VR, as the system's own names for those bits show. The app's message
+  now says so.
+
 ## 0.1.5 (2026-11-01)
 
 ### Added

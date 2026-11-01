@@ -14,7 +14,9 @@ run_test() {
 run_test video_test
 run_test capture_session_test "$root/src/capture/capture_session.cpp"
 run_test gamepad_map_test
+run_test pad_touch_test
 run_test listener_watch_test
 run_test capture_mode_test
+run_test titles_test "$root/src/apps/titles.cpp"
 run_test mdns_test "$root/src/net/mdns.cpp"
 run_test ra_choose_test

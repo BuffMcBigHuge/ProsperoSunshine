@@ -16,7 +16,7 @@
 using namespace std::literals;
 
 namespace video {
-// Only 8-bit SDR 4:2:0 is offered. In Sunshine 1 means "disabled" and 2 "Main"; 0 would still advertise
+// 4:2:0 only. In Sunshine 1 means "disabled", 2 "Main" and 3 "Main and Main 10"; 0 would still advertise
 // HEVC/AV1 in the RTSP DESCRIBE reply. Set in probe_encoders.
 int active_hevc_mode = 1;
 int active_av1_mode = 1;
@@ -54,9 +54,14 @@ std::chrono::steady_clock::time_point capture_time(const prospero::CaptureSessio
 int probe_encoders() {
     tsc_per_ns();
     // The HEVC setup is measured on firmware 13.00 only. Elsewhere a client that prefers HEVC would lose the
-    // stream if it fails, while H.264 may still run. hevc_mode = 1 in sunshine.conf turns it off.
-    active_hevc_mode = config::video.hevc_mode != 1 && ps_capture_hevc_verified() ? 2 : 1;
-    BOOST_LOG(info) << "PS5: Avcap2 passthrough, "sv << (active_hevc_mode == 2 ? "H.264 and HEVC, "sv : "H.264, "sv)
+    // stream if it fails, while H.264 may still run. hevc_mode = 1 in sunshine.conf turns it off, 2 turns off HDR.
+    const int hevc_mode = config::video.hevc_mode;
+    active_hevc_mode = hevc_mode == 1 || !ps_capture_hevc_verified() ? 1 : hevc_mode == 2 ? 2 : 3;
+    last_encoder_probe_supported_dynamic_range_for_codec[1] = active_hevc_mode == 3;
+    BOOST_LOG(info) << "PS5: Avcap2 passthrough, "sv
+                    << (active_hevc_mode == 3   ? "H.264, HEVC and HEVC HDR, "sv
+                        : active_hevc_mode == 2 ? "H.264 and HEVC, "sv
+                                                : "H.264, "sv)
                     << (ps_capture_large_modes_verified() ? "up to 3840x2160, "sv : "1920x1080, "sv) << "TSC "sv
                     << tsc_per_ns() << " ticks/ns"sv;
     return 0;
@@ -85,7 +90,9 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
         touch_port_event->raise(port);
     };
     announce_mode(mode);
-    hdr_event->raise(std::make_unique<hdr_info_raw_t>(false));
+    // Avcap2 reports no mastering metadata, and all zero means unknown. The stream itself says BT.2020 and PQ in its SPS.
+    const bool hdr = hevc && config.dynamicRange > 0;
+    hdr_event->raise(std::make_unique<hdr_info_raw_t>(hdr));
     // The session falls back to 1080p when the system refuses a larger mode.
     const auto check_fallback = [&] {
         const auto delivered = prospero::capture_mode_of(ps_capture_video_resolution());
@@ -113,6 +120,7 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     const uint32_t average = std::min(requested, max_average);
     ps_capture_set_opening_bitrate(average, average / 100 * (hevc ? 110 : 112));
     ps_capture_set_codec(hevc ? 1 : 0);
+    ps_capture_set_ten_bit(hdr);
     ps_capture_set_video_mode(mode.resolution, low_rate ? 0 : 1);
     const auto codec = hevc ? prospero::Codec::hevc : prospero::Codec::h264;
     prospero::CaptureSession session(prospero::make_ps5_capture_backend(codec), codec);
@@ -122,7 +130,7 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
         return;
     }
     check_fallback();
-    BOOST_LOG(info) << "PS5 capture "sv << (hevc ? "HEVC"sv : "H.264"sv) << " bitrate "sv << average / 1000 << " kbit/s (requested "sv
+    BOOST_LOG(info) << "PS5 capture "sv << (hdr ? "HEVC HDR"sv : hevc ? "HEVC"sv : "H.264"sv) << " bitrate "sv << average / 1000 << " kbit/s (requested "sv
                     << requested / 1000 << ')';
     // The audio thread may have opened the channel earlier, and the next periodic IDR can be ten seconds away.
     if (session.request_keyframe())

@@ -19,6 +19,7 @@ The client identity (key, certificate, unique id, pinned server certificate) is 
 py -3 tools/moonlight/pair.py pair            # random PIN, approved through the control socket
 py -3 tools/moonlight/pair.py info            # /serverinfo + /applist over HTTPS, expects PairStatus=1
 py -3 tools/moonlight/pair.py negative        # a fresh, unpaired certificate must be rejected
+py -3 tools/moonlight/pair.py cover --appid 1 # the app's box art must be a PNG; --out saves it
 ```
 
 `pair` starts `phrase=getservercert` in a thread (it blocks until a PIN is approved), sends `PIN <pin> <name>` to the

@@ -80,6 +80,7 @@ prospero_probe(avcap_spike prospero_capture)
 prospero_probe(open_probe prospero_capture)
 prospero_probe(uhd_spike prospero_capture)
 prospero_probe(hevc_memory_spike prospero_capture)
+prospero_probe(hdr_spike prospero_capture)
 prospero_probe(mode_spike prospero_capture)
 prospero_probe(hevc_spike prospero_capture)
 prospero_probe(udp_burst_spike)
@@ -133,7 +134,7 @@ if(EXISTS "${PROSPERO_DEPS}/include/boost" AND EXISTS "${PROSPERO_DEPS}/lib/liba
         "${MOONLIGHT_SRC}/src/RtspParser.c"
         src/sunshine/main_ps5.cpp src/sunshine/video_ps5.cpp src/sunshine/process_ps5.cpp
         src/sunshine/platform_ps5.cpp src/sunshine/stubs_ps5.cpp src/control/control_server.cpp
-        src/control/autoload_host.cpp app/src/psapp/autoload.cpp)
+        src/control/autoload_host.cpp app/src/psapp/autoload.cpp src/apps/titles.cpp src/platform/ps5/title_launch.c)
     # Sunshine includes its own headers as "src/..." and "..."; FFmpeg's internal headers include a
     # "config.h" that must not resolve to Sunshine's, hence -idirafter for the Sunshine tree.
     target_include_directories(prospero_sunshine PRIVATE src "${SUNSHINE_SRC}" "${CMAKE_BINARY_DIR}/third-party")
@@ -154,5 +155,5 @@ if(EXISTS "${PROSPERO_DEPS}/include/boost" AND EXISTS "${PROSPERO_DEPS}/lib/liba
     target_link_libraries(prospero_sunshine PRIVATE prospero_core prospero_pad prospero_mdns
         "-Wl,--start-group" ${BOOST_LIBS} "${PROSPERO_DEPS}/lib/libdisplaydevice_common.a"
         "${PROSPERO_DEPS}/lib/libavcodec.a" "${PROSPERO_DEPS}/lib/libswscale.a" "${PROSPERO_DEPS}/lib/libavutil.a"
-        dep::ssl dep::crypto dep::opus dep::enet dep::nanors "-Wl,--end-group" pthread)
+        dep::ssl dep::crypto dep::opus dep::enet dep::nanors "-Wl,--end-group" pthread SceSystemService SceUserService)
 endif()

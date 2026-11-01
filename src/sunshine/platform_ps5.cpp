@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Sunshine's platf:: layer for the PS5: networking, game audio from Avcap2, the native virtual pad
-// and placeholders for what v1.0 does not forward (mouse, keyboard, touch, pen).
+// and placeholders for what v1.0 does not forward (mouse, keyboard, touch screen, pen).
 #include "input/gamepad_map.hpp"
+#include "input/pad_touch.hpp"
 #include "platform/ps5/pad.h"
 #include "platform/ps5/shared_capture.hpp"
 #include "src/config.h"
@@ -343,6 +344,7 @@ struct input_raw_t {
     std::array<std::array<uint8_t, 2>, MAX_GAMEPADS> motors{};
     std::array<std::array<uint8_t, 3>, MAX_GAMEPADS> colors{};
     std::array<prospero::TriggerBlock, MAX_GAMEPADS> triggers{};
+    std::array<prospero::PadTouch, MAX_GAMEPADS> touch{};
     uint32_t user = 0;
     std::jthread output_thread;
 };
@@ -426,20 +428,30 @@ input_t input() {
     return input_t{raw};
 }
 
+// A client only sends the sensors it is asked for, and a new client has to be asked anew. One without sensors ignores this.
+static void request_motion(const input_raw_t &input, int nr) {
+    if (!input.feedback[nr]) return;
+    for (const uint8_t type : {prospero::moonlight::motion_accel, prospero::moonlight::motion_gyro}) {
+        input.feedback[nr]->raise(gamepad_feedback_msg_t::make_motion_event_state(input.client_index[nr], type, 100));
+    }
+}
+
 int alloc_gamepad(input_t &input, const gamepad_id_t &id, const gamepad_arrival_t &, feedback_queue_t feedback) {
     if (id.globalIndex < 0 || id.globalIndex >= MAX_GAMEPADS) return -1;
     std::lock_guard lock(input->mutex);
     input->feedback[id.globalIndex] = std::move(feedback);
     input->client_index[id.globalIndex] = id.clientRelativeIndex;
     auto *&pad = input->pads[id.globalIndex];
-    if (pad) return 0;
-    const int rc = ps_pad_open(input->user, &pad);
-    if (rc) {
-        BOOST_LOG(error) << "PS5 virtual pad "sv << id.globalIndex << " failed: "sv << rc;
-        pad = nullptr;
-        return -1;
+    if (!pad) {
+        const int rc = ps_pad_open(input->user, &pad);
+        if (rc) {
+            BOOST_LOG(error) << "PS5 virtual pad "sv << id.globalIndex << " failed: "sv << rc;
+            pad = nullptr;
+            return -1;
+        }
+        BOOST_LOG(info) << "PS5 virtual pad "sv << id.globalIndex << " attached"sv;
     }
-    BOOST_LOG(info) << "PS5 virtual pad "sv << id.globalIndex << " attached"sv;
+    request_motion(*input, id.globalIndex);
     return 0;
 }
 
@@ -448,6 +460,7 @@ int rebind_gamepad(input_t &input, const gamepad_id_t &id, feedback_queue_t feed
     std::lock_guard lock(input->mutex);
     input->feedback[id.globalIndex] = std::move(feedback);
     input->client_index[id.globalIndex] = id.clientRelativeIndex;
+    request_motion(*input, id.globalIndex);
     return 0;
 }
 
@@ -461,6 +474,7 @@ void free_gamepad(input_t &input, int nr) {
     input->pads[nr] = nullptr;
     input->colors[nr] = {};  // a later pad in this slot reports its colour anew
     input->triggers[nr] = {};
+    input->touch[nr].clear();
     input->back[nr] = false;
     BOOST_LOG(info) << "PS5 virtual pad "sv << nr << " detached ("sv << rc << ')';
 }
@@ -499,12 +513,48 @@ void gamepad_update(input_t &input, int nr, const gamepad_state_t &state) {
     input->active[nr] = active;
 }
 
+void gamepad_touch(input_t &input, const gamepad_touch_t &touch) {
+    const int nr = touch.id.globalIndex;
+    if (nr < 0 || nr >= MAX_GAMEPADS) return;
+    std::lock_guard lock(input->mutex);
+    if (!input->pads[nr]) return;
+    auto &fingers = input->touch[nr];
+    // Sunshine sends this when a session ends and the pad stays. A last motion sample left in place would keep turning a
+    // game's camera; a client sending it mid-stream only loses the 10 ms to its next sample.
+    if (touch.eventType == prospero::moonlight::touch_cancel_all) {
+        fingers.clear();
+        ps_pad_rest(input->pads[nr]);
+        return;
+    }
+    if (!fingers.update(touch.eventType, touch.pointerId, touch.x, touch.y)) return;
+    std::array<ps_pad_touch, 2> points{};
+    for (int i = 0; i < fingers.count(); i++) {
+        const auto &point = fingers.points()[i];
+        points[i] = {point.id, point.x, point.y};
+    }
+    ps_pad_set_touch(input->pads[nr], fingers.count(), points.data());
+}
+
+void gamepad_motion(input_t &input, const gamepad_motion_t &motion) {
+    const int nr = motion.id.globalIndex;
+    if (nr < 0 || nr >= MAX_GAMEPADS) return;
+    std::lock_guard lock(input->mutex);
+    if (!input->pads[nr]) return;
+    if (motion.motionType == prospero::moonlight::motion_accel) {
+        const float xyz[3] = {prospero::accel_to_g(motion.x), prospero::accel_to_g(motion.y), prospero::accel_to_g(motion.z)};
+        ps_pad_set_acceleration(input->pads[nr], xyz);
+    } else if (motion.motionType == prospero::moonlight::motion_gyro) {
+        const float xyz[3] = {prospero::gyro_to_rad(motion.x), prospero::gyro_to_rad(motion.y), prospero::gyro_to_rad(motion.z)};
+        ps_pad_set_angular_velocity(input->pads[nr], xyz);
+    }
+}
+
 std::vector<supported_gamepad_t> &supported_gamepads(input_t *) {
     static std::vector<supported_gamepad_t> pads{{"ds5", true, ""}};
     return pads;
 }
 
-platform_caps::caps_t get_capabilities() { return 0; }
+platform_caps::caps_t get_capabilities() { return platform_caps::controller_touch; }
 
 std::unique_ptr<client_input_t> allocate_client_input_context(input_t &) { return std::make_unique<deinit_t>(); }
 
@@ -519,7 +569,5 @@ void keyboard_update(input_t &, uint16_t, bool, uint8_t, bool) {}
 void unicode(input_t &, const char *, int) {}
 void touch_update(client_input_t *, const touch_port_t &, const touch_input_t &) {}
 void pen_update(client_input_t *, const touch_port_t &, const pen_input_t &) {}
-void gamepad_touch(input_t &, const gamepad_touch_t &) {}
-void gamepad_motion(input_t &, const gamepad_motion_t &) {}
 void gamepad_battery(input_t &, const gamepad_battery_t &) {}
 }

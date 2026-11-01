@@ -37,6 +37,12 @@ typedef struct {
     uint32_t flag_b;
 } ps_pad_output;
 
+// One finger on the touchpad: x 0..1919, y 0..1079. The id stays the same while the finger is down, 7 bits.
+typedef struct {
+    uint8_t id;
+    uint16_t x, y;
+} ps_pad_touch;
+
 typedef struct ps_pad ps_pad;
 
 // The signed-in user owning the first home folder, or 0 if none could be found.
@@ -46,9 +52,18 @@ uint32_t ps_pad_default_user(void);
 int ps_pad_open(uint32_t user_id, ps_pad **out);
 // Feeds one state; it stays in effect until the next one.
 int ps_pad_send(ps_pad *pad, const ps_pad_state *state);
+// Touch and motion arrive apart from the buttons; each stays in effect until changed. Layouts: docs/re/pad-input.md.
+// Fingers down, at most 2; a lifted finger is simply no longer listed.
+int ps_pad_set_touch(ps_pad *pad, uint8_t count, const ps_pad_touch points[2]);
+// In rad/s.
+int ps_pad_set_angular_velocity(ps_pad *pad, const float xyz[3]);
+// In g.
+int ps_pad_set_acceleration(ps_pad *pad, const float xyz[3]);
+// Lifts all fingers and puts motion at rest; buttons and sticks stay.
+int ps_pad_rest(ps_pad *pad);
 // Reads the current output state. Remote Play polls this every 10 ms.
 int ps_pad_read_output(ps_pad *pad, ps_pad_output *output);
-// Releases every button and centres both sticks.
+// Releases every button, centres both sticks, lifts all fingers and puts motion at rest.
 int ps_pad_neutral(ps_pad *pad);
 // Sends a neutral state, removes the controller and frees the handle. NULL is harmless.
 int ps_pad_close(ps_pad *pad);

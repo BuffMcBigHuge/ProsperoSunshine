@@ -15,8 +15,11 @@
 //       --gfe 3.23.0.74 --codec-mode 1 --out out/moonlight-test.h264 \
 //       [--duration 20] [--bitrate 6000] [--audio-out file.s16] [--no-encryption]
 //       [--timing-log file.csv] [--ui-ticks N [--tick-interval-ms 1500] [--tick-hold-ms 120]
-//       [--tick-kind dpad|ps|back] [--tick-seq right,cross,...] [--tick-start S]] [--no-script] [--hevc]
+//       [--tick-kind dpad|ps|back] [--tick-seq right,cross,...] [--tick-start S]] [--no-script] [--hevc] [--hevc10]
+//       [--touch-motion]
 //
+// --touch-motion announces a controller with touchpad and sensors and, from 3 s on, moves two fingers without a click and
+// sends a few seconds of motion. Whatever is in front on the console receives this as input.
 // --timing-log writes one CSV line per video frame / audio packet / input press on a common monotonic microsecond
 // clock, --ui-ticks presses D-pad RIGHT/LEFT (or the PS button, or Select) N times after the startup input, --no-script skips
 // the scripted startup input (see tools/moonlight/av_sync.py, README).
@@ -289,6 +292,33 @@ static void pad_event(int buttons, int lt, int rt, int lx, int ly, int rx, int r
   tlog("input: %s -> %d\n", what, r);
 }
 
+// t: seconds since the script began. A refused event says what the host announced (LI_ERR_UNSUPPORTED without the flag).
+static void touch_motion_script(double t) {
+  static const struct { double at; uint8_t event; uint32_t pointer; float x, y; const char *what; } touches[] = {
+    {0.0, LI_TOUCH_EVENT_DOWN, 1, 0.50f, 0.50f, "finger 1 down at centre"},
+    {0.5, LI_TOUCH_EVENT_MOVE, 1, 0.25f, 0.75f, "finger 1 to 1/4,3/4"},
+    {1.0, LI_TOUCH_EVENT_DOWN, 2, 0.75f, 0.25f, "finger 2 down at 3/4,1/4"},
+    {1.5, LI_TOUCH_EVENT_UP, 1, 0.25f, 0.75f, "finger 1 up"},
+    {2.0, LI_TOUCH_EVENT_UP, 2, 0.75f, 0.25f, "finger 2 up"},
+  };
+  static size_t next_touch;
+  static int motion_samples;
+  while (next_touch < sizeof touches / sizeof touches[0] && t >= touches[next_touch].at) {
+    const int r = LiSendControllerTouchEvent(0, touches[next_touch].event, touches[next_touch].pointer, touches[next_touch].x,
+                                             touches[next_touch].y, 1.0f);
+    tlog("input: touch %s -> %d\n", touches[next_touch].what, r);
+    next_touch++;
+  }
+  // 100 Hz for 3 s, then at rest: gravity along y, and turning at 10, 20 and 30 deg/s, or 0.175, 0.349 and 0.524 rad/s.
+  while (motion_samples <= 300 && t >= motion_samples / 100.0) {
+    const float turning = motion_samples < 300 ? 1.0f : 0.0f;
+    const int ra = LiSendControllerMotionEvent(0, LI_MOTION_TYPE_ACCEL, 0.0f, 9.80665f, 0.0f);
+    const int rg = LiSendControllerMotionEvent(0, LI_MOTION_TYPE_GYRO, 10 * turning, 20 * turning, 30 * turning);
+    if (motion_samples == 0 || motion_samples == 300) tlog("input: motion sample %d -> accel %d gyro %d\n", motion_samples, ra, rg);
+    motion_samples++;
+  }
+}
+
 int main(int argc, char **argv) {
   const char *addr = NULL, *rtsp = NULL, *rikey = NULL, *appver = "7.1.431.-1", *gfe = "3.23.0.74";
   const char *outp = "moonlight-test.h264", *aout = NULL;
@@ -299,7 +329,7 @@ int main(int argc, char **argv) {
   double tick_start = -1;
   const char *tick_kind = "dpad", *timing_path = NULL;
   char *tick_seq = NULL;
-  int hevc = 0;
+  int hevc = 0, hevc10 = 0, touch_motion = 0;
 
   static const struct option opts[] = {
     {"addr", 1, 0, 'a'},     {"rtsp-url", 1, 0, 'r'},   {"rikey", 1, 0, 'k'},    {"rikeyid", 1, 0, 'i'},
@@ -308,7 +338,7 @@ int main(int argc, char **argv) {
     {"width", 1, 0, 'W'},    {"height", 1, 0, 'H'},     {"fps", 1, 0, 'f'},      {"idr-at", 1, 0, 'I'},
     {"ui-ticks", 1, 0, 'U'}, {"tick-interval-ms", 1, 0, 'T'}, {"tick-start", 1, 0, 'S'}, {"tick-kind", 1, 0, 'K'},
     {"timing-log", 1, 0, 'L'}, {"no-script", 0, 0, 'N'}, {"tick-hold-ms", 1, 0, 'M'}, {"tick-seq", 1, 0, 'Q'},
-    {"hevc", 0, 0, 'E'},
+    {"hevc", 0, 0, 'E'},     {"hevc10", 0, 0, 'X'},     {"touch-motion", 0, 0, 'Y'},
     {0, 0, 0, 0}};
   int c;
   while ((c = getopt_long(argc, argv, "", opts, NULL)) != -1) {
@@ -338,6 +368,8 @@ int main(int argc, char **argv) {
       case 'M': tick_hold_ms = atoi(optarg); break;
       case 'Q': tick_seq = optarg; break;
       case 'E': hevc = 1; break;
+      case 'X': hevc = hevc10 = 1; break;
+      case 'Y': touch_motion = 1; break;
       default: return 2;
     }
   }
@@ -391,6 +423,7 @@ int main(int argc, char **argv) {
   sc.streamingRemotely = STREAM_CFG_LOCAL;
   sc.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
   sc.supportedVideoFormats = hevc ? VIDEO_FORMAT_H264 | VIDEO_FORMAT_H265 : VIDEO_FORMAT_H264;
+  if (hevc10) sc.supportedVideoFormats |= VIDEO_FORMAT_H265_MAIN10;
   sc.clientRefreshRateX100 = fps * 100;
   sc.colorSpace = COLORSPACE_REC_709;
   sc.colorRange = COLOR_RANGE_LIMITED;
@@ -494,18 +527,20 @@ int main(int argc, char **argv) {
         A.sec_packets = 0;
       }
       // scripted input
+      const uint16_t caps = LI_CCAP_ANALOG_TRIGGERS | LI_CCAP_RUMBLE | (touch_motion ? LI_CCAP_TOUCHPAD | LI_CCAP_ACCEL | LI_CCAP_GYRO : 0);
       if (no_script && !sent_arrival && el >= 2.0) {
         // --no-script: only attach the virtual pad, press nothing, then wait for the UI ticks.
-        int r = LiSendControllerArrivalEvent(0, 0x1, LI_CTYPE_PS, 0x3FFFF | 0, LI_CCAP_ANALOG_TRIGGERS | LI_CCAP_RUMBLE);
+        int r = LiSendControllerArrivalEvent(0, 0x1, LI_CTYPE_PS, 0x3FFFF | 0, caps);
         tlog("input: controller arrival (pad 0, PS) -> %d\n", r);
         sent_arrival = 1;
         step = 8;
       }
       if (!sent_arrival && el >= 2.0) {
-        int r = LiSendControllerArrivalEvent(0, 0x1, LI_CTYPE_PS, 0x3FFFF | 0, LI_CCAP_ANALOG_TRIGGERS | LI_CCAP_RUMBLE);
+        int r = LiSendControllerArrivalEvent(0, 0x1, LI_CTYPE_PS, 0x3FFFF | 0, caps);
         tlog("input: controller arrival (pad 0, PS) -> %d\n", r);
         sent_arrival = 1;
       }
+      if (touch_motion && el >= 3.0) touch_motion_script(el - 3.0);
       if (step == 0 && el >= 3.0) { pad_event(0, 0, 0, 0, 0, 0, 0, "neutral state"); step++; }
       if (step == 1 && el >= 4.0) { pad_event(A_FLAG, 0, 0, 0, 0, 0, 0, "A press"); step++; }
       if (step == 2 && el >= 4.3) { pad_event(0, 0, 0, 0, 0, 0, 0, "A release"); step++; }

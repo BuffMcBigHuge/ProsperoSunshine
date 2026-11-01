@@ -14,7 +14,7 @@ namespace
 
 // The file's capture lines come from src/platform/ps5/capture.c; PS_CAPTURE_* from capture.h.
 constexpr int kBusy = -2;
-constexpr int kHdr = -4;
+constexpr int kVr = -4;
 constexpr const char *kPrefix = "ProsperoSunshine: ";
 
 std::string field(const std::string &line, const std::string &name)
@@ -179,8 +179,8 @@ Notice notice(std::uint32_t firmware, const HostLog &log, bool host_running)
         return {name + " is not supported yet: the host cannot find the capture calls. See Diagnostics.", true};
     if (log.capture == Capture::failed)
     {
-        if (log.failed_error == kHdr)
-            return {"The stream needs SDR: turn HDR off in the console's settings.", true};
+        if (log.failed_error == kVr)
+            return {"The stream cannot run while PS VR is in use.", true};
         if (log.failed_error == kBusy)
             return {"Something else is using the console's capture. Close it, or restart the console.", true};
         return {"Capture failed at " + log.failed_step + " on " + name + ". See Diagnostics.", true};

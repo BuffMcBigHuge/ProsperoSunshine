@@ -10,6 +10,7 @@ runs reuse the paired identity.
 Commands:
   pair       run the full pairing handshake (sends the PIN to the dev control socket)
   info       /serverinfo + /applist over HTTPS with the client certificate
+  cover      /appasset for one app: is it a PNG?
   negative   prove that a fresh, unpaired client certificate is rejected
   launch     /launch (or /resume) over HTTPS, prints JSON for stream_test
   cancel     /cancel over HTTPS
@@ -439,6 +440,19 @@ def cmd_status(a):
     return 0
 
 
+def cmd_cover(a):
+    ident = Identity.generate(a.dir)
+    host = Host(a.host)
+    status, body = host.https_get(ident, "/appasset", {**base_params(ident), "appid": str(a.appid), "AssetType": "2",
+                                                       "AssetIdx": "0"})
+    png = body.startswith(b"\x89PNG\r\n\x1a\n")
+    log("GET /appasset appid=%d -> HTTP %d, %d bytes, png=%s" % (a.appid, status, len(body), png))
+    if a.out and status == 200:
+        with open(a.out, "wb") as f:
+            f.write(body)
+    return 0 if status == 200 and png else 1
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--host", default=os.environ.get("PS5_HOST"), required="PS5_HOST" not in os.environ)
@@ -463,9 +477,12 @@ def main():
     sl.add_argument("--resume", action="store_true")
     sub.add_parser("cancel")
     sub.add_parser("status")
+    sc = sub.add_parser("cover")
+    sc.add_argument("--appid", type=int, default=1)
+    sc.add_argument("--out", help="save the picture here")
     a = p.parse_args()
     fn = {"pair": cmd_pair, "info": cmd_info, "negative": cmd_negative, "launch": cmd_launch,
-          "cancel": cmd_cancel, "status": cmd_status}[a.cmd]
+          "cancel": cmd_cancel, "status": cmd_status, "cover": cmd_cover}[a.cmd]
     try:
         sys.exit(fn(a) or 0)
     except Exception as e:

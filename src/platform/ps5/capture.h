@@ -12,7 +12,7 @@ enum ps_capture_error {
     PS_CAPTURE_ERROR = -1,
     PS_CAPTURE_BUSY = -2,
     PS_CAPTURE_FIRMWARE = -3,
-    PS_CAPTURE_HDR = -4,
+    PS_CAPTURE_VR = -4,
     PS_CAPTURE_REVOKED = -5
 };
 
@@ -21,6 +21,8 @@ enum ps_capture_error {
 int ps_capture_set_video_mode(uint32_t resolution, uint32_t timing);
 // Codec for the next ps_capture_open: 0 = H.264 (default), 1 = HEVC.
 int ps_capture_set_codec(uint32_t codec);
+// 10 bit for the next ps_capture_open, HEVC only: Main 10, BT.2020, PQ (docs/re/hdr.md).
+void ps_capture_set_ten_bit(uint32_t ten_bit);
 // Whether HEVC was verified on this firmware.
 int ps_capture_hevc_verified(void);
 // Whether 1440p and 2160p were verified on this firmware.

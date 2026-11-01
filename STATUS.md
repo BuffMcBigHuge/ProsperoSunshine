@@ -178,8 +178,50 @@ Noch offen:
 - **Avcap2-Symbolauflösung war nicht threadsicher:** `kernel_dynlib_dlsym` aus mehreren Threads gleichzeitig ließ Ton und Keyframe-Anforderung scheitern; alle Funktionen werden jetzt einmal beim Öffnen aufgelöst.
 - **Log-Stufe:** `min_log_level` in `/data/prosperosunshine/sunshine.conf` gilt auch für das Kernel-Log (z. B. `min_log_level = debug` für Diagnose).
 - **Steuer-Socket** ist im LAN offen und nur für Entwicklung gedacht; die Host-API für die PS5-App (P2.5) ist noch nicht abgestimmt.
-- **Kein HDR, keine Maus/Tastatur** (v1.0-Umfang).
+- **Keine Maus/Tastatur** (v1.0-Umfang).
 - **Rumble nur klassisch:** Die Haptik des DualSense kommt nicht an (`docs/re/pad-output.md`). Adaptive Trigger gehen nur mit Moonlight am PC und bleiben nach dem Stream hart, bis zum nächsten Verbinden (`docs/re/adaptive-triggers.md`).
+
+### Spiele in Moonlight (2026-11-01, nicht veröffentlicht)
+
+- **Liste und Cover:** `pair.py info` zeigt „PS5 Screen“ und 34 Titel, `pair.py cover` liefert für die ersten drei PNGs. Moonlight für Android (TV) zeigt alle mit Cover. Es sortiert selbst nach Namen; mit führendem Leerzeichen im Namen steht „PS5 Screen“ dort vorn (vom Besitzer am TV bestätigt).
+- **Start aus dem Home-Menü:** `run_smoke.sh --appid` mit Mario 64, 1080p H.264: Titel startet, 25 s Stream mit 59,94 fps, längste Lücke 23 ms, Ton läuft, Host läuft danach weiter. Moonlight am TV: Digimon direkt gestartet, laut Host-Log 4K60 HEVC mit 50 Mbit/s (angefordert 111 Mbit/s), rund 7,5 Minuten ohne Warnung im Log, der Besitzer meldet „lief sehr gut“. Beim Schließen des Titels über das Konsolenmenü ging die Aufnahme zweimal verloren und kam nach 629 und 506 ms in 4K wieder; der Stream lief auf dem Startbildschirm weiter. Der TV zeigte beim Start seine eigene HDR-Meldung (laut Besitzer vom TV, nicht von der Konsole). Der Host sandte da 8 Bit: Ein 4K-HEVC-Stream vom Startbildschirm ist laut `ffprobe` `Main`, `yuv420p`, BT.709.
+- **Titel läuft schon, oder ein anderer läuft** (Testclient, je 8 s, 59,9 fps): derselbe wird nicht neu gestartet, ein anderer startet nicht, der Stream zeigt den laufenden. Log: „already in front“, „Not starting“.
+- **Einfrieren beim Start, behoben:** Mit zur Laufzeit geladenem `libSceSystemService` und `libSceUserService` blieb der Host nach dem Titelstart stehen (Prozesszustand 4, auch SIGKILL half nicht, erst ein Neustart der Konsole). Eine Sonde auf diesem Weg blieb schon vor ihrer ersten Log-Zeile stehen, das Kernel-Log zeigt `mDBG: Sending signal(pid, tid, signo: 0xa0020101)`. Eine Sonde mit gelinkten Bibliotheken bekam die App-ID zurück und lief weiter, ebenso nun der Host. Warum das Laden zur Laufzeit den Prozess anhält, ist nicht geklärt.
+- **Kein Bild direkt nach dem Start, behoben:** Während ein Titel hochfährt, meldet `GetVideoOutMode` 0 (gemessen bis 500 ms), und `OpenVideo` antwortet mit dem veralteten Wert `0x81950008`. Die Aufnahme wartet nun auf den Wert und liest ihn bei Wiederholungen neu.
+- **`0x80960003`** heißt „bereits initialisiert“ (`kAlreadyInitialized` in ps5-homebrew-ui).
+- **Start bei offener App** (Testclient, Mario 64, 20 s H.264): Die Einstellungs-App schließt sich, der Titel startet, 59,9 fps, längste Lücke 23 ms. Der nächste Start danach ging ohne die SMP-Sperre (`0x80940033`).
+- **4K-Rückfall nach einem Start aus Moonlight** (Testclient, Mario 64, HEVC, 4K verlangt): `capture open failed step=RUNNING`, dann „larger mode refused“, 1080p mit 59,9 fps, keine fehlenden Bilder, längste Lücke 22 ms.
+- **Offen:** weitere Titel.
+
+### Touch und Bewegung im Pad (2026-11-01, nicht veröffentlicht)
+
+Gemessen mit `stream_test --touch-motion`, Stream „PS5 Screen“ mit offener App. Die App liest beim Stream mit `scePadReadState` zehnmal pro Sekunde mit (Schalterdatei `pad_log`, `tools/moonlight/pad_log.py`). Das ist also die Sicht eines Titels.
+
+- **Touch:** Gesendet in 0..1, gelesen: 0,5/0,5 → 960,540. 0,25/0,75 → 480,809. Zweiter Finger 0,75/0,25 → 1439,270. Beide gleichzeitig, jeder mit eigener id; Abheben senkt die Anzahl auf 1 und 0.
+- **Drehrate:** 10, 20, 30 Grad/s kommen als 0,175, 0,349, 0,524 rad/s an, am Ende 0.
+- **Beschleunigung und Ruhewert:** 9,80665 m/s² auf y kommt als 1,0 an, gleich dem Ruhewert `0,1,0`. Dass die Werte aus dem Block stammen, zeigt ein Pad von RemoteEye, dessen Block null bleibt: Da liest die App 0,0,0 und eine Null-Quaternion.
+- **Tasten daneben:** Steuerkreuz rechts und links während der Bewegung (`0x20`, `0x80`). Die Drehrate bleibt dabei stehen; die App reagiert normal.
+- **Create-Menü:** Solange es offen ist, meldet `scePadReadState` Bit 31 in den Tasten und keine Finger, die Drehrate kommt aber durch. Es stand bei der ersten Messung schon offen, das Vorschaubild zeigte die App beim Streamen. Wer es geöffnet hat, ist nicht geklärt. In drei Läufen danach ging es nicht wieder auf (Bilder aus dem empfangenen Stream).
+- **`access()`** antwortet im Titel mit EPERM, auch für eine vorhandene Datei. Für die Schalterdatei also `stat`.
+- **Offen:** ein Titel, der Touch oder Bewegung wirklich nutzt, das Vorzeichen der Achsen, echte Moonlight-Clients. Die Orientierung bleibt beim Ruhewert: Moonlight liefert keine, also sieht ein Titel, der nur sie liest, keine Bewegung.
+
+### HDR (2026-11-01, nicht veröffentlicht)
+
+Moonlight bekommt nun HEVC Main 10 angeboten (`ServerCodecModeSupport` 769), `hevc_mode = 2` schaltet das ab. Gemessen mit `stream_test --hevc10`, Bildausgabe der Konsole wie vorgefunden (`video out mode 0x13c`, welche HDR-Einstellung die Konsole hatte, ist nicht geprüft). Dekodieren mit `ffmpeg -xerror` lief in allen Läufen fehlerfrei.
+
+| Lauf | Client meldet | `ffmpeg` | Längste Lücke |
+| --- | --- | --- | --- |
+| Home, 1080p, 12 s | `hdr mode: 1` | Main 10, `yuv420p10le`, bt2020nc/bt2020/smpte2084 | 19 ms |
+| Home, 4K, 12 s | `hdr mode: 1` | wie oben, 3840x2160 | 19 ms |
+| Mario 64 aus Moonlight gestartet, 1080p, 25 s | `hdr mode: 1` | wie oben | 22 ms |
+| Titel mitten im Stream geschlossen, 22 s | `hdr mode: 1` | wie oben, auch nach dem Wiederöffnen | 1785 ms (Wiederöffnen nach 1750 ms) |
+| danach HEVC 8 Bit, 8 s | `hdr mode: 0` | Main, `yuv420p`, bt709 | 19 ms |
+| danach H.264, 8 s | `hdr mode: 0` | h264 | 19 ms |
+
+- **Echtes PQ, nicht nur umetikettiert:** Die helle Oberfläche des Startbildschirms hat in 8 Bit Luma 251, in 10 Bit 638 von 64..940, also rund 0,66 PQ. Ein Bild aus Mario 64 sieht nach PQ-Tone-Mapping (`zscale`, `tonemap`) richtig aus. Der Scan-In meldet dabei `dynamicRange(2)` statt `(1)`.
+- **Sonde:** `out/hdr_spike.elf`, 8 und 10 Bit je 299 Bilder in 5 s, Rückgaben 0. Keine der Ausweich-Varianten war nötig. Die Felder von `docs/re/hdr.md` stimmen also.
+- **Metadaten:** Avcap2 liefert keine, der Host schickt Nullen (unbekannt).
+- **Offen:** echter Moonlight-Client auf einem HDR-Bildschirm, wie sich die Metadaten-Nullen dort auswirken. Die Matrix aus Bildausgabe der Konsole und Stream (`docs/re/hdr.md`, Schritt 5) und ein HDR-Spiel; die Einstellung ändert der Besitzer. Der Rückfall auf 1080p in 10 Bit ist nicht eigens gemessen.
 
 ## Bauen und testen
 
