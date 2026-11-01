@@ -360,14 +360,18 @@ int main(void)
     fake_decide = high_rate_fails;
     assert(open_and_close() == PS_CAPTURE_ERROR);
     assert(fake_opens == 1 && ps_capture_opening_average() == 100000000u && !logged("experimental"));
-    // On 10.x the record has no rate fields: the switch is ignored, and the record is the same at any rate.
+    // On 10.x the record has no rate fields: the switch is ignored, and the rate reaches the record only as the QP.
     setup_high(0x10400000u, 0, 0, 100000000u);
     assert(!ps_capture_high_bitrate_allowed());
     assert(open_and_close() == 0);
     assert(!logged("experimental"));
+    assert(record_u32(0xc4) == 21 && record_u32(0xc8) == 25);
     memcpy(high_record, fake_record, sizeof high_record);
     setup(0x10400000u, 0, 0, 0, 0, 0, 4);
+    ps_capture_set_opening_bitrate(10000000, 11000000);
     assert(open_and_close() == 0);
+    assert(record_u32(0xc4) == 27 && record_u32(0xc8) == 31);
+    memcpy(high_record + 0xc4, fake_record + 0xc4, 8);
     assert(!memcmp(high_record, fake_record, sizeof high_record));
     fake_log[0] = 0;
     set_switches(0, 0, 0, 1);

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The capture records must not change while the Experimental switches are off: every firmware, codec, mode, frame rate,
 // bit depth and bitrate below, from configure() and as OpenVideo receives them, hashed and compared with
-// tests/capture_records.golden, taken from the code before the switches existed.
+// tests/capture_records.golden, taken from the code before the switches existed. Only 10.x's lines were taken again
+// when its QP came to follow the bitrate (cfg+0xc4 and +0xc8, platform/ps5/encoder_qp.h).
 // `--hashes` prints those lines, `--full` the records themselves, for a byte-wise comparison with another build.
 #include "fake_avcap.h"
 

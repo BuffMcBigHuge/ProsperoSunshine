@@ -304,6 +304,35 @@ Gemessen auf der PS5 Pro mit 10.20 und ShadowMountPlus 1.7beta11.
 - **Offen:** Moonlight auf 13.00 (Resume und Quit im Menü) und der Fall, in dem der Host bis zur Obergrenze von 11 s wartet (ein leerer
   Ordner `<Titel>_000` ist noch da).
 
+### Quantisierer auf 10.x folgt der Bitrate (2026-11-01, nicht veröffentlicht)
+
+Gemessen auf der PS5 Pro mit 10.20, GTA III bei schneller Fahrt mit bewegter Kamera, HEVC 10 bit HDR 1920x1080 bei 60 fps,
+Moonlight unter Windows mit 16 364 kbit/s angefordert. Messbuild: der Host zählte die Bytes jedes gelesenen Bildes (`ReadVideo2`) und
+schrieb alle 5 s Mittelwert, stärkste Sekunde und größtes Bild nach `host_diag.log`; der Quantisierer kam je Verbindung aus einer Datei.
+
+| `cfg+0xc4`/`+0xc8` | Mittel (Mbit/s) | stärkste Sekunde | größtes Bild |
+|---|---|---|---|
+| nicht gesetzt (Stand 0.1.7) | 0,26–0,41 | 0,7 | IDR 30 KB, sonst ~2 KB |
+| 30/34 | 1,4–2,4 | 3,1 | IDR 69 KB |
+| 27/31 | 1,9–2,9 | 3,7 | IDR 43 KB |
+| 24/28 | 2,4–3,8 | 5,1 | IDR 110 KB |
+| 21/25 | 4,2–6,7 | 10,0 | IDR 169 KB, sonst bis 70 KB |
+
+- Ohne Quantisierer ist das Bild in Blöcken zerlegt (Kanten, Schrift, die Sonne der App); mit 27/31 ist dieselbe Ansicht bei derselben
+  Anforderung scharf (Bildschirmfotos im PR).
+- **Mit dieser Tabelle, GTA III:** Moonlight unter Windows (16 364 kbit/s → 24/28, HEVC mit und ohne HDR), Android (34 988 → 21/25,
+  HEVC mit und ohne HDR), iOS (46 988 → 21/25, HEVC HDR) und Switch (1280x720, 16 024 → 24/28, HEVC): scharf, keine Abbrüche,
+  höchstens 6,2 Mbit/s in einer Sekunde. Unter Windows wirkte HDR auf der hellen Karte von GTA III ausgewaschen, ohne HDR und
+  unter Android mit HDR nicht; der Quantisierer ändert keine Farben, das ist offen und nicht Teil dieser Änderung.
+- `SetVideoBitrate` mitten im Stream (20 000 kbit/s, ohne Quantisierer) gab 0 zurück, danach scheiterte `ReadVideo2` mit
+  `0x80c78000`; der Host öffnete die Aufnahme nach 332 ms neu. Eine Ratensteuerung gibt es auf 10.x damit nicht.
+- Eine Verbindung mit 21/25 endete nach 24 s mit „Ping Timeout“ (der Client schickte keine Steuerpakete mehr, das Video lief bis
+  zuletzt); die Wiederholung lief 90 s ohne Abbruch.
+- Die Tabelle in `encoder_qp.h`: 30/34 unter 8 Mbit/s, 27/31 ab 8, 24/28 ab 12, 21/25 ab 20, jeweils etwa ab dem Doppelten der
+  stärksten Sekunde. Feiner als 21/25 ist nicht gemessen. Andere Spiele können mehr brauchen; der Encoder hält die Bitrate nicht ein.
+- **Offen:** H.264 auf 10.x mit diesen Werten (gleicher Quantisierer, mehr Bits erwartet; alle Clients wählten HEVC) und andere
+  10.x-Versionen.
+
 ## Bauen und testen
 
 ```powershell

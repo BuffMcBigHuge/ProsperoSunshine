@@ -2,6 +2,7 @@
 // Derived from ps5-mcp/payload/avcap_probe/avcap_probe.c, FW 13.00 research.
 #include "capture.h"
 #include "diag.h"
+#include "encoder_qp.h"
 #include "experimental.h"
 #include "ra_resolve.h"
 #include <fcntl.h>
@@ -208,7 +209,8 @@ void ps_capture_override_config(size_t field, uint32_t value)
 // here, taken from two public projects that run on it (docs/firmware-porting.md).
 // Firmware 10.x (measured on 10.20): the block is 0x18 bytes smaller, and what 13.00 keeps from 0x198 on sits 0x18 lower.
 // 13.00's rate fields land on other encoder fields there (Start returns 0x80c78000). The measured record also leaves out
-// 13.00's inner sub-block headers, so 10.x writes neither, and the encoder keeps its default rate.
+// 13.00's inner sub-block headers, so 10.x writes neither, and the encoder sets no rate. Its QP follows the client's
+// bitrate there instead (encoder_qp.h).
 // HEVC is offered on 13.00 and 10.20 (ps_capture_hevc_verified). On 10.20 cfg+0x24 alone starts it, 8 and 10 bit, so
 // Remote Play's fields and the encoder memory are left out on 10.x. On 13.60 its fields would stay at 13.00's offsets;
 // PS_EXP_FULL moves those from 0x198 on with the rest. Where the inner ones sit there is unknown.
@@ -253,7 +255,12 @@ static void configure(uint8_t *p, uint32_t mode, int variant)
         u32(p, 0xcc, (uint32_t)peak);
         u32(p, 0xd0, (uint32_t)(peak * 1001 / (fps * 1000)));
     } else {
-        LOG("firmware 10.x: opening bitrate not sent, the encoder keeps its default rate\n");
+        // No rate fields on 10.x: the encoder's QP follows the client's bitrate instead (encoder_qp.h).
+        const uint32_t average = atomic_load(&opening_average);
+        const ps_qp qp = ps_qp_for_bitrate(average);
+        u32(p, 0xc4, qp.idr);
+        u32(p, 0xc8, qp.other);
+        LOG("firmware 10.x: no rate fields, QP %u/%u for %u kbit/s\n", qp.idr, qp.other, average / 1000);
     }
     u32(p, 0x2a0 + shift, mode);
     u32(p, 0x2a4 + shift, 2); // composited screen, including home menu
