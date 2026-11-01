@@ -24,6 +24,7 @@ struct ps_ra_known {
 };
 static const struct ps_ra_known ps_ra_known_firmware[] = {
     {0x13000000u, {0xdb0, 0xee0, 0x10b0, 0x11f0}},
+    {0x10200000u, {0xde0, 0xfe0, 0x1220, 0x1360}},
 };
 
 static inline const struct ps_ra_known *ps_ra_find_known(uint32_t firmware)

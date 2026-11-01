@@ -4,9 +4,16 @@
 
 ### Added
 
-- Firmware 10.x, for H.264 at 1080p: the capture record there is smaller, and the encoder keeps its own default bitrate. Measured
-  on a 10.20 console (issue #2): Moonlight streams on Android and iOS, on Windows only with software decoding, because each frame
-  has 34 slices. Audio plays too slowly there. Other 10.x versions are untested.
+- Firmware 10.x at 1080p, H.264, and on 10.20 also HEVC (8 bit and HDR): the capture record there is smaller, the encoder
+  keeps its own default bitrate, and HEVC starts with `cfg+0x24` alone. Measured on a 10.20 console (issue #2): Moonlight
+  streams on Android and iOS (tested with H.264) and on Windows (H.264 and HEVC, also HDR). H.264 there comes as 34 slices per
+  frame, more than FFmpeg's hardware decoders on Windows take (32), so Moonlight on Windows needs software decoding for it; HEVC
+  comes as 17 and decodes by hardware. Other 10.x versions are untested and get H.264 only.
+
+### Changed
+
+- Firmware 10.20 counts as verified: the app no longer calls it untested, and the host knows its ResourceArbitrator offsets.
+  Moonlight on Android, iOS, Windows and Nintendo Switch streamed from a 10.20 console.
 
 ## 0.1.6 (2026-11-01)
 

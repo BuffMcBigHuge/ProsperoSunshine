@@ -100,6 +100,8 @@ static void diag_tests()
     CHECK(diag::firmware_text(0x13000040) == "13.00");
     CHECK(diag::firmware_text(0x10400000) == "10.40");
     CHECK(diag::firmware_verified(0x13000040));
+    CHECK(diag::firmware_verified(0x10200006));
+    CHECK(!diag::firmware_verified(0x10400000));
     CHECK(!diag::firmware_verified(0x13600000));
 
     // A good run.

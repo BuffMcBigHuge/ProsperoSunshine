@@ -23,7 +23,7 @@ int ps_capture_set_video_mode(uint32_t resolution, uint32_t timing);
 int ps_capture_set_codec(uint32_t codec);
 // 10 bit for the next ps_capture_open, HEVC only: Main 10, BT.2020, PQ (docs/re/hdr.md).
 void ps_capture_set_ten_bit(uint32_t ten_bit);
-// Whether HEVC was verified on this firmware.
+// Whether HEVC was verified on this firmware: 13.00 and 10.20.
 int ps_capture_hevc_verified(void);
 // Whether 1440p and 2160p were verified on this firmware.
 int ps_capture_large_modes_verified(void);

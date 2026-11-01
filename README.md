@@ -24,8 +24,8 @@ reverse-engineering notes: `docs/` (German).
 
 ## Requirements
 
-- PS5 firmware: **13.00 is the only tested version**. Other versions are untested; the host refuses them only if its
-  system-library lookups fail (`docs/firmware-porting.md`, German).
+- PS5 firmware: **13.00 and 10.20 are tested** (10.20 at 1080p, where the encoder keeps its own bitrate). Other versions are
+  untested; the host refuses them only if its system-library lookups fail (`docs/firmware-porting.md`, German).
 - A homebrew environment with an **ELF loader** (for example one listening on port 9021). The app also needs
   [ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus), which registers titles from `/data/homebrew/`.
 - No PS VR session while streaming.
@@ -78,7 +78,7 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   apply when the console's video output is smaller than the request; that is not tested yet.
 - At 4K the console can show "Gameplay recording paused because you entered a blocked scene" shortly after the stream starts
   (seen in GTA III). The stream keeps running.
-- HEVC and HDR are offered on firmware 13.00 only, elsewhere H.264. Clients that prefer HEVC pick it on their own. To
+- HEVC and HDR are offered on firmware 13.00 and 10.20, elsewhere H.264. Clients that prefer HEVC pick it on their own. To
   force H.264, choose it in Moonlight's settings or set `hevc_mode = 1` in `sunshine.conf`; `hevc_mode = 2` keeps HEVC
   and turns HDR off.
 - The bitrate is capped at 50 Mbit/s. The encoder holds it in normal scenes, but extreme images can exceed it: full-screen
@@ -118,7 +118,7 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
 - **Black or paused picture for a moment:** expected when a game starts or exits (see limits).
 - **Controller works on the home screen but not in an app:** turn off other controllers connected to the console (see
   limits).
-- **Other firmware:** only 13.00 is tested. On other versions capture is refused if the system-library lookups fail;
+- **Other firmware:** 13.00 and 10.20 are tested. On other versions capture is refused if the system-library lookups fail;
   if they succeed it runs, untested. The kernel log says which case applies.
 - **Diagnosis:** the app's **Diagnostics** page collects a report for a bug report, without addresses, device names or
   ids. While the page is open and the host runs, a phone or PC in the same network can open it at

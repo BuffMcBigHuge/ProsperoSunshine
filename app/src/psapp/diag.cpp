@@ -111,7 +111,8 @@ std::string firmware_text(std::uint32_t firmware)
 
 bool firmware_verified(std::uint32_t firmware)
 {
-    return (firmware & 0xffff0000u) == 0x13000000u;
+    const std::uint32_t version = firmware & 0xffff0000u;
+    return version == 0x13000000u || version == 0x10200000u;
 }
 
 HostLog parse_host_log(const std::string &text)
@@ -188,7 +189,7 @@ Notice notice(std::uint32_t firmware, const HostLog &log, bool host_running)
     if (log.capture == Capture::opening && !host_running)
         return {"The host went down while starting capture on " + name + ". See Diagnostics.", true};
     if (firmware != 0 && !firmware_verified(firmware))
-        return {name + " is untested: only 13.00 is verified. See Diagnostics if streaming fails.", false};
+        return {name + " is untested: only 13.00 and 10.20 are verified. See Diagnostics if streaming fails.", false};
     return {};
 }
 

@@ -10,6 +10,9 @@ int main() {
     const ps_ra_known *fw1300 = ps_ra_find_known(0x13000040u);
     assert(fw1300 && fw1300->offset[PS_RA_REGISTER] == 0xdb0 && fw1300->offset[PS_RA_LIST] == 0x11f0);
     assert(ps_ra_find_known(0x13400000u) == nullptr);
+    const ps_ra_known *fw1020 = ps_ra_find_known(0x10200006u);
+    assert(fw1020 && fw1020->offset[PS_RA_REGISTER] == 0xde0 && fw1020->offset[PS_RA_LIST] == 0x1360);
+    assert(ps_ra_find_known(0x10400000u) == nullptr);
     assert(ps_ra_find_known(0x12000000u) == nullptr);
 
     uint32_t offset = 1;
