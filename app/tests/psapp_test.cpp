@@ -95,6 +95,151 @@ static void autoload_tests()
     CHECK(meta.find("\"filename\": \"prospero_sunshine.elf\"") != std::string::npos);
 }
 
+// The lines as src/platform/ps5/capture.c writes them; tests/capture_open_test.c checks that side.
+static void experimental_tests()
+{
+    // Where a switch counts.
+    CHECK(!diag::experimental_needed(0x13000040, "experimental_hevc"));
+    CHECK(!diag::experimental_needed(0x13000040, "experimental_hdr"));
+    CHECK(!diag::experimental_needed(0x13000040, "experimental_large_modes"));
+    CHECK(!diag::experimental_needed(0x10200006, "experimental_hevc"));
+    CHECK(!diag::experimental_needed(0x10200006, "experimental_hdr"));
+    CHECK(diag::experimental_needed(0x10200006, "experimental_large_modes"));
+    CHECK(diag::experimental_needed(0x13600000, "experimental_hevc"));
+    CHECK(diag::experimental_needed(0x13600000, "experimental_hdr"));
+    CHECK(diag::experimental_needed(0x13600000, "experimental_large_modes"));
+    CHECK(diag::experimental_needed(0x10400000, "experimental_hevc"));
+    CHECK(diag::experimental_needed(0, "experimental_hevc"));
+
+    // The options: switches, off by default, written as 1.
+    for (const char *key : {"experimental_hevc", "experimental_hdr", "experimental_large_modes"})
+    {
+        const OptionSpec *spec = find_option(key);
+        CHECK(spec != nullptr);
+        CHECK(spec->kind == OptionKind::toggle);
+        CHECK(!validate(*spec, "1"));
+        CHECK(!validate(*spec, "0"));
+        CHECK(validate(*spec, "yes"));
+    }
+    Config c = Config::parse("port = 48000\n");
+    c.set("experimental_hevc", "1");
+    CHECK(c.text() == "port = 48000\nexperimental_hevc = 1\n");
+    c.set("experimental_hevc", std::nullopt);
+    CHECK(c.text() == "port = 48000\n");
+
+    // The first variant fails at Start, the second runs.
+    const std::string header = "ProsperoSunshine: host version=0.1.7 firmware=0x13600000 known=0\n"
+                               "ProsperoSunshine: experimental switches=hevc set=hevc firmware=0x13600000\n";
+    const std::string fields = " switches=hevc firmware=0x13600000 trial=hevc codec=hevc bits=8 mode=1920x1080 fps=60 variant=";
+    const std::string ran = header + "ProsperoSunshine: experimental attempt" + fields + "minimal\n" +
+                            "ProsperoSunshine: capture open start codec=1 resource=180\n"
+                            "ProsperoSunshine: capture Start rc=0x80c78000\n"
+                            "ProsperoSunshine: capture open failed step=Start error=-1 rc=0\n"
+                            "ProsperoSunshine: experimental result=failed" + fields + "minimal error=-1 rc=0x80c78000 step=Start\n" +
+                            "ProsperoSunshine: experimental attempt" + fields + "full\n" +
+                            "ProsperoSunshine: capture open start codec=1 resource=180\n"
+                            "ProsperoSunshine: capture open ok\n"
+                            "ProsperoSunshine: experimental result=ok" + fields + "full error=0 rc=0 step=none\n";
+    diag::HostLog log = diag::parse_host_log(ran);
+    CHECK(log.switches == "hevc");
+    CHECK(log.switches_set == "hevc");
+    CHECK(log.attempts.size() == 2);
+    CHECK(!log.attempts[0].ok);
+    CHECK(log.attempts[0].variant == "minimal");
+    CHECK(log.attempts[0].step == "Start");
+    CHECK(log.attempts[0].rc == "0x80c78000");
+    CHECK(log.attempts[0].codec == "hevc");
+    CHECK(log.attempts[0].bits == "8");
+    CHECK(log.attempts[0].mode == "1920x1080");
+    CHECK(log.attempts[0].fps == "60");
+    CHECK(log.attempts[1].ok);
+    CHECK(log.attempts[1].variant == "full");
+    CHECK(log.disabled.empty());
+    CHECK(log.pending_trial.empty());
+    CHECK(log.capture == diag::Capture::ok);
+    diag::Notice note = diag::notice(0x13600000, log, true);
+    CHECK(!note.bad);
+    CHECK(note.text == "Experimental HEVC started on Firmware 13.60. Is the picture right? Please post the Diagnostics report on GitHub.");
+    std::string report = diag::experimental_report(log, {"experimental_hevc"});
+    CHECK(report.find("In sunshine.conf: experimental_hevc\n") != std::string::npos);
+    CHECK(report.find("started with: hevc, and uses: hevc\n") != std::string::npos);
+    CHECK(report.find("hevc 8 bit 1920x1080@60 variant minimal trial hevc: failed at Start, rc 0x80c78000\n") != std::string::npos);
+    CHECK(report.find("hevc 8 bit 1920x1080@60 variant full trial hevc: ok\n") != std::string::npos);
+
+    // Everything fails: the failure stays on the page, also after H.264 ran. A step's name may hold spaces.
+    const std::string lost = header + "ProsperoSunshine: experimental result=failed" + fields + "minimal error=-1 rc=0 step=first frame\n" +
+                             "ProsperoSunshine: experimental result=failed" + fields + "full error=-1 rc=0x80c78000 step=encoder memory\n" +
+                             "ProsperoSunshine: experimental disabled feature=hevc\n"
+                             "ProsperoSunshine: capture open failed step=OpenVideo error=-1 rc=0\n"
+                             "ProsperoSunshine: capture open start codec=0 resource=180\n"
+                             "ProsperoSunshine: capture open ok\n";
+    log = diag::parse_host_log(lost);
+    CHECK(log.attempts[0].step == "first frame");
+    CHECK(log.attempts[1].step == "encoder memory");
+    CHECK(log.disabled.size() == 1);
+    note = diag::notice(0x13600000, log, true);
+    CHECK(note.bad);
+    CHECK(note.text == "Experimental HEVC failed on Firmware 13.60 (off until the host restarts). Please post the Diagnostics report on GitHub.");
+    report = diag::experimental_report(log, {});
+    CHECK(report.find("In sunshine.conf: none\n") != std::string::npos);
+    CHECK(report.find("failed at first frame, rc 0\n") != std::string::npos);
+    CHECK(report.find("Off until the host restarts: HEVC\n") != std::string::npos);
+
+    // Several functions, named once each.
+    log = diag::parse_host_log("experimental disabled feature=hevc\nexperimental disabled feature=large\nexperimental disabled feature=hevc\n");
+    CHECK(diag::notice(0x13600000, log, true).text.find("Experimental HEVC and 1440p/4K failed on Firmware 13.60") == 0);
+
+    // The host went down inside an attempt: no outcome, no host. While it runs the attempt is simply under way.
+    log = diag::parse_host_log(header + "ProsperoSunshine: experimental attempt" + fields + "minimal\n" +
+                               "ProsperoSunshine: capture open start codec=1 resource=180\n");
+    CHECK(log.pending_trial == "hevc");
+    CHECK(diag::notice(0x13600000, log, false).bad);
+    CHECK(diag::notice(0x13600000, log, false).text ==
+          "Experimental HEVC took the host down on Firmware 13.60. Please post the Diagnostics report on GitHub.");
+    CHECK(!diag::notice(0x13600000, log, true).bad);
+    // The next host says so itself.
+    log = diag::parse_host_log(header + "ProsperoSunshine: experimental result=failed" + fields + "minimal error=0 rc=0 step=host went down\n" +
+                               "ProsperoSunshine: experimental disabled feature=hevc\n");
+    CHECK(log.attempts[0].step == "host went down");
+    CHECK(diag::notice(0x13600000, log, true).bad);
+
+    // A plain H.264 stream with a switch on proves nothing: only the firmware's caution.
+    log = diag::parse_host_log(header + "ProsperoSunshine: experimental attempt switches=hevc firmware=0x13600000 trial=none codec=h264 bits=8 "
+                                        "mode=1920x1080 fps=60 variant=standard\n" +
+                               "ProsperoSunshine: experimental result=ok switches=hevc firmware=0x13600000 trial=none codec=h264 bits=8 "
+                               "mode=1920x1080 fps=60 variant=standard error=0 rc=0 step=none\n");
+    CHECK(log.pending_trial.empty());
+    CHECK(diag::notice(0x13600000, log, true).text.find("is untested") != std::string::npos);
+
+    // Switches ignored on verified firmware: nothing to tell on the home page; the report says so.
+    log = diag::parse_host_log("host version=0.1.7 firmware=0x13000040 known=1\nexperimental switches=none set=hevc,hdr,large firmware=0x13000040\n");
+    CHECK(log.switches == "none");
+    CHECK(log.switches_set == "hevc,hdr,large");
+    CHECK(diag::notice(0x13000040, log, true).text.empty());
+    CHECK(diag::experimental_report(log, {}).find("started with: hevc,hdr,large, and uses: none\n") != std::string::npos);
+    CHECK(diag::experimental_report(log, {}).find("No attempt since the host started.\n") != std::string::npos);
+    // Without a switch the report's part stays short and the file has no such line.
+    log = diag::parse_host_log("host version=0.1.7 firmware=0x13000040 known=1\ncapture open start codec=0 resource=180\ncapture open ok\n");
+    CHECK(log.attempts.empty());
+    CHECK(diag::experimental_report(log, {}).find("started with: none, and uses: none\n") != std::string::npos);
+
+    // Only the parsed fields reach the report's part, so other text in such a line stays out.
+    log = diag::parse_host_log("experimental attempt switches=hevc client=192.168.1.20 name=Living\n"
+                               "experimental result=ok switches=hevc client=192.168.1.20 name=Living trial=hevc codec=hevc bits=8 mode=1920x1080 fps=60 "
+                               "variant=full error=0 rc=0 step=none\n");
+    report = diag::experimental_report(log, {});
+    CHECK(report.find("192.168") == std::string::npos);
+    CHECK(report.find("Living") == std::string::npos);
+
+    // The list keeps the latest attempts.
+    std::string many;
+    for (std::size_t i = 0; i < diag::kMaxAttempts + 5; ++i)
+        many += "experimental result=failed trial=hevc codec=hevc bits=8 mode=1920x1080 fps=" + std::to_string(i) + " variant=full rc=0 step=Start\n";
+    log = diag::parse_host_log(many);
+    CHECK(log.attempts.size() == diag::kMaxAttempts);
+    CHECK(log.attempts.back().fps == std::to_string(diag::kMaxAttempts + 4));
+}
+
 static void diag_tests()
 {
     CHECK(diag::firmware_text(0x13000040) == "13.00");
@@ -172,6 +317,8 @@ static void diag_tests()
     CHECK(diag::scrub("id 0123456789abcdef0123 end", {}) == "id <id> end");
     CHECK(diag::scrub("uuid 1b4e28ba-2fa1-11d2-883f-0016d3cca427.", {}) == "uuid <id>.");
     CHECK(diag::scrub("firmware=0x13000040 known=1", {}) == "firmware=0x13000040 known=1");
+
+    experimental_tests();
 
     CHECK(diag::tail("a\nb\nc\n", 2) == "b\nc\n");
     CHECK(diag::tail("a\nb\nc", 5) == "a\nb\nc\n");

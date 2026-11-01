@@ -72,16 +72,17 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
 ## Known limits
 
 - On firmware 13.00, H.264 and HEVC stream at 1080p, 1440p or 4K, whichever the client asks for. Every other
-  firmware stays at 1080p. A client asking for less than 1080p gets 1080p and scales it. The frame rate follows the client:
-  30 or 60 fps.
+  firmware stays at 1080p unless you turn on the [experimental switch](#testing-other-firmware). A client asking for less than
+  1080p gets 1080p and scales it. The frame rate follows the client: 30 or 60 fps.
 - The console refuses 1440p and 4K capture in some titles (seen in a Mario 64 port and Teardown; GTA III works). The stream
   then runs at 1080p, also when such a title starts during a stream, and stays there until the next stream. The same should
   apply when the console's video output is smaller than the request; that is not tested yet.
 - At 4K the console can show "Gameplay recording paused because you entered a blocked scene" shortly after the stream starts
   (seen in GTA III). The stream keeps running.
-- HEVC and HDR are offered on firmware 13.00 and 10.20, elsewhere H.264. Clients that prefer HEVC pick it on their own. To
-  force H.264, choose it in Moonlight's settings or set `hevc_mode = 1` in `sunshine.conf`; `hevc_mode = 2` keeps HEVC
-  and turns HDR off.
+- HEVC and HDR are offered on firmware 13.00 and 10.20, elsewhere H.264 unless you turn on the
+  [experimental switches](#testing-other-firmware). Clients that prefer HEVC pick it on their own. To force H.264, choose it in
+  Moonlight's settings or set `hevc_mode = 1` in `sunshine.conf`, which also beats the switches; `hevc_mode = 2` keeps HEVC and
+  turns HDR off.
 - The bitrate is capped at 50 Mbit/s. The encoder holds it in normal scenes, but extreme images can exceed it: full-screen
   random noise reached about 130 Mbit/s at 4K and 35 Mbit/s at 1080p, whatever was set.
 - One streaming session at a time. More than one Moonlight controller is untested.
@@ -120,11 +121,32 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
 - **Controller works on the home screen but not in an app:** turn off other controllers connected to the console (see
   limits).
 - **Other firmware:** 13.00 and 10.20 are tested. On other versions capture is refused if the system-library lookups fail;
-  if they succeed it runs, untested. The kernel log says which case applies.
+  if they succeed it runs, untested. The kernel log says which case applies. See [Testing other firmware](#testing-other-firmware).
 - **Diagnosis:** the app's **Diagnostics** page collects a report for a bug report, without addresses, device names or
   ids. While the page is open and the host runs, a phone or PC in the same network can open it at
   `http://<console-ip>:47996`; it is also saved as `/data/prosperosunshine/diagnostics.txt`. For more detail, set `min_log_level = debug` in
   `/data/prosperosunshine/sunshine.conf`; messages go to the kernel log and `sunshine.log`.
+
+## Testing other firmware
+
+HEVC, HDR, 1440p and 4K stay locked on firmware where nobody could check them. If you have such a console, you can turn them
+on yourself and help find out. Nothing here has been seen working on an untested firmware yet, so expect it to fail.
+
+1. In the app, open **Settings**. Under **Experimental**, turn on what you want to try: HEVC (8 bit), HDR (HEVC 10 bit), or 1440p
+   and 4K. On firmware where a function is verified, its switch says it isn't needed. HDR also offers HEVC.
+2. Choose **Save and restart host**.
+3. Start a stream in Moonlight with that setting, for example with HEVC chosen as the codec, or 4K as the resolution. Check that
+   the picture and sound are right.
+4. Open the app's **Diagnostics** page and post the report in a [GitHub issue](https://github.com/Darkatek7/ProsperoSunshine/issues),
+   whether it worked or not. Add your Moonlight client and what you saw on the screen. The report has no addresses, device names
+   or ids in it.
+
+**When it fails:** the host tries each function in more than one way. If every way fails, it turns that function off until it
+restarts and offers H.264 and 1080p again. A larger mode falls back to 1080p within the same stream. With HEVC or HDR the
+stream that failed ends with an error, because the client set itself up for that codec: start it again and it runs with what
+the host still offers. If the client keeps asking for HEVC, choose H.264 in its settings. If the host itself goes down during a try,
+start it again; it then keeps that function off for that run. To try again, restart the host, and to stop testing, turn the
+switch off and choose **Save and restart host**.
 
 ## Development control socket
 

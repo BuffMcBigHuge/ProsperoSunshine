@@ -5,7 +5,8 @@
 //             restart, start at boot), pairing requests as cards (Cross: the PIN) and the paired
 //             devices;
 //   Settings  one tile per sunshine.conf option (Cross opens its editor, Square puts it back to the
-//             host's default), then Save, Save and restart, and Revert;
+//             host's default), the Experimental section's switches among them (Cross flips one), then
+//             Save, Save and restart, and Revert;
 //   Diagnostics the report for a bug report, to read here, as a file and over the network.
 // Editors and the PIN come up as a sheet over the page: a list for choices, a stepper for numbers,
 // the on-screen keyboard for text and the PIN. The page is frosted behind cards and sheets (the
@@ -96,6 +97,8 @@ class Screen
         return snap_.streaming && !(snap_.client_known && snap_.client.empty());
     }
     std::string value_text(int index) const;
+    // An Experimental switch on firmware where its function is verified: shown as such, and inert.
+    bool switch_not_needed(int index) const;
     hui::gfx::Rect focus_rect() const;
     hui::gfx::Rect action_rect(int index) const;
     hui::gfx::Rect pairing_rect(int index) const;
@@ -138,8 +141,8 @@ class Screen
     int home_row_ = 0; // 0 the actions, 1 the pairing cards
     int home_action_ = 0;
     int home_card_ = 0;
-    int tile_ = 0; // 0..5 the tiles, 6..8 the actions under them
-    float tile_amount_[9] = {};
+    int tile_ = 0; // 0..8 the tiles, 9..11 the actions under them
+    float tile_amount_[12] = {};
     float action_amount_[3] = {};
     float card_amount_[2] = {};
     float tab_x_ = -1.0f; // the selected tab's plate glides between tabs

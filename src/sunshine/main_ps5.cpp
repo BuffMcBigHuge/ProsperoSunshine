@@ -5,7 +5,9 @@
 #include "control/control_server.hpp"
 #include "control/listener_watch.hpp"
 #include "platform/ps5/mdns_responder.hpp"
+#include "platform/ps5/capture.h"
 #include "src/config.h"
+#include "src/file_handler.h"
 #include "src/globals.h"
 #include "src/httpcommon.h"
 #include "src/input.h"
@@ -109,6 +111,14 @@ int main(int argc, char *argv[]) {
     auto log_guard = logging::init(config::sunshine.min_log_level, config::sunshine.log_file);
     if (!log_guard) ps_diag_log("ProsperoSunshine: host logging failed to initialize\n");
     BOOST_LOG(info) << "ProsperoSunshine host starting, data in "sv << platf::appdata().string();
+    // The app's Experimental switches. Sunshine doesn't know these keys and leaves them alone.
+    const auto settings = config::parse_config(file_handler::read_file(config::sunshine.config_file.c_str()));
+    const auto switched_on = [&](const char *key) {
+        const auto it = settings.find(key);
+        return it != settings.end() && it->second == "1";
+    };
+    ps_capture_set_experimental(switched_on("experimental_hevc"), switched_on("experimental_hdr"), switched_on("experimental_large_modes"),
+                                (platf::appdata() / "experimental_attempt").c_str());
 
     task_pool.start(1);
     auto shutdown_event = mail::man->event<bool>(mail::shutdown);

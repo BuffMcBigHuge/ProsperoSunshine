@@ -4,7 +4,7 @@ Stand 2026-11-01, Firmware 13.00; 10.x im Abschnitt „Firmware 10.x“. `src/he
 
 ## Ergebnis
 
-Avcap2 liefert HEVC Main (8 Bit, 4:2:0, BT.709, nur I- und P-Bilder) in 1080p (Level 5.0), 1440p und 4K (Level 6.0). Über 1080p braucht es einen anderen Zweck als Remote Play, siehe „1440p und 4K“. Der Host bietet HEVC auf Firmware 13.00 und 10.20 an (`ps_capture_hevc_verified`, siehe „Firmware 10.x“), auf anderen nur H.264.
+Avcap2 liefert HEVC Main (8 Bit, 4:2:0, BT.709, nur I- und P-Bilder) in 1080p (Level 5.0), 1440p und 4K (Level 6.0). Über 1080p braucht es einen anderen Zweck als Remote Play, siehe „1440p und 4K“. Der Host bietet HEVC auf Firmware 13.00 und 10.20 an (`ps_capture_hevc_verified`, siehe „Firmware 10.x“), auf anderen nur H.264, außer mit dem experimentellen Schalter (`docs/firmware-porting.md`).
 
 ## Was nötig war
 

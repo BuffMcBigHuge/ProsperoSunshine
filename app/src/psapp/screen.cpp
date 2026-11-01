@@ -37,7 +37,9 @@ constexpr float kArmSeconds = 4.0f;
 constexpr int kReportVisible = 19; // lines of the report on screen
 constexpr float kReportLine = 26.0f;
 
-const Icon kOptionIcons[] = {Icon::tag, Icon::log, Icon::timer, Icon::lock, Icon::globe, Icon::plug};
+const Icon kOptionIcons[] = {Icon::tag, Icon::log, Icon::timer, Icon::lock, Icon::globe, Icon::plug,
+                             Icon::monitor, Icon::monitor, Icon::monitor};
+constexpr int kTiles = 9; // option_specs(): three rows of three, the last the Experimental section
 
 float approach(float value, float target, float dt, float speed)
 {
@@ -84,6 +86,8 @@ bool Screen::dirty() const
 std::string Screen::value_text(int index) const
 {
     const OptionSpec &spec = option_specs()[static_cast<std::size_t>(index)];
+    if (switch_not_needed(index))
+        return "Not needed: verified here";
     const auto it = edits_.find(spec.key);
     if (it == edits_.end() || !it->second)
         return spec.default_label;
@@ -98,7 +102,15 @@ std::string Screen::value_text(int index) const
     }
     if (spec.kind == OptionKind::number && std::string(spec.key) == "ping_timeout")
         return value + " ms";
+    if (spec.kind == OptionKind::toggle)
+        return value == "1" ? "On" : "Off";
     return value;
+}
+
+bool Screen::switch_not_needed(int index) const
+{
+    const OptionSpec &spec = option_specs()[static_cast<std::size_t>(index)];
+    return spec.kind == OptionKind::toggle && !diag::experimental_needed(snap_.firmware, spec.key);
 }
 
 int Screen::visible_pairings() const
@@ -127,8 +139,9 @@ Rect Screen::pairing_rect(int index) const
 
 Rect Screen::tile_rect(int index) const
 {
+    static const float rows[3] = {276.0f, 414.0f, 594.0f}; // the gap before the last holds the section's caption
     const int col = index % 3, row = index / 3;
-    return {96.0f + static_cast<float>(col) * 584.0f, 296.0f + static_cast<float>(row) * 204.0f, 560.0f, 180.0f};
+    return {96.0f + static_cast<float>(col) * 584.0f, rows[row], 560.0f, 124.0f};
 }
 
 Rect Screen::settings_action_rect(int index) const
@@ -137,7 +150,7 @@ Rect Screen::settings_action_rect(int index) const
     float x = 96.0f;
     for (int i = 0; i < index; ++i)
         x += widths[i] + 20.0f;
-    return {x, 728.0f, widths[index], 84.0f};
+    return {x, 736.0f, widths[index], 84.0f};
 }
 
 Rect Screen::focus_rect() const
@@ -146,7 +159,7 @@ Rect Screen::focus_rect() const
         return home_row_ == 0 ? action_rect(home_action_) : pairing_rect(home_card_);
     if (page_ == Page::diagnostics)
         return {96.0f, 836.0f, 340.0f, 76.0f};
-    return tile_ < 6 ? tile_rect(tile_) : settings_action_rect(tile_ - 6);
+    return tile_ < kTiles ? tile_rect(tile_) : settings_action_rect(tile_ - kTiles);
 }
 
 // ---- update and input -------------------------------------------------------------------------
@@ -252,7 +265,7 @@ void Screen::update(const hui::InputFrame &input, float dt, hui::ui::Feedback &f
         action_amount_[i] = approach(action_amount_[i], page_ == Page::home && home_row_ == 0 && home_action_ == i ? 1.0f : 0.0f, dt, 14.0f);
     for (int i = 0; i < 2; ++i)
         card_amount_[i] = approach(card_amount_[i], page_ == Page::home && home_row_ == 1 && home_card_ == i ? 1.0f : 0.0f, dt, 14.0f);
-    for (int i = 0; i < 9; ++i)
+    for (int i = 0; i < kTiles + 3; ++i)
         tile_amount_[i] = approach(tile_amount_[i], page_ == Page::settings && tile_ == i ? 1.0f : 0.0f, dt, 14.0f);
     report_amount_ = approach(report_amount_, page_ == Page::diagnostics ? 1.0f : 0.0f, dt, 14.0f);
     const float tab_target = static_cast<float>(static_cast<int>(page_));
@@ -363,7 +376,7 @@ void Screen::handle_settings(const hui::InputFrame &input, hui::ui::Feedback &fe
     case Direction::left:
     case Direction::right: {
         int next = tile_;
-        if (tile_ < 6)
+        if (tile_ < kTiles)
         {
             const int col = tile_ % 3, row = tile_ / 3;
             if (input.nav == Direction::left)
@@ -373,17 +386,17 @@ void Screen::handle_settings(const hui::InputFrame &input, hui::ui::Feedback &fe
             else if (input.nav == Direction::up)
                 next = row > 0 ? tile_ - 3 : -1;
             else
-                next = row < 1 ? tile_ + 3 : 6 + col;
+                next = tile_ + 3 < kTiles ? tile_ + 3 : kTiles + col;
         }
         else
         {
-            const int index = tile_ - 6;
+            const int index = tile_ - kTiles;
             if (input.nav == Direction::left)
                 next = index > 0 ? tile_ - 1 : -1;
             else if (input.nav == Direction::right)
                 next = index < 2 ? tile_ + 1 : -1;
             else if (input.nav == Direction::up)
-                next = 3 + index;
+                next = kTiles - 3 + index;
             else
                 next = -1;
         }
@@ -402,17 +415,27 @@ void Screen::handle_settings(const hui::InputFrame &input, hui::ui::Feedback &fe
     }
     if (input.is_pressed(InputAction::confirm))
     {
-        if (tile_ < 6)
+        if (tile_ >= kTiles)
+        {
+            run(static_cast<Action>(static_cast<int>(Action::save) + tile_ - kTiles), feedback);
+        }
+        else if (switch_not_needed(tile_))
+        {
+            feedback.play(hui::audio::Cue::error, 1.0f, 0.0f, 0.4f);
+        }
+        else if (option_specs()[static_cast<std::size_t>(tile_)].kind == OptionKind::toggle)
+        {
+            std::optional<std::string> &value = edits_[option_specs()[static_cast<std::size_t>(tile_)].key];
+            value = value && *value == "1" ? std::nullopt : std::optional<std::string>("1");
+            feedback.play(hui::audio::Cue::toggle);
+        }
+        else
         {
             open_tile(tile_);
             feedback.play(hui::audio::Cue::modal_open);
         }
-        else
-        {
-            run(static_cast<Action>(static_cast<int>(Action::save) + tile_ - 6), feedback);
-        }
     }
-    if (input.is_pressed(InputAction::west) && tile_ < 6)
+    if (input.is_pressed(InputAction::west) && tile_ < kTiles && !switch_not_needed(tile_))
     {
         const OptionSpec &spec = option_specs()[static_cast<std::size_t>(tile_)];
         if (edits_[spec.key])
@@ -533,6 +556,8 @@ void Screen::open_tile(int index)
         number_ = value ? std::strtol(value->c_str(), nullptr, 10) : spec.fallback;
         open_sheet(Sheet::number, spec.label, spec.help, "");
         break;
+    case OptionKind::toggle:
+        break; // flips on the tile
     }
 }
 
@@ -1132,14 +1157,29 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
     list.pop_transform();
     list.pop_opacity();
 
-    for (int i = 0; i < 6; ++i)
+    // The Experimental section's caption, in the gap above its row.
+    a = appear(7);
+    list.push_opacity(a);
+    list.rounded_rect({96.0f, 566.0f, 40.0f, 3.0f}, 1.5f, kAccent);
+    const float caption = hui::ui::text(list, fonts_.semibold, "EXPERIMENTAL", 152.0f, 576.0f, 22.0f, kAccent, Align::left, 4.0f);
+    const std::string where = snap_.firmware != 0 ? "Firmware " + diag::firmware_text(snap_.firmware) : std::string("this firmware");
+    const std::string note = switch_not_needed(8)   ? "Nothing to switch on " + where + ": all of this is verified there."
+                             : switch_not_needed(6) ? "On " + where + " HEVC and HDR are verified. Only 1440p and 4K are untested."
+                                                    : "Untested on " + where + ". Off by default; what fails turns itself off.";
+    hui::ui::text(list, fonts_.regular, note, 176.0f + caption, 576.0f, 22.0f, kMuted);
+    list.pop_opacity();
+
+    for (int i = 0; i < kTiles; ++i)
     {
         const OptionSpec &spec = option_specs()[static_cast<std::size_t>(i)];
+        const bool toggle = spec.kind == OptionKind::toggle;
+        const bool inert = switch_not_needed(i);
         const auto edited = edits_.find(spec.key);
         const auto saved = snap_.config.find(spec.key);
         const bool changed = edits_loaded_ && edited != edits_.end() && saved != snap_.config.end() &&
                              edited->second != saved->second;
         const bool is_default = edited == edits_.end() || !edited->second;
+        const bool on = toggle && !is_default && *edited->second == "1";
         const float f = tile_amount_[i];
         a = appear(1 + i);
         const Rect base = tile_rect(i);
@@ -1148,16 +1188,24 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
         if (f > 0.01f)
             list.glow(base, 24.0f, 26.0f, kAccent.with_alpha(0.28f * f));
         glass_card(list, glass, base, 24.0f, f);
-        icons::draw(list, kOptionIcons[i], base.x + 46.0f, base.y + 50.0f, 34.0f, kAccent);
-        hui::ui::text(list, fonts_.semibold, spec.label, base.x + 30.0f, base.y + 112.0f, 30.0f, kInk);
-        hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, value_text(i), 25.0f, base.w - 60.0f), base.x + 30.0f,
-                      base.y + 150.0f, 25.0f, is_default ? kMuted : mix(kInk, kAccent, 0.35f));
-        // Top right: default or changed.
-        const std::string tag = changed ? "UNSAVED" : is_default ? "DEFAULT" : "";
+        icons::draw(list, kOptionIcons[i], base.x + 46.0f, base.cy(), 34.0f, inert ? kFaint : kAccent);
+        hui::ui::text(list, fonts_.semibold, spec.label, base.x + 90.0f, base.y + 52.0f, 30.0f, inert ? kMuted : kInk);
+        hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, value_text(i), 25.0f, base.w - 250.0f), base.x + 90.0f,
+                      base.y + 94.0f, 25.0f, is_default || inert ? kMuted : mix(kInk, kAccent, 0.35f));
+        if (toggle && !inert)
+        {
+            const Rect track{base.x + base.w - 98.0f, base.y + 20.0f, 76.0f, 38.0f};
+            list.rounded_rect(track, 19.0f, on ? kAccent : Color::rgb(0x3a4363));
+            if (on)
+                list.glow(track, 19.0f, 12.0f, kAccent.with_alpha(0.35f));
+            list.circle(on ? track.x + track.w - 19.0f : track.x + 19.0f, track.cy(), 15.0f, Color::rgb(0xffffff));
+        }
+        // On the value's line: default or changed. A switch shows that it is off by itself.
+        const std::string tag = changed ? "UNSAVED" : is_default && !toggle ? "DEFAULT" : "";
         if (!tag.empty())
         {
             const float w = fonts_.semibold.measure(tag, 16.0f) + 34.0f;
-            const Rect t{base.x + base.w - w - 22.0f, base.y + 30.0f, w, 32.0f};
+            const Rect t{base.x + base.w - w - 22.0f, base.y + 72.0f, w, 32.0f};
             list.rounded_rect(t, 16.0f, changed ? kAccent.with_alpha(0.22f) : Color::rgb(0xffffff, 0.07f));
             hui::ui::text(list, fonts_.semibold, tag, t.cx(), t.cy() + 6.0f, 16.0f, changed ? kAccent : kMuted,
                           Align::center, 2.0f);
@@ -1166,29 +1214,33 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
         list.pop_opacity();
     }
 
-    a = appear(7);
+    a = appear(10);
     list.push_opacity(a);
     list.push_transform(1.0f, 0.0f, 0.0f, 0.0f, 30.0f * (1.0f - a));
     const bool enabled = !busy();
     draw_button(list, glass, settings_action_rect(0), static_cast<int>(Icon::save), dirty() ? "Save" : "Saved",
-                dirty(), tile_amount_[6], enabled && dirty());
+                dirty(), tile_amount_[kTiles], enabled && dirty());
     draw_button(list, glass, settings_action_rect(1), static_cast<int>(Icon::restart), "Save and restart host", false,
-                tile_amount_[7], enabled);
+                tile_amount_[kTiles + 1], enabled);
     draw_button(list, glass, settings_action_rect(2), static_cast<int>(Icon::undo), "Revert changes", false,
-                tile_amount_[8], dirty());
+                tile_amount_[kTiles + 2], dirty());
 
     // What the focused part does.
     std::string help;
     std::string extra;
-    if (tile_ < 6)
+    if (tile_ < kTiles && switch_not_needed(tile_))
+    {
+        help = "Verified on " + where + ": it is there without a switch, and this switch changes nothing.";
+    }
+    else if (tile_ < kTiles)
     {
         const OptionSpec &spec = option_specs()[static_cast<std::size_t>(tile_)];
         help = spec.help;
         extra = std::string("Default: ") + spec.default_label;
     }
-    else if (tile_ == 6)
+    else if (tile_ == kTiles)
         help = "Writes the changes to sunshine.conf. They apply when the host starts next.";
-    else if (tile_ == 7)
+    else if (tile_ == kTiles + 1)
         help = "Writes the changes and restarts the host, which ends a running stream.";
     else
         help = "Puts back what sunshine.conf holds now.";
@@ -1270,7 +1322,7 @@ void Screen::draw_page(hui::gfx::DrawList &list, std::uint32_t glass) const
     if (sheet_ == Sheet::none)
     {
         const Rect h = highlight_.rect(time_);
-        const bool pill = page_ == Page::home ? home_row_ == 0 : page_ == Page::diagnostics || tile_ >= 6;
+        const bool pill = page_ == Page::home ? home_row_ == 0 : page_ == Page::diagnostics || tile_ >= kTiles;
         const float radius = pill ? h.h / 2.0f + 6.0f : 30.0f;
         const float breathe = 0.75f + 0.25f * std::sin(time_ * 3.0f);
         list.bordered_rect(h.inset(-6.0f), radius, kClear, 3.0f, kAccent.with_alpha(0.95f * breathe));

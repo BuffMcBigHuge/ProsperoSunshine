@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "app/psapp/diag.hpp"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -100,6 +101,51 @@ std::string without_long_hex(const std::string &text)
     return out;
 }
 
+std::string feature_name(const std::string &feature)
+{
+    if (feature == "hevc")
+        return "HEVC";
+    if (feature == "hdr")
+        return "HDR";
+    if (feature == "large")
+        return "1440p/4K";
+    return feature;
+}
+
+// "hevc,large" as "HEVC and 1440p/4K".
+std::string feature_names(const std::vector<std::string> &features)
+{
+    std::string out;
+    for (std::size_t i = 0; i < features.size(); ++i)
+    {
+        if (i > 0)
+            out += i + 1 == features.size() ? " and " : ", ";
+        out += feature_name(features[i]);
+    }
+    return out;
+}
+
+std::vector<std::string> split_list(const std::string &list)
+{
+    std::vector<std::string> out;
+    if (list == "none")
+        return out;
+    for (std::size_t at = 0; at < list.size();)
+    {
+        const std::size_t end = std::min(list.find(',', at), list.size());
+        if (end > at)
+            out.push_back(list.substr(at, end - at));
+        at = end + 1;
+    }
+    return out;
+}
+
+void add_once(std::vector<std::string> &list, const std::string &item)
+{
+    if (std::find(list.begin(), list.end(), item) == list.end())
+        list.push_back(item);
+}
+
 } // namespace
 
 std::string firmware_text(std::uint32_t firmware)
@@ -113,6 +159,15 @@ bool firmware_verified(std::uint32_t firmware)
 {
     const std::uint32_t version = firmware & 0xffff0000u;
     return version == 0x13000000u || version == 0x10200000u;
+}
+
+bool experimental_needed(std::uint32_t firmware, const std::string &key)
+{
+    if (firmware == 0)
+        return true;
+    if (key == "experimental_large_modes")
+        return (firmware & 0xffff0000u) != 0x13000000u;
+    return !firmware_verified(firmware);
 }
 
 HostLog parse_host_log(const std::string &text)
@@ -141,6 +196,38 @@ HostLog parse_host_log(const std::string &text)
         else if (starts_with(line, "ra refusing firmware"))
         {
             log.refused = true;
+        }
+        else if (starts_with(line, "experimental switches="))
+        {
+            log.switches = field(line, "switches");
+            log.switches_set = field(line, "set");
+        }
+        else if (starts_with(line, "experimental attempt "))
+        {
+            log.pending_trial = field(line, "trial");
+        }
+        else if (starts_with(line, "experimental result="))
+        {
+            Attempt attempt;
+            attempt.ok = field(line, "result") == "ok";
+            attempt.trial = field(line, "trial");
+            attempt.codec = field(line, "codec");
+            attempt.bits = field(line, "bits");
+            attempt.mode = field(line, "mode");
+            attempt.fps = field(line, "fps");
+            attempt.variant = field(line, "variant");
+            attempt.rc = field(line, "rc");
+            // The step's name may hold spaces and ends the line.
+            const std::size_t step = line.find(" step=");
+            attempt.step = step == std::string::npos ? "unknown" : line.substr(step + 6);
+            log.attempts.push_back(std::move(attempt));
+            if (log.attempts.size() > kMaxAttempts)
+                log.attempts.erase(log.attempts.begin());
+            log.pending_trial.clear();
+        }
+        else if (starts_with(line, "experimental disabled "))
+        {
+            add_once(log.disabled, field(line, "feature"));
         }
         else if (starts_with(line, "capture open start"))
         {
@@ -178,6 +265,11 @@ Notice notice(std::uint32_t firmware, const HostLog &log, bool host_running)
     const std::string name = firmware != 0 ? "Firmware " + firmware_text(firmware) : std::string("This firmware");
     if (log.refused)
         return {name + " is not supported yet: the host cannot find the capture calls. See Diagnostics.", true};
+    const std::string post = " Please post the Diagnostics report on GitHub.";
+    if (!log.disabled.empty())
+        return {"Experimental " + feature_names(log.disabled) + " failed on " + name + " (off until the host restarts)." + post, true};
+    if (!host_running && !split_list(log.pending_trial).empty())
+        return {"Experimental " + feature_names(split_list(log.pending_trial)) + " took the host down on " + name + "." + post, true};
     if (log.capture == Capture::failed)
     {
         if (log.failed_error == kVr)
@@ -188,9 +280,44 @@ Notice notice(std::uint32_t firmware, const HostLog &log, bool host_running)
     }
     if (log.capture == Capture::opening && !host_running)
         return {"The host went down while starting capture on " + name + ". See Diagnostics.", true};
+    std::vector<std::string> worked;
+    for (const Attempt &attempt : log.attempts)
+    {
+        for (const std::string &feature : split_list(attempt.trial))
+        {
+            if (attempt.ok)
+                add_once(worked, feature);
+        }
+    }
+    if (!worked.empty())
+        return {"Experimental " + feature_names(worked) + " started on " + name + ". Is the picture right?" + post, false};
     if (firmware != 0 && !firmware_verified(firmware))
         return {name + " is untested: only 13.00 and 10.20 are verified. See Diagnostics if streaming fails.", false};
     return {};
+}
+
+std::string experimental_report(const HostLog &log, const std::vector<std::string> &conf_switches)
+{
+    const auto listed = [](const std::string &list) { return list.empty() ? std::string("none") : list; };
+    std::string conf;
+    for (const std::string &name : conf_switches)
+        conf += (conf.empty() ? "" : ",") + name;
+    std::string out = "  In sunshine.conf: " + listed(conf) + "\n";
+    out += "  The host started with: " + listed(log.switches_set) + ", and uses: " + listed(log.switches) + "\n";
+    if (log.attempts.empty())
+        out += "  No attempt since the host started.\n";
+    for (const Attempt &attempt : log.attempts)
+    {
+        out += "  " + attempt.codec + " " + attempt.bits + " bit " + attempt.mode + "@" + attempt.fps + " variant " + attempt.variant +
+               " trial " + attempt.trial + ": ";
+        out += attempt.ok ? std::string("ok") : "failed at " + attempt.step + ", rc " + attempt.rc;
+        out += "\n";
+    }
+    if (!split_list(log.pending_trial).empty())
+        out += "  An attempt has no outcome yet, on trial: " + log.pending_trial + "\n";
+    if (!log.disabled.empty())
+        out += "  Off until the host restarts: " + feature_names(log.disabled) + "\n";
+    return out;
 }
 
 std::string scrub(const std::string &text, const std::vector<std::string> &names)

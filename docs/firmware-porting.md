@@ -11,11 +11,11 @@ Zusage, dass andere Versionen funktionieren.
 | --- | --- | --- | --- |
 | ResourceArbitrator: Register, Unregister, Request, List | `src/platform/ps5/ra_resolve.c`, `ra_nids.h` | Modulrelative Adressen `0xdb0`, `0xee0`, `0x10b0`, `0x11f0` | Laufzeit-Suche per NID, Abgleich mit Tabelle (siehe unten) |
 | Avcap2-Funktionen | `capture.c` | Exportiert unter bekannten Namen | `kernel_dynlib_dlsym` per Name, unkritisch |
-| Avcap2-Video-Konfiguration | `capture.c` `configure()` | 0x2E0 Bytes (10.x und 13.60 abweichend, `record_shift`, siehe „Berichte zum Video-Datensatz anderer Firmwares“), Unterblock-Größen, `0x2A4 = 2` (Bildschirm inkl. Home-Menü), RA-Profil 180 bei `0x28`, 182 für 1440p und 4K (nur auf 13.00 freigeschaltet, `ps_capture_large_modes_verified`), Zweck `0x14` = 2, für HEVC über 1080p 6 (`docs/re/hevc.md`) | Fest, auf 13.00 gemessen (`docs/re/avcap2-exports.md`) |
+| Avcap2-Video-Konfiguration | `capture.c` `configure()` | 0x2E0 Bytes (10.x und 13.60 abweichend, `record_shift`, siehe „Berichte zum Video-Datensatz anderer Firmwares“), Unterblock-Größen, `0x2A4 = 2` (Bildschirm inkl. Home-Menü), RA-Profil 180 bei `0x28`, 182 für 1440p und 4K (auf 13.00 freigeschaltet, `ps_capture_large_modes_verified`, sonst nur mit dem experimentellen Schalter), Zweck `0x14` = 2, für HEVC über 1080p 6 (`docs/re/hevc.md`) | Fest, auf 13.00 gemessen (`docs/re/avcap2-exports.md`) |
 | Avcap2-Audio-Konfiguration | `capture.c` | 0x38 Bytes, `cfg+0x14 = 2` (Remote-Play-Mix), `cfg+0x1C = 180` | Fest, auf 13.00 gemessen |
 | Frame-Descriptor | `video_ps5.cpp`, `docs/avcap2-descriptor.md` | `ReadVideo`: 0x70 Bytes, TSC-Zeitstempel in Wort 9. `ReadVideo2` (HEVC): 0x88 Bytes, Bildtyp `+0x2c`, TSC `+0x58`, Bytes des Bildes `+0x6c` (`docs/re/hevc.md`) | Fest, auf 13.00 gemessen |
 | Bitrate | `capture.c` `configure()`, Host-Konfiguration | Die Bitrate steht beim Öffnen in `cfg+0xc8/0xcc/0xd0` (HEVC zusätzlich `+0x10c`); der Host klemmt auf 50 Mbit/s. `SetVideoBitrate` allein stoppte den Encoder ab 16 Mbit/s und bei HEVC über dem Wert beim Öffnen | Auf 13.00 gemessen (`docs/re/hevc.md`) |
-| HEVC | `capture.c` `ps_capture_open`, `configure()` | `cfg+0x24 = 1`; Encoder-Speicher (Memory Mode 1: `cfg+0x198 = 0x50`, `cfg+0x1a0 = 1`, Import per NID `yN0w4tWivqs`, Freigabe `96UQhNnBlxc`); die Remote-Play-Felder (nicht auf ein Minimum reduziert); Lesen nur mit `ReadVideo2`; Parameter-Sets aus `GetNonVclNalUnitStream` als SPS, PPS, VPS, der Host sortiert das VPS nach vorn | Fest, auf 13.00 gemessen. Auf 10.20 reicht `cfg+0x24 = 1`, auch für 10 Bit; Speicher und Remote-Play-Felder entfallen auf 10.x. Der Host bietet HEVC auf 13.00 und 10.20 an (`ps_capture_hevc_verified`), sonst H.264 |
+| HEVC | `capture.c` `ps_capture_open`, `configure()` | `cfg+0x24 = 1`; Encoder-Speicher (Memory Mode 1: `cfg+0x198 = 0x50`, `cfg+0x1a0 = 1`, Import per NID `yN0w4tWivqs`, Freigabe `96UQhNnBlxc`); die Remote-Play-Felder (nicht auf ein Minimum reduziert); Lesen nur mit `ReadVideo2`; Parameter-Sets aus `GetNonVclNalUnitStream` als SPS, PPS, VPS, der Host sortiert das VPS nach vorn | Fest, auf 13.00 gemessen. Auf 10.20 reicht `cfg+0x24 = 1`, auch für 10 Bit; Speicher und Remote-Play-Felder entfallen auf 10.x. Der Host bietet HEVC auf 13.00 und 10.20 an (`ps_capture_hevc_verified`), sonst H.264, außer mit dem experimentellen Schalter |
 | Virtuelles Pad | `pad.c`, `pad.h` | ioctls auf `/dev/hid`: add `0xC018482A`, insert `0x8018482C`, delete `0x80104850`; Blöcke 0xA8 Bytes, Layout im Kopfkommentar von `pad.c` | Fest, auf 13.00 gemessen; unverändert |
 | Kernel-Zugriffe des SDK | PS5 Payload SDK v0.45 | `kernel_dynlib_*`, `kernel_get_fw_version` nutzen SDK-interne Kernel-Offsets je Firmware | Vom SDK abgedeckt, sofern es die Version kennt |
 
@@ -101,8 +101,8 @@ Nur auf einer Konsole mit dieser Firmware, Schritt für Schritt, mit klog:
    ohne Fehler, `docs/re/hevc.md`). Hält der Encoder nur weniger, die Klemme des Hosts (50 Mbit/s) senken.
 7. **HEVC (optional):** `hevc_spike.elf`: `OpenVideo` mit `cfg+0x24 = 1`, Speicher-Reservierung (`yN0w4tWivqs`) und
    `sceAvcap2Start` müssen 0 liefern, `ReadVideo2` Bilder; mit `ffmpeg -xerror` decodieren, das VPS muss vorn stehen. Bis das
-   belegt ist, bietet der Host HEVC auf dieser Version nicht an (`ps_capture_hevc_verified` ist nur auf 13.00 und 10.20 wahr); die Prüfung
-   in `capture.c` muss dann für die Version erweitert werden.
+   belegt ist, bietet der Host HEVC auf dieser Version nur mit dem experimentellen Schalter an (`ps_capture_hevc_verified` ist nur auf 13.00 und 10.20 wahr, siehe „Experimentelle Schalter“); die Prüfung
+   in `experimental.h` muss dann für die Version erweitert werden.
 8. **Pad:** `pad_probe.elf` (fügt ein neutrales virtuelles Pad hinzu und entfernt es wieder; vorher
    klären, dass niemand die Konsole gerade bedient). Prüfen: ioctl-Nummern, 0xA8-Blockgröße,
    Feldlagen von Tasten, Sticks und Triggern, Zuordnungsdialog. Das Pad hat keinen eigenen
@@ -129,3 +129,46 @@ Ohne Konsole mit dieser Firmware ist der Bericht der App der erste Anhaltspunkt:
 `http://<console>:47996/`, solange die Seite offen ist und der Host läuft, sonst `/data/prosperosunshine/diagnostics.txt`. Er nennt Firmware,
 Rechte der Dateien und aus `host_diag.log` den Schritt von `ps_capture_open`, an dem die Capture scheiterte. Adressen, Gerätenamen
 und IDs sind entfernt. Der Bericht ersetzt keine der Prüfungen oben.
+
+## Experimentelle Schalter
+
+Damit Tester auf ungeprüfter Firmware gesperrte Funktionen selbst einschalten und uns das Ergebnis schicken können, gibt es in den Einstellungen der App die Sektion „Experimental“. Bisher ist das auf keiner Konsole gelaufen, auch nicht auf 13.00; geprüft sind nur die Tests unten.
+
+| Schalter in der App | Schlüssel in `sunshine.conf` | Zählt nicht auf |
+| --- | --- | --- |
+| HEVC (8 Bit) | `experimental_hevc = 1` | 13.00, 10.20 |
+| HDR (HEVC 10 Bit) | `experimental_hdr = 1` | 13.00, 10.20 |
+| 1440p und 4K | `experimental_large_modes = 1` | 13.00 |
+
+Der Host liest die Schlüssel beim Start selbst (`main_ps5.cpp`), Sunshine kennt sie nicht. Die Regeln stehen in `src/platform/ps5/experimental.h`, `ps_capture_hevc_verified` und `ps_capture_large_modes_verified` bleiben unverändert das, was gemessen ist; der Host fragt jetzt `ps_capture_hevc_allowed`, `ps_capture_hdr_allowed` und `ps_capture_large_modes_allowed`. HDR bietet HEVC mit an, weil Moonlight Main 10 nur zusammen mit HEVC bekommt. `hevc_mode = 1` schlägt die Schalter.
+
+**Varianten.** Auf 10.20 startet `cfg+0x24 = 1` allein HEVC (`docs/re/hevc.md`). Der Host probiert deshalb je Bittiefe erst `minimal` (nur `cfg+0x24`, Rate-Felder wie bei H.264, kein Encoder-Speicher), dann `full` (Felder und Speicher von 13.00). Was ein Bild geliefert hat, bleibt bis zum Neustart des Hosts. Auf 10.x gibt es nur `minimal`, weil `configure()` die inneren Felder dort weglässt. Mit `full` verschiebt `configure()` auf 13.60 die Felder ab `0x198` und den Encoder-Speicher um 8 mit dem Rest des Datensatzes; die Felder darunter bleiben an den Stellen von 13.00, weil nicht bekannt ist, wo der Block `0xb8` seine zusätzlichen 8 Byte hat. Ohne Schalter nimmt der Host die Variante `standard`, also den Datensatz wie zuvor, auch bei Feldern, die auf 13.60 nicht passen.
+
+**Ablauf** (`ps_capture_open_or_fall_back`):
+
+1. Solange eine Funktion unbewiesen ist, gehören Header und das erste Bild zum Öffnen: Ohne Bild nach 3 s (`rc=0`) oder mit Lesefehler gilt der Versuch als gescheitert. Das Bild geht verloren; der Stream fordert zu Beginn ohnehin ein IDR an.
+2. Scheitert die Variante an einem Schritt ab dem Encoder (`encoder memory`, `OpenVideo`, `Start`, `headers`, `first frame`), kommt die nächste.
+3. Sind alle gescheitert und ist der Modus über 1080p, fällt der Host wie bisher im selben Stream auf 1080p zurück und beginnt die Varianten neu. Läuft 1080p, ist 1440p/4K bis zum Neustart aus.
+4. Scheitert auch 1080p, ist die Funktion bis zum Neustart des Hosts aus: HEVC, oder bei 10 Bit nur HDR. Serverinfo und RTSP lesen `active_hevc_mode` je Stream, also sieht der nächste Stream nur noch H.264 und 1080p.
+
+**Entscheidung nach einem Fehlschlag.** Der Stream, in dem HEVC oder HDR scheitert, endet. Der Client hat seinen Decoder schon für den ausgehandelten Codec aufgesetzt und hat keinen Weg zurück; H.264 in diesem Stream zu schicken, ergäbe nur ein schwarzes Bild (`STATUS.md`, iPhone). Moonlight kommt beim nächsten Start auf H.264. Aussperren kann das nicht, weil der Zustand nur im Speicher liegt und nichts in `sunshine.conf` ändert; auch das Ausschalten bleibt beim Tester. Ein größerer Modus bleibt ein Fall für den Rückfall im selben Stream, das kann der Client schon heute.
+
+Nicht der Funktion zugerechnet werden: Capture belegt, PS VR, verlorene Ressource, abgelehnte Firmware und die Ablehnung des Modus durch den Arbitrator (einzelne Titel verweigern 4K, `docs/re/hevc.md`). Eine Funktion, die schon einmal lief, geht durch spätere Fehlschläge nicht mehr aus, ein Titel kann beim Start kurz alles scheitern lassen. Ein solcher Fehlschlag vor dem ersten Erfolg, etwa `0x81950008` während ein Titel startet, schaltet die Funktion dagegen bis zum Neustart aus, denn von einer dauerhaften Ablehnung ist er nicht zu unterscheiden.
+
+**Absturz.** Geht der Host innerhalb eines Versuchs unter, gäbe es keine Ergebniszeile, und der nächste Stream nähme denselben Weg. Deshalb nennt die Datei `experimental_attempt` im Datenordner den laufenden Versuch. Findet der nächste Start sie, schreibt er die Ergebniszeile mit `step=host went down` nach und lässt die Funktion für diesen Lauf aus. Der übernächste Start versucht es wieder. Einen hängenden Aufruf fängt das nicht ab.
+
+**`host_diag.log`** (bei Schalter an, sonst keine Zeile mehr als zuvor; der Parser `parse_host_log` in `app/src/psapp/diag.cpp` liest genau diese Felder, `step` bis zum Zeilenende):
+
+```text
+ProsperoSunshine: experimental switches=hevc set=hevc firmware=0x13600000
+ProsperoSunshine: experimental attempt switches=hevc firmware=0x13600000 trial=hevc codec=hevc bits=8 mode=1920x1080 fps=60 variant=minimal
+ProsperoSunshine: experimental result=failed switches=hevc firmware=0x13600000 trial=hevc codec=hevc bits=8 mode=1920x1080 fps=60 variant=minimal error=-1 rc=0x80c78000 step=Start
+ProsperoSunshine: experimental result=ok switches=hevc firmware=0x13600000 trial=hevc codec=hevc bits=8 mode=1920x1080 fps=60 variant=full error=0 rc=0 step=none
+ProsperoSunshine: experimental disabled feature=hevc
+```
+
+`switches` sind die Schalter, die auf dieser Firmware zählen, `set` die in der Datei, `trial` was dieser Versuch zeigen muss (`none` bei einem gewöhnlichen Stream). Der Bericht der App führt daraus den Abschnitt „Experimental switches“, ohne Adressen, Gerätenamen und IDs. Die Home-Seite der App bittet nach einem Fehlschlag und nach einem Erfolg darum, den Bericht auf GitHub zu posten.
+
+**Was ein Bericht hergibt:** Läuft `minimal` oder `full` auf einer Firmware und sehen Tester ein richtiges Bild, gehört die Version nach den Schritten der Checkliste in `ps_capture_hevc_verified` bzw. `ps_capture_large_modes_verified`. Ein Bericht, der auf `Start` oder `OpenVideo` scheitert, nennt den Code: `0x81950001` ist der Validator, also ein falsches Layout (`record_shift`). Ein Erfolg sagt nur, dass Bilder kamen; ob sie sich dekodieren lassen, sagt der Tester.
+
+**Prüfung ohne Konsole.** `tests/capture_records_test.c` übersetzt `capture.c` nativ gegen `tests/fake_avcap.h` und vergleicht 120 Datensätze (12.40, 13.00, 13.60, 10.20, 10.40; H.264 und HEVC; 1080p bis 4K; 30 und 60 fps; 8 und 10 Bit) aus `configure()` und wie `OpenVideo` sie bekommt mit `tests/capture_records.golden`, erzeugt aus dem Code vor den Schaltern. `tests/capture_open_test.c` führt die Abläufe oben durch den echten Pfad von `ps_capture_open`.

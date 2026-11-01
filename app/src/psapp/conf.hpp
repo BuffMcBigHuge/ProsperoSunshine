@@ -18,6 +18,7 @@ enum class OptionKind
     text,   // free text (sunshine_name)
     choice, // one of `choices` (the value written is choices[i].value)
     number, // an integer in [min, max]
+    toggle, // on ("1") or off: Cross flips it on the tile, and off removes the key
 };
 
 struct Choice

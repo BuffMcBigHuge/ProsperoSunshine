@@ -9,6 +9,13 @@
   streams on Android and iOS (tested with H.264) and on Windows (H.264 and HEVC, also HDR). H.264 there comes as 34 slices per
   frame, more than FFmpeg's hardware decoders on Windows take (32), so Moonlight on Windows needs software decoding for it; HEVC
   comes as 17 and decodes by hardware. Other 10.x versions are untested and get H.264 only.
+- An **Experimental** section in the app's Settings, for testers on firmware where a function isn't verified: one switch each for
+  HEVC (8 bit), HDR (HEVC 10 bit), and 1440p and 4K, all off by default. They go to `sunshine.conf` as `experimental_hevc`,
+  `experimental_hdr` and `experimental_large_modes`. On verified firmware (13.00; 10.20 for HEVC and HDR) a switch shows as not
+  needed and changes nothing. HEVC tries `cfg+0x24` alone first, then 13.00's full setup. A function whose every try fails is off
+  until the host restarts, and the host offers H.264 and 1080p again: the stream that failed ends, the next one works. The
+  diagnostics report lists the switches and every try (codec, mode, variant, the step that failed and its code), and the Home
+  page asks for it to be posted, also after a success. None of this has run on a console yet.
 
 ### Changed
 

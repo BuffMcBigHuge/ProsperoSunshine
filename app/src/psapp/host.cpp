@@ -725,6 +725,15 @@ std::string Host::build_report()
         names.push_back(*name->second);
     if (!snap.client.empty())
         names.push_back(snap.client);
+    std::vector<std::string> switches;
+    for (const char *key : {"experimental_hevc", "experimental_hdr", "experimental_large_modes"})
+    {
+        const auto it = snap.config.find(key);
+        if (it != snap.config.end() && it->second && *it->second == "1")
+            switches.push_back(key);
+    }
+    out += "\nExperimental switches:\n";
+    out += diag::scrub(diag::experimental_report(host_log, switches), names);
     out += "\nHost breadcrumbs (host_diag.log):\n";
     out += have_host_file ? diag::scrub(diag::tail(host_file, 120), names) : "  no file: " + io::open_error(kHostDiagPath) + "\n";
     out += "\nsunshine.log, last lines:\n";

@@ -3,3 +3,4 @@
 Dockerfile text eol=lf
 *.patch text eol=lf
 deps.lock text eol=lf
+*.golden text eol=lf

@@ -49,20 +49,26 @@ std::chrono::steady_clock::time_point capture_time(const prospero::CaptureSessio
     const auto age = std::chrono::nanoseconds(static_cast<int64_t>((now - stamp) / tsc_per_ns()));
     return age < 1s ? read_time - age : read_time;
 }
+
+// The HEVC setup is measured on firmware 13.00 and 10.20 only. Elsewhere a client that prefers HEVC would lose the stream
+// if it fails, while H.264 may still run, so it takes a switch in the app, and a function that fails is off until the
+// host restarts: the client's next stream sees that here (serverinfo and RTSP read these for each stream).
+// hevc_mode = 1 in sunshine.conf turns it off, 2 turns off HDR.
+void update_offers() {
+    const int hevc_mode = config::video.hevc_mode;
+    active_hevc_mode = hevc_mode == 1 || !ps_capture_hevc_allowed() ? 1 : hevc_mode == 2 || !ps_capture_hdr_allowed() ? 2 : 3;
+    last_encoder_probe_supported_dynamic_range_for_codec[1] = active_hevc_mode == 3;
+}
 }
 
 int probe_encoders() {
     tsc_per_ns();
-    // The HEVC setup is measured on firmware 13.00 and 10.20 only. Elsewhere a client that prefers HEVC would lose the
-    // stream if it fails, while H.264 may still run. hevc_mode = 1 in sunshine.conf turns it off, 2 turns off HDR.
-    const int hevc_mode = config::video.hevc_mode;
-    active_hevc_mode = hevc_mode == 1 || !ps_capture_hevc_verified() ? 1 : hevc_mode == 2 ? 2 : 3;
-    last_encoder_probe_supported_dynamic_range_for_codec[1] = active_hevc_mode == 3;
+    update_offers();
     BOOST_LOG(info) << "PS5: Avcap2 passthrough, "sv
                     << (active_hevc_mode == 3   ? "H.264, HEVC and HEVC HDR, "sv
                         : active_hevc_mode == 2 ? "H.264 and HEVC, "sv
                                                 : "H.264, "sv)
-                    << (ps_capture_large_modes_verified() ? "up to 3840x2160, "sv : "1920x1080, "sv) << "TSC "sv
+                    << (ps_capture_large_modes_allowed() ? "up to 3840x2160, "sv : "1920x1080, "sv) << "TSC "sv
                     << tsc_per_ns() << " ticks/ns"sv;
     return 0;
 }
@@ -77,7 +83,7 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     // Avcap2 encodes at 30 or 60 fps, 1080p and up; smaller modes do not start (mode_spike, STATUS.md).
     const bool hevc = config.videoFormat == 1;
     const bool low_rate = config.framerate > 0 && config.framerate <= 30;
-    const auto mode = prospero::choose_capture_mode(config.height, ps_capture_large_modes_verified());
+    const auto mode = prospero::choose_capture_mode(config.height, ps_capture_large_modes_allowed());
     BOOST_LOG(info) << "PS5 capture requested "sv << config.width << 'x' << config.height << '@' << config.framerate
                     << ", delivering "sv << mode.width << 'x' << mode.height << '@' << (low_rate ? 30 : 60);
     int delivered_height = 0;
@@ -91,7 +97,7 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     };
     announce_mode(mode);
     // Avcap2 reports no mastering metadata, and all zero means unknown. The stream itself says BT.2020 and PQ in its SPS.
-    const bool hdr = hevc && config.dynamicRange > 0;
+    const bool hdr = hevc && config.dynamicRange > 0 && ps_capture_hdr_allowed();
     hdr_event->raise(std::make_unique<hdr_info_raw_t>(hdr));
     // The session falls back to 1080p when the system refuses a larger mode.
     const auto check_fallback = [&] {
@@ -124,8 +130,10 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     ps_capture_set_video_mode(mode.resolution, low_rate ? 0 : 1);
     const auto codec = hevc ? prospero::Codec::hevc : prospero::Codec::h264;
     prospero::CaptureSession session(prospero::make_ps5_capture_backend(codec), codec);
-    if (const int rc = session.start()) {
-        BOOST_LOG(error) << "PS5 capture failed to start: "sv << rc;
+    const int start_rc = session.start();
+    update_offers();
+    if (start_rc) {
+        BOOST_LOG(error) << "PS5 capture failed to start: "sv << start_rc;
         shutdown_event->raise(true);
         return;
     }

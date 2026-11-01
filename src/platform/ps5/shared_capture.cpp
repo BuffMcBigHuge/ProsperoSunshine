@@ -8,10 +8,7 @@ std::mutex registry;
 std::weak_ptr<SharedCapture> current;
 
 // Here and not in the video thread, because audio may open the session first and would then stay silent.
-int open_session(ps_capture **session) {
-    const int rc = ps_capture_open(session);
-    return rc && ps_capture_fall_back_mode() ? ps_capture_open(session) : rc;
-}
+int open_session(ps_capture **session) { return ps_capture_open_or_fall_back(session); }
 }
 
 std::shared_ptr<SharedCapture> SharedCapture::acquire(int &rc) {

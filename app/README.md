@@ -52,7 +52,7 @@ and how the last request went.
 | Start host / Stop host | Start sends the host ELF to the ELF loader (`127.0.0.1:9021`) and waits until the host answers. Stop sends `QUIT` and waits until it is gone. |
 | Restart host | Stop, then start: the way new settings take effect. |
 | Start at boot | The switch for the Payload Manager's autoload (below). A line under it warns when the Payload Manager's own autoload is off (with a running host, which can read `pldmgr_config.txt`; a title may not). |
-| Notice | One line above the pairing part when there is something to know about this console: the firmware is untested, or the last capture attempt failed, and why (HDR on, capture in use, firmware not supported, the step that failed). It comes from the firmware and the host's `host_diag.log`. |
+| Notice | One line above the pairing part when there is something to know about this console: the firmware is untested, the last capture attempt failed, and why (HDR on, capture in use, firmware not supported, the step that failed), or an Experimental switch failed or started and the Diagnostics report is wanted. It comes from the firmware and the host's `host_diag.log`. |
 | Pairing | A card per Moonlight client waiting to pair, with its name and address; a new request takes the focus and chimes. Cross opens the PIN keyboard: type the four digits Moonlight shows and press Done (or Options). The app waits until Moonlight has finished pairing and says whether it worked. Beside it, the paired devices (from `sunshine_state.json`). |
 
 While a stream runs, Stop, Restart and Save and restart need a second Cross within four seconds: the
@@ -81,14 +81,26 @@ it only when it starts, so use **Save and restart host** (or Restart host later)
 | Encryption on the LAN | `lan_encryption_mode` | 0 off, 1 when the client supports it, 2 required | 0 |
 | Encryption over the internet | `wan_encryption_mode` | as above | 1 |
 | Base port | `port` | 1025 to 65514 | 47989 |
+| HEVC (8 bit) | `experimental_hevc` | 1 on | off |
+| HDR (HEVC 10 bit) | `experimental_hdr` | 1 on | off |
+| 1440p and 4K | `experimental_large_modes` | 1 on | off |
 
-The names, ranges and defaults are Sunshine's (`src/config.cpp` at a679b059). Every other line of the
-file, comments included, is kept as it is. Sunshine uses the first line of a key; when the app sets a
-key that appears more than once, it keeps the first line's place and removes the others.
+The names, ranges and defaults are Sunshine's (`src/config.cpp` at a679b059), except for the `experimental_` keys, which the host
+reads itself. Every other line of the file, comments included, is kept as it is. Sunshine uses the first line of a key; when the app
+sets a key that appears more than once, it keeps the first line's place and removes the others.
+
+The third row, **Experimental**, is for testers on firmware where a function isn't verified. Cross flips a switch; off removes the
+key. As with the other settings, **Save and restart host** applies it. On verified firmware (13.00; 10.20 for HEVC and HDR) a tile
+says "Not needed", doesn't react, and the host ignores the key. HDR also offers HEVC, because it is HEVC at 10 bit. `hevc_mode = 1` in
+the file beats the HEVC and HDR switches. What testers do and post is in the main README, under
+[Testing other firmware](../README.md#testing-other-firmware); what the host does is in `docs/firmware-porting.md` (German). A
+function that fails is off until the host restarts. The notice on Home then says, for example, "Experimental HEVC failed on Firmware
+13.60 (off until the host restarts). Please post the Diagnostics report on GitHub."
 
 **Diagnostics** collects a report when the page opens, and again on Cross. It says which app, host and
 firmware run, how the last capture attempt ended, which ports answer, how each file the app and host need
-looks from the title, which settings differ from the defaults, the host's `host_diag.log` and the end of
+looks from the title, which settings differ from the defaults, which Experimental switches are set and how each try with them went
+(codec, mode, frame rate, variant, the step that failed and its code, or that it ran), the host's `host_diag.log` and the end of
 `sunshine.log`. Addresses, device names, the console's name and long ids are taken out, so it can go into a
 public issue. It is saved as `/data/prosperosunshine/diagnostics.txt`. While the page is open and the host
 runs, a phone or PC in the same network can open it at `http://<console-ip>:47996`: a title may not listen on
