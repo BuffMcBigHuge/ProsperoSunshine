@@ -4,6 +4,7 @@
 #include "diag.h"
 #include "ra_resolve.h"
 #include <stdatomic.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -155,8 +156,17 @@ void ps_capture_override_config(size_t field, uint32_t value)
 }
 
 // Firmware 13.60: the block at 0xb8 is 8 bytes larger, and what 13.00 keeps from 0x198 on sits 8 higher. Not measured
-// here, taken from two public projects that run on it (docs/firmware-porting.md). HEVC isn't offered there, so its fields stay.
-static size_t record_shift(void) { return (kernel_get_fw_version() & 0xffff0000u) == 0x13600000u ? 8 : 0; }
+// here, taken from two public projects that run on it (docs/firmware-porting.md).
+// Firmware 10.x (measured on 10.20): the block is 0x18 bytes smaller, and what 13.00 keeps from 0x198 on sits 0x18 lower.
+// 13.00's rate fields land on other encoder fields there (Start returns 0x80c78000). The measured record also leaves out
+// 13.00's inner sub-block headers, so 10.x writes neither, and the encoder keeps its default rate.
+// HEVC is offered on 13.00 only (ps_capture_hevc_verified): its fields stay at 13.00's offsets on 13.60 and are left out on 10.x.
+static ptrdiff_t record_shift(void)
+{
+    const uint32_t firmware = kernel_get_fw_version();
+    if ((firmware & 0xff000000u) == 0x10000000u) return -0x18;
+    return (firmware & 0xffff0000u) == 0x13600000u ? 8 : 0;
+}
 
 static void configure(uint8_t *p, uint32_t mode)
 {
@@ -166,10 +176,11 @@ static void configure(uint8_t *p, uint32_t mode)
         {0xe0, 0x20}, {0x100, 0x20}, {0x120, 0x18}, {0x1e8, 0xf8},
         {0x1f0, 0x28}, {0x218, 0x88}, {0x2a8, 0x10}
     };
-    const size_t shift = record_shift();
-    memset(p, 0, 0x2e0 + shift);
+    const ptrdiff_t shift = record_shift();
+    memset(p, 0, (size_t)(0x2e0 + shift));
     for (size_t i = 0; i < sizeof headers / sizeof headers[0]; i++) {
         const size_t at = headers[i].at;
+        if (shift < 0 && at > 0xb8 && at < 0x198) continue;
         u64(p, at >= 0x198 ? at + shift : at, at == 0 || at == 0xb8 ? headers[i].size + shift : headers[i].size);
     }
     u32(p, 0x10, 0);
@@ -185,15 +196,19 @@ static void configure(uint8_t *p, uint32_t mode)
     // Frames between periodic IDRs. Clients ask for one after a loss, so these are only a safety net, and each one
     // costs bits and, with HEVC, skipped frames (docs/re/hevc.md).
     u32(p, 0x94, (uint32_t)(fps * 10));
-    // Rate fields as SceRemotePlay 0x70130 computes them: average, peak, bits per frame.
-    u32(p, 0xc8, atomic_load(&opening_average));
-    u32(p, 0xcc, (uint32_t)peak);
-    u32(p, 0xd0, (uint32_t)(peak * 1001 / (fps * 1000)));
+    if (shift >= 0) {
+        // Rate fields as SceRemotePlay 0x70130 computes them: average, peak, bits per frame.
+        u32(p, 0xc8, atomic_load(&opening_average));
+        u32(p, 0xcc, (uint32_t)peak);
+        u32(p, 0xd0, (uint32_t)(peak * 1001 / (fps * 1000)));
+    } else {
+        LOG("firmware 10.x: opening bitrate not sent, the encoder keeps its default rate\n");
+    }
     u32(p, 0x2a0 + shift, mode);
     u32(p, 0x2a4 + shift, 2); // composited screen, including home menu
     u32(p, 0x2b0 + shift, 1);
     p[0x2b4 + shift] = 1;
-    if (atomic_load(&video_codec) == 1) {
+    if (shift >= 0 && atomic_load(&video_codec) == 1) {
         // Remote Play's values (SceRemotePlay 0x6f7f0). With only the fields it sets for HEVC alone,
         // sceAvcap2Start returns 0x80c78000. The set is not minimised.
         u32(p, 0x44, 1);
@@ -360,7 +375,7 @@ int ps_capture_open(ps_capture **out)
     }
     LOG("video out mode %#x\n", output);
     if (output & 3) { error = PS_CAPTURE_VR; goto fail; }
-    uint8_t config[0x2e8];
+    uint8_t config[0x2e8] = {0};
     mode_snapshot(s->mode);
     configure(config, (uint32_t)output);
     if (atomic_load(&video_codec) == 1) {

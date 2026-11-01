@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Firmware 10.x, for H.264 at 1080p: the capture record there is smaller, and the encoder keeps its own default bitrate. Measured
+  on a 10.20 console (issue #2): Moonlight streams on Android and iOS, on Windows only with software decoding, because each frame
+  has 34 slices. Audio plays too slowly there. Other 10.x versions are untested.
+
 ## 0.1.6 (2026-11-01)
 
 ### Added

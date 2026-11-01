@@ -11,7 +11,7 @@ Zusage, dass andere Versionen funktionieren.
 | --- | --- | --- | --- |
 | ResourceArbitrator: Register, Unregister, Request, List | `src/platform/ps5/ra_resolve.c`, `ra_nids.h` | Modulrelative Adressen `0xdb0`, `0xee0`, `0x10b0`, `0x11f0` | Laufzeit-Suche per NID, Abgleich mit Tabelle (siehe unten) |
 | Avcap2-Funktionen | `capture.c` | Exportiert unter bekannten Namen | `kernel_dynlib_dlsym` per Name, unkritisch |
-| Avcap2-Video-Konfiguration | `capture.c` `configure()` | 0x2E0 Bytes, Unterblock-Größen, `0x2A4 = 2` (Bildschirm inkl. Home-Menü), RA-Profil 180 bei `0x28`, 182 für 1440p und 4K (nur auf 13.00 freigeschaltet, `ps_capture_large_modes_verified`), Zweck `0x14` = 2, für HEVC über 1080p 6 (`docs/re/hevc.md`) | Fest, auf 13.00 gemessen (`docs/re/avcap2-exports.md`) |
+| Avcap2-Video-Konfiguration | `capture.c` `configure()` | 0x2E0 Bytes (10.x und 13.60 abweichend, `record_shift`, siehe „Berichte zum Video-Datensatz anderer Firmwares“), Unterblock-Größen, `0x2A4 = 2` (Bildschirm inkl. Home-Menü), RA-Profil 180 bei `0x28`, 182 für 1440p und 4K (nur auf 13.00 freigeschaltet, `ps_capture_large_modes_verified`), Zweck `0x14` = 2, für HEVC über 1080p 6 (`docs/re/hevc.md`) | Fest, auf 13.00 gemessen (`docs/re/avcap2-exports.md`) |
 | Avcap2-Audio-Konfiguration | `capture.c` | 0x38 Bytes, `cfg+0x14 = 2` (Remote-Play-Mix), `cfg+0x1C = 180` | Fest, auf 13.00 gemessen |
 | Frame-Descriptor | `video_ps5.cpp`, `docs/avcap2-descriptor.md` | `ReadVideo`: 0x70 Bytes, TSC-Zeitstempel in Wort 9. `ReadVideo2` (HEVC): 0x88 Bytes, Bildtyp `+0x2c`, TSC `+0x58`, Bytes des Bildes `+0x6c` (`docs/re/hevc.md`) | Fest, auf 13.00 gemessen |
 | Bitrate | `capture.c` `configure()`, Host-Konfiguration | Die Bitrate steht beim Öffnen in `cfg+0xc8/0xcc/0xd0` (HEVC zusätzlich `+0x10c`); der Host klemmt auf 50 Mbit/s. `SetVideoBitrate` allein stoppte den Encoder ab 16 Mbit/s und bei HEVC über dem Wert beim Öffnen | Auf 13.00 gemessen (`docs/re/hevc.md`) |
@@ -21,11 +21,11 @@ Zusage, dass andere Versionen funktionieren.
 
 ## Berichte zum Video-Datensatz anderer Firmwares
 
-Nicht selbst gemessen. Der Block bei `0xb8` wächst mit der Firmware, alles ab `0x198` verschiebt sich mit ihm. Der Host setzt die Verschiebung für 13.60 um (`record_shift` in `capture.c`), ungetestet, weil keine Konsole mit 13.60 vorliegt:
+Nicht selbst gemessen. Der Block bei `0xb8` wächst mit der Firmware, alles ab `0x198` verschiebt sich mit ihm. Der Host setzt die Verschiebung um (`record_shift` in `capture.c`). Für 10.x sind es −`0x18`, außerdem lässt er dort die inneren Köpfe und die Rate-Felder von 13.00 weg; den Datensatz hat ein Nutzer auf 10.20 gemessen, andere 10.x-Versionen wie 10.40 sind ungeprüft. Für 13.60 sind es +8, ungetestet, weil keine Konsole mit 13.60 vorliegt:
 
 | Firmware | Gesamt | Block `0xb8` | Ab `0x198` | Quelle |
 | --- | --- | --- | --- | --- |
-| 10.20 (Pro) | `0x2c8` | `0xc8` | −`0x18`, außerdem ohne die inneren Köpfe und Rate-Felder von 13.00 | Bericht in Issue 2, dort auch offene Punkte: Rate, 34 Slices je Bild, PCM-Ton zu langsam |
+| 10.20 (Pro) | `0x2c8` | `0xc8` | −`0x18`, außerdem ohne die inneren Köpfe und Rate-Felder von 13.00 | Bericht in Issue 2 (Host 0.1.4 mit diesem Datensatz, danach 0.1.6 mit `record_shift`): `OpenVideo` und `Start` liefern 0, Moonlight streamt auf Android und iOS, auf Windows nur mit Software-Decoding, weil jedes Bild 34 Slices hat und FFmpeg mit D3D11VA höchstens 32 verarbeitet. Offen: Rate (der Encoder bleibt bei seiner Standardrate), Slices, PCM-Ton läuft mit etwa 0,4-facher Geschwindigkeit |
 | 12.40 | `0x2e0` | nicht genannt | nicht genannt | Log in PBS-Public-Issues-Tracker, Issue 1 |
 | 13.00 | `0x2e0` | `0xe0` | – | gemessen, `configure()` |
 | 13.60 | `0x2e8` | `0xe8` | +8 | Quelltext von PlayBridge und ps5-stream8 |
