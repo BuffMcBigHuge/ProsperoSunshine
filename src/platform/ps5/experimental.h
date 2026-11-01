@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The app's Experimental switches: what they unlock on firmware nobody verified that on, and what follows from an attempt.
+// What the app's Experimental switches (app/src/psapp/experimental_list.h) unlock, and what follows from an attempt.
 // Portable, tested in tests/experimental_test.cpp; capture.c holds the one instance. Background: docs/firmware-porting.md.
 //
 // A switch counts only where the function isn't verified, and the bitrate's not on 10.x, where the record has no rate
@@ -9,6 +9,7 @@
 // client's stream ends, because it set up its decoder for this codec, and its next stream gets what the host offers then.
 #ifndef PROSPERO_EXPERIMENTAL_H
 #define PROSPERO_EXPERIMENTAL_H
+#include "../../../app/src/psapp/experimental_list.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -29,49 +30,40 @@ enum ps_exp_next {
 #define PS_EXP_SAFE_AVERAGE 50000000u
 
 typedef struct {
-    uint8_t hevc, hdr, large;                         // switches that count on this firmware
-    uint8_t hevc_failed, hdr_failed, large_failed;    // until the host restarts
-    uint8_t large_confirmed, large_pending;           // pending: a larger mode failed, and 1080p has yet to show that it was the mode
-    uint8_t high_bitrate, high_bitrate_failed, high_bitrate_confirmed, high_bitrate_pending;  // the same for the rate
+    uint8_t on[PS_EXP_SWITCH_COUNT];         // switches that count on this firmware
+    uint8_t failed[PS_EXP_SWITCH_COUNT];     // until the host restarts
+    uint8_t confirmed[PS_EXP_SWITCH_COUNT];  // it ran; not used by HEVC and HDR, which have `trial`
+    uint8_t pending[PS_EXP_SWITCH_COUNT];    // it failed, and the safer setting has yet to show that it was at fault
     uint8_t last_variant;
     struct {
         uint8_t variant, confirmed;
     } trial[2];  // by bit depth: 8 and 10 bit
 } ps_experiment;
 
-static inline int ps_exp_hevc_verified(uint32_t firmware)
-{
-    const uint32_t version = firmware & 0xffff0000u;
-    return version == 0x13000000u || version == 0x10200000u;
-}
-
-static inline int ps_exp_large_verified(uint32_t firmware) { return (firmware & 0xffff0000u) == 0x13000000u; }
-
-static inline int ps_exp_bitrate_verified(uint32_t firmware) { return (firmware & 0xffff0000u) == 0x13000000u; }
-
-static inline void ps_exp_init(ps_experiment *e, uint32_t firmware, int hevc, int hdr, int large, int high_bitrate)
+static inline void ps_exp_init(ps_experiment *e, uint32_t firmware, const int switches[PS_EXP_SWITCH_COUNT])
 {
     memset(e, 0, sizeof *e);
-    e->hevc = hevc && !ps_exp_hevc_verified(firmware);
-    e->hdr = hdr && !ps_exp_hevc_verified(firmware);
-    e->large = large && !ps_exp_large_verified(firmware);
-    // 10.x's record has no rate fields: the encoder keeps its own rate whatever is asked for.
-    e->high_bitrate = high_bitrate && !ps_exp_bitrate_verified(firmware) && (firmware & 0xff000000u) != 0x10000000u;
+    for (int i = 0; i < PS_EXP_SWITCH_COUNT; i++) e->on[i] = switches[i] && ps_exp_counts(i, firmware);
     // 10.x's validator refuses 13.00's inner fields (docs/re/hevc.md), and configure() leaves them out there: both are the same.
-    e->last_variant = (firmware & 0xff000000u) == 0x10000000u ? PS_EXP_MINIMAL : PS_EXP_FULL;
+    e->last_variant = ps_exp_is_10x(firmware) ? PS_EXP_MINIMAL : PS_EXP_FULL;
     e->trial[0].variant = e->trial[1].variant = PS_EXP_MINIMAL;
 }
 
-static inline int ps_exp_any(const ps_experiment *e) { return e->hevc || e->hdr || e->large || e->high_bitrate; }
+static inline int ps_exp_any(const ps_experiment *e)
+{
+    for (int i = 0; i < PS_EXP_SWITCH_COUNT; i++)
+        if (e->on[i]) return 1;
+    return 0;
+}
 
 // What a switch adds to what the firmware has anyway. HDR is HEVC at 10 bit and can't be offered without it.
 static inline int ps_exp_hevc_offered(const ps_experiment *e)
 {
-    return (e->hevc || (e->hdr && !e->hdr_failed)) && !e->hevc_failed;
+    return (e->on[PS_EXP_HEVC] || (e->on[PS_EXP_HDR] && !e->failed[PS_EXP_HDR])) && !e->failed[PS_EXP_HEVC];
 }
-static inline int ps_exp_hdr_offered(const ps_experiment *e) { return e->hdr && !e->hdr_failed && !e->hevc_failed; }
-static inline int ps_exp_large_offered(const ps_experiment *e) { return e->large && !e->large_failed; }
-static inline int ps_exp_bitrate_offered(const ps_experiment *e) { return e->high_bitrate && !e->high_bitrate_failed; }
+static inline int ps_exp_hdr_offered(const ps_experiment *e) { return e->on[PS_EXP_HDR] && !e->failed[PS_EXP_HDR] && !e->failed[PS_EXP_HEVC]; }
+static inline int ps_exp_large_offered(const ps_experiment *e) { return e->on[PS_EXP_LARGE] && !e->failed[PS_EXP_LARGE]; }
+static inline int ps_exp_bitrate_offered(const ps_experiment *e) { return e->on[PS_EXP_BITRATE] && !e->failed[PS_EXP_BITRATE]; }
 
 static inline int ps_exp_codec_on_trial(const ps_experiment *e, uint32_t codec, uint32_t ten_bit)
 {
@@ -90,23 +82,23 @@ static inline int ps_exp_unproven_codec(const ps_experiment *e, uint32_t codec, 
 }
 static inline int ps_exp_unproven_mode(const ps_experiment *e, uint32_t resolution)
 {
-    return resolution >= 5 && ps_exp_large_offered(e) && !e->large_confirmed;
+    return resolution >= 5 && ps_exp_large_offered(e) && !e->confirmed[PS_EXP_LARGE];
 }
 
 static inline int ps_exp_unproven_rate(const ps_experiment *e, uint32_t average)
 {
-    return average > PS_EXP_SAFE_AVERAGE && ps_exp_bitrate_offered(e) && !e->high_bitrate_confirmed;
+    return average > PS_EXP_SAFE_AVERAGE && ps_exp_bitrate_offered(e) && !e->confirmed[PS_EXP_BITRATE];
 }
 
 static inline void ps_exp_succeeded(ps_experiment *e, uint32_t codec, uint32_t ten_bit, uint32_t resolution, uint32_t average)
 {
     if (ps_exp_codec_on_trial(e, codec, ten_bit)) e->trial[ten_bit != 0].confirmed = 1;
-    if (resolution >= 5 && e->large) e->large_confirmed = 1;
-    if (e->large_pending && resolution < 5) e->large_failed = 1;
-    e->large_pending = 0;
-    if (average > PS_EXP_SAFE_AVERAGE && e->high_bitrate) e->high_bitrate_confirmed = 1;
-    if (e->high_bitrate_pending && average <= PS_EXP_SAFE_AVERAGE) e->high_bitrate_failed = 1;
-    e->high_bitrate_pending = 0;
+    if (resolution >= 5 && e->on[PS_EXP_LARGE]) e->confirmed[PS_EXP_LARGE] = 1;
+    if (e->pending[PS_EXP_LARGE] && resolution < 5) e->failed[PS_EXP_LARGE] = 1;
+    e->pending[PS_EXP_LARGE] = 0;
+    if (average > PS_EXP_SAFE_AVERAGE && e->on[PS_EXP_BITRATE]) e->confirmed[PS_EXP_BITRATE] = 1;
+    if (e->pending[PS_EXP_BITRATE] && average <= PS_EXP_SAFE_AVERAGE) e->failed[PS_EXP_BITRATE] = 1;
+    e->pending[PS_EXP_BITRATE] = 0;
 }
 
 // `attributable`: the failure came from the encoder's steps, not from the capture being in use or the system refusing the
@@ -122,23 +114,23 @@ static inline enum ps_exp_next ps_exp_failed(ps_experiment *e, uint32_t codec, u
     }
     if (attributable && average > PS_EXP_SAFE_AVERAGE && ps_exp_bitrate_offered(e)) {
         if (trial) e->trial[bits].variant = PS_EXP_MINIMAL;
-        if (!e->high_bitrate_confirmed) e->high_bitrate_pending = 1;
+        if (!e->confirmed[PS_EXP_BITRATE]) e->pending[PS_EXP_BITRATE] = 1;
         return PS_EXP_LOWER_RATE;
     }
     // The lower rate failed as well: nothing shows that the rate was at fault.
-    e->high_bitrate_pending = 0;
+    e->pending[PS_EXP_BITRATE] = 0;
     if (can_fall_back) {
         if (trial) e->trial[bits].variant = PS_EXP_MINIMAL;
-        if (attributable && e->large && !e->large_confirmed) e->large_pending = 1;
+        if (attributable && e->on[PS_EXP_LARGE] && !e->confirmed[PS_EXP_LARGE]) e->pending[PS_EXP_LARGE] = 1;
         return PS_EXP_FALL_BACK;
     }
     if (trial) {
         if (bits)
-            e->hdr_failed = 1;
+            e->failed[PS_EXP_HDR] = 1;
         else
-            e->hevc_failed = 1;
+            e->failed[PS_EXP_HEVC] = 1;
     }
-    e->large_pending = 0;
+    e->pending[PS_EXP_LARGE] = 0;
     return PS_EXP_GIVE_UP;
 }
 

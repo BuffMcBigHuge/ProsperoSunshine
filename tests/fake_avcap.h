@@ -34,15 +34,27 @@ static int fake_register(int id, void *callback, void *user)
     return 0;
 }
 static int fake_unregister(int id) { (void)id; return 0; }
+// What the system answers to RUNNING, from fake_decide's "grant": 0 yes, >0 refused with that as data[0], or these.
+#define FAKE_REVOKE (-1)
+#define FAKE_SILENT (-2)
 static int fake_request(int id, const char *state, void *data, int pid)
 {
     (void)data;
     (void)pid;
-    static const uint8_t yes = 1;
-    if (!strcmp(state, "RUNNING")) fake_callback(id, 1, &yes);
+    if (strcmp(state, "RUNNING")) return 0;
+    const int answer = fake_rc("grant");
+    const uint8_t value = answer > 0 ? (uint8_t)answer : 1;
+    if (answer == FAKE_REVOKE) fake_callback(id, 2, NULL);
+    else if (answer != FAKE_SILENT) fake_callback(id, 1, &value);
     return 0;
 }
-static int fake_list(int32_t *active) { memset(active, 0, 32 * sizeof *active); return 0; }
+static int32_t fake_active[2];  // the others on the arbitrator's list
+static int fake_list(int32_t *active)
+{
+    memset(active, 0, 32 * sizeof *active);
+    memcpy(active, fake_active, sizeof fake_active);
+    return 0;
+}
 
 int ps_ra_resolve(uint32_t ra_handle, ps_ra_functions *out)
 {

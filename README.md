@@ -172,7 +172,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 
 The first run builds the dependencies into `out/deps` (around 30 minutes, mostly Boost). The host is
 `out/prospero_sunshine.elf`; the other ELFs are hardware probes. `app/build.ps1` then builds the app, and
-`bash scripts/package.sh` the release archive. Portable unit tests:
+`bash scripts/package.sh` the release archive. The host names its commit in `host_diag.log` and the diagnostics report.
+`scripts/build.ps1` and CI pass it in. If you run `scripts/build.sh` in the container yourself from a git worktree, git can't find it
+there and the host says `unknown`, unless you add `-e PROSPERO_COMMIT=<hash>`. Portable unit tests:
 
 ```sh
 docker run --rm --mount type=bind,source="$PWD",target=/repo prosperosunshine-sdk:v0.45 bash scripts/test.sh

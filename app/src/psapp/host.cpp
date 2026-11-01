@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "app/psapp/host.hpp"
 
+#include "app/psapp/experimental_list.h"
+
 #include "app/psapp/autoload.hpp"
 #include "app/psapp/io.hpp"
 #include "platform/ps5/system.hpp"
@@ -678,19 +680,11 @@ std::string Host::build_report()
                                         : diag::firmware_text(snap.firmware) + " (" + code + ")" +
                                               (diag::firmware_verified(snap.firmware) ? ", verified" : ", untested"));
     line("Host", std::string(snap.running ? "running" : "not running") + (snap.streaming ? ", streaming" : "") +
-                     (host_log.version.empty() ? "" : ", version " + host_log.version));
+                     (host_log.version.empty() ? "" : ", version " + host_log.version + ", commit " +
+                                                          (host_log.commit.empty() ? "unknown" : host_log.commit)));
     line("Host ELF", std::to_string(snap.host_elf_size) + " bytes, " +
                          (io::same_content(kBundledElf, kHostElf) ? "same as the app's" : "differs from the app's"));
-    const char *capture = host_log.capture == diag::Capture::ok        ? "last open ok"
-                          : host_log.capture == diag::Capture::failed  ? "last open failed"
-                          : host_log.capture == diag::Capture::opening ? "last open has no outcome"
-                                                                       : "not tried since the host started";
-    line("Capture", std::string(capture) +
-                        (host_log.capture == diag::Capture::failed
-                             ? " at " + host_log.failed_step + " (error " + std::to_string(host_log.failed_error) + ", rc " +
-                                   host_log.failed_rc + ")"
-                             : "") +
-                        (host_log.last_step.empty() ? "" : ", after: " + host_log.last_step));
+    line("Capture", diag::capture_summary(host_log));
     line("Notice", snap.notice.text.empty() ? "none" : snap.notice.text);
     line("Paired devices", std::to_string(snap.paired.size()));
     line("Network", snap.address.empty() ? "no LAN address" : "has a LAN address");
@@ -726,8 +720,9 @@ std::string Host::build_report()
     if (!snap.client.empty())
         names.push_back(snap.client);
     std::vector<std::string> switches;
-    for (const char *key : {"experimental_hevc", "experimental_hdr", "experimental_large_modes", "experimental_high_bitrate"})
+    for (int i = 0; i < PS_EXP_SWITCH_COUNT; ++i)
     {
+        const char *key = ps_exp_switch_at(i)->key;
         const auto it = snap.config.find(key);
         if (it != snap.config.end() && it->second && *it->second == "1")
             switches.push_back(key);

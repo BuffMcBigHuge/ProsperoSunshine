@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "app/psapp/screen.hpp"
 
+#include "app/psapp/experimental_list.h"
 #include "app/psapp/icons.hpp"
 #include "platform/ps5/system.hpp"
 #include "ui/glyphs.hpp"
@@ -37,10 +38,9 @@ constexpr float kArmSeconds = 4.0f;
 constexpr int kReportVisible = 19; // lines of the report on screen
 constexpr float kReportLine = 26.0f;
 
-const Icon kOptionIcons[] = {Icon::tag, Icon::log, Icon::timer, Icon::lock, Icon::globe, Icon::plug,
-                             Icon::monitor, Icon::monitor, Icon::monitor, Icon::sliders};
-constexpr int kTiles = 10;      // option_specs(): two rows of three, then a row of four, the Experimental section
-constexpr int kFirstSwitch = 6; // where that row starts
+const Icon kOptionIcons[] = {Icon::tag, Icon::log, Icon::timer, Icon::lock, Icon::globe, Icon::plug};
+constexpr int kFirstSwitch = 6; // option_specs(): two rows of three, then a row with the Experimental switches
+constexpr int kTiles = kFirstSwitch + PS_EXP_SWITCH_COUNT;
 
 float approach(float value, float target, float dt, float speed)
 {
@@ -88,7 +88,8 @@ std::string Screen::value_text(int index) const
 {
     const OptionSpec &spec = option_specs()[static_cast<std::size_t>(index)];
     if (switch_not_needed(index))
-        return diag::experimental_no_effect(snap_.firmware, spec.key) ? "No effect on 10.x" : "Not needed: verified here";
+        return diag::experimental_no_effect(snap_.firmware, spec.key) ? ps_exp_switch_at(index - kFirstSwitch)->no_effect_word
+                                                                      : "Not needed: verified here";
     const auto it = edits_.find(spec.key);
     if (it == edits_.end() || !it->second)
         return spec.default_label;
@@ -142,7 +143,10 @@ Rect Screen::tile_rect(int index) const
 {
     // The gap before the switches holds the section's caption.
     if (index >= kFirstSwitch)
-        return {96.0f + static_cast<float>(index - kFirstSwitch) * 437.0f, 594.0f, 417.0f, 124.0f};
+    {
+        const float width = (1728.0f - 20.0f * static_cast<float>(PS_EXP_SWITCH_COUNT - 1)) / static_cast<float>(PS_EXP_SWITCH_COUNT);
+        return {96.0f + static_cast<float>(index - kFirstSwitch) * (width + 20.0f), 594.0f, width, 124.0f};
+    }
     const int col = index % 3, row = index / 3;
     return {96.0f + static_cast<float>(col) * 584.0f, 276.0f + static_cast<float>(row) * 138.0f, 560.0f, 124.0f};
 }
@@ -386,7 +390,7 @@ void Screen::handle_settings(const hui::InputFrame &input, hui::ui::Feedback &fe
             if (input.nav == Direction::left)
                 next = col > 0 ? tile_ - 1 : -1;
             else if (input.nav == Direction::right)
-                next = col < (switches ? 3 : 2) ? tile_ + 1 : -1;
+                next = col < (switches ? PS_EXP_SWITCH_COUNT - 1 : 2) ? tile_ + 1 : -1;
             else if (input.nav == Direction::up)
                 next = switches ? 3 + std::min(col, 2) : row > 0 ? tile_ - 3 : -1;
             else
@@ -400,7 +404,7 @@ void Screen::handle_settings(const hui::InputFrame &input, hui::ui::Feedback &fe
             else if (input.nav == Direction::right)
                 next = index < 2 ? tile_ + 1 : -1;
             else if (input.nav == Direction::up)
-                next = kFirstSwitch + index;
+                next = kFirstSwitch + std::min(index, PS_EXP_SWITCH_COUNT - 1);
             else
                 next = -1;
         }
@@ -1167,9 +1171,11 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
     list.rounded_rect({96.0f, 566.0f, 40.0f, 3.0f}, 1.5f, kAccent);
     const float caption = hui::ui::text(list, fonts_.semibold, "EXPERIMENTAL", 152.0f, 576.0f, 22.0f, kAccent, Align::left, 4.0f);
     const std::string where = snap_.firmware != 0 ? "Firmware " + diag::firmware_text(snap_.firmware) : std::string("this firmware");
-    const std::string note = switch_not_needed(8)   ? "Nothing to switch on " + where + ": all of this is verified there."
-                             : switch_not_needed(6) ? "On " + where + " HEVC and HDR are verified. 1440p and 4K are untested."
-                                                    : "Untested on " + where + ". Off by default; what fails turns itself off.";
+    bool any_needed = false;
+    for (int i = kFirstSwitch; i < kTiles; ++i)
+        any_needed = any_needed || !switch_not_needed(i);
+    const std::string note = any_needed ? "For what is untested on " + where + ". Off by default; what fails turns itself off."
+                                        : "Nothing to switch on " + where + ": all of this is verified there.";
     hui::ui::text(list, fonts_.regular, note, 176.0f + caption, 576.0f, 22.0f, kMuted);
     list.pop_opacity();
 
@@ -1194,7 +1200,8 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
         glass_card(list, glass, base, 24.0f, f);
         // The switches' row is narrower: the same parts closer together, with the switch on the value's line.
         const float text_x = base.x + (toggle ? 62.0f : 90.0f);
-        icons::draw(list, kOptionIcons[i], base.x + (toggle ? 34.0f : 46.0f), base.cy(), toggle ? 30.0f : 34.0f, inert ? kFaint : kAccent);
+        icons::draw(list, toggle ? Icon::sliders : kOptionIcons[i], base.x + (toggle ? 34.0f : 46.0f), base.cy(), toggle ? 30.0f : 34.0f,
+                    inert ? kFaint : kAccent);
         hui::ui::text(list, fonts_.semibold, spec.label, text_x, base.y + 52.0f, toggle ? 28.0f : 30.0f, inert ? kMuted : kInk);
         hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, value_text(i), 25.0f, base.w - (inert ? 80.0f : 250.0f)), text_x,
                       base.y + 94.0f, 25.0f, is_default || inert ? kMuted : mix(kInk, kAccent, 0.35f));
@@ -1237,7 +1244,7 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
     if (tile_ < kTiles && switch_not_needed(tile_))
     {
         help = diag::experimental_no_effect(snap_.firmware, option_specs()[static_cast<std::size_t>(tile_)].key)
-                   ? "The encoder keeps its own rate on firmware 10.x, so this switch would change nothing."
+                   ? std::string(ps_exp_switch_at(tile_ - kFirstSwitch)->no_effect_help)
                    : "Verified on " + where + ": it is there without a switch, and this switch changes nothing.";
     }
     else if (tile_ < kTiles)

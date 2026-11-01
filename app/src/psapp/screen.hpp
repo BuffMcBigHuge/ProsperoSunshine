@@ -13,6 +13,7 @@
 // kit's glass), and focus, pages, sheets and messages move with springs and fades.
 #pragma once
 
+#include "app/psapp/experimental_list.h"
 #include "app/psapp/host.hpp"
 #include "core/input.hpp"
 #include "gfx/draw_list.hpp"
@@ -141,8 +142,8 @@ class Screen
     int home_row_ = 0; // 0 the actions, 1 the pairing cards
     int home_action_ = 0;
     int home_card_ = 0;
-    int tile_ = 0; // 0..9 the tiles, 10..12 the actions under them
-    float tile_amount_[13] = {};
+    int tile_ = 0; // the option tiles, then the three actions under them
+    float tile_amount_[6 + PS_EXP_SWITCH_COUNT + 3] = {};
     float action_amount_[3] = {};
     float card_amount_[2] = {};
     float tab_x_ = -1.0f; // the selected tab's plate glides between tabs

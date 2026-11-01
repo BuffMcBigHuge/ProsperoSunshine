@@ -15,12 +15,10 @@ namespace psapp::diag
 std::string firmware_text(std::uint32_t firmware);
 // The only firmware everything was measured on.
 bool firmware_verified(std::uint32_t firmware);
-// Whether an Experimental switch (its sunshine.conf key) counts on this firmware. Where the function is verified it is
-// there anyway and the host ignores the switch: src/platform/ps5/experimental.h has the same rule. An unknown firmware
-// (0) keeps the switch: the host still decides.
+// Whether an Experimental switch (its sunshine.conf key, experimental_list.h) counts on this firmware. Where not, the host
+// ignores it. An unknown firmware (0) keeps the switch: the host still decides.
 bool experimental_needed(std::uint32_t firmware, const std::string &key);
-// Firmware 10.x has no rate fields in its record, so the encoder keeps its own rate and the bitrate switch can't do anything
-// there. It counts as not needed, but for another reason than a verified function.
+// Whether it doesn't count because it can't do anything here, not because the function is verified.
 bool experimental_no_effect(std::uint32_t firmware, const std::string &key);
 
 enum class Capture
@@ -46,10 +44,22 @@ struct Attempt
     std::string rc;      // the raw code as hex text; "0" when the step has none
 };
 
+// The "capture RUNNING outcome=" line: how the wait for the resource ended, when it ended without it.
+struct RunningWait
+{
+    std::string outcome;   // timeout, refused, revoked; empty when there is no such line
+    std::string value;     // data[0] of a refusal; -1 otherwise
+    std::string waited_ms;
+    std::string list_rc;   // list()'s result; 0 is fine
+    std::string active;    // the active resources, comma separated; "none"
+};
+
 struct HostLog
 {
     std::uint32_t firmware = 0;    // from the header; 0 when there is none
     std::string version;
+    std::string commit;            // the build's commit; "unknown" when its build had none; empty from older hosts
+    RunningWait running;           // of the last attempt
     bool refused = false;          // the host could not find the ResourceArbitrator calls
     Capture capture = Capture::unknown;
     std::string failed_step;       // "open failed step=": where it stopped
@@ -68,7 +78,11 @@ constexpr std::size_t kMaxAttempts = 24;
 
 HostLog parse_host_log(const std::string &text);
 
-// The report's part about the switches: which are set, how each attempt went, what is off now. `conf_switches` is what
+// The report's line about the capture: how the last open ended, why the wait for the resource did, and when the firmware is
+// refused outright, which no switch can change.
+std::string capture_summary(const HostLog &log);
+
+// The report's part about the switches: which are set, each function's result and rc, how each attempt went, what is off now. `conf_switches` is what
 // sunshine.conf holds now, which the host only reads when it starts. Only known fields, so nothing about anyone.
 std::string experimental_report(const HostLog &log, const std::vector<std::string> &conf_switches);
 

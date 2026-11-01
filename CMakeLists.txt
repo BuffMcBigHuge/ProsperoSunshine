@@ -146,9 +146,14 @@ if(EXISTS "${PROSPERO_DEPS}/include/boost" AND EXISTS "${PROSPERO_DEPS}/lib/liba
     # The autoload list's text edits are the app's; it includes them as "app/psapp/...".
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/third-party/app")
     file(CREATE_LINK "${CMAKE_SOURCE_DIR}/app/src/psapp" "${CMAKE_BINARY_DIR}/third-party/app/psapp" SYMBOLIC)
+    # scripts/build.sh finds the commit; host_diag.log and the app's report name it.
+    set(PROSPERO_COMMIT "$ENV{PROSPERO_COMMIT}")
+    if(NOT PROSPERO_COMMIT)
+        set(PROSPERO_COMMIT "unknown")
+    endif()
     target_compile_definitions(prospero_sunshine PRIVATE
         PROJECT_NAME="ProsperoSunshine" PROJECT_VERSION="0.1.6" PROJECT_VERSION_MAJOR="0"
-        PROJECT_VERSION_MINOR="1" PROJECT_VERSION_PATCH="6" PROJECT_VERSION_COMMIT="dev"
+        PROJECT_VERSION_MINOR="1" PROJECT_VERSION_PATCH="6" PROJECT_VERSION_COMMIT="${PROSPERO_COMMIT}"
         PROJECT_FQDN="dev.prosperosunshine" SUNSHINE_ASSETS_DIR="/data/prosperosunshine/assets"
         SUNSHINE_PUBLISHER_NAME="ProsperoSunshine" SUNSHINE_PUBLISHER_WEBSITE=""
         SUNSHINE_PUBLISHER_ISSUE_URL="" SUNSHINE_TRAY=0 BOOST_ALL_NO_LIB)

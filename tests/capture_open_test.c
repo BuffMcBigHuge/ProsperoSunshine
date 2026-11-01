@@ -10,6 +10,16 @@
 
 static const char *const marker = "/tmp/prospero_experimental_attempt";
 
+static void set_switches(int hevc, int hdr, int large, int bitrate)
+{
+    int switches[PS_EXP_SWITCH_COUNT] = {0};
+    switches[PS_EXP_HEVC] = hevc;
+    switches[PS_EXP_HDR] = hdr;
+    switches[PS_EXP_LARGE] = large;
+    switches[PS_EXP_BITRATE] = bitrate;
+    ps_capture_set_experimental(switches, marker);
+}
+
 static void setup(uint32_t firmware, int hevc, int hdr, int large, uint32_t codec, uint32_t ten_bit, uint32_t resolution)
 {
     fake_firmware = firmware;
@@ -17,7 +27,7 @@ static void setup(uint32_t firmware, int hevc, int hdr, int large, uint32_t code
     fake_opens = 0;
     fake_log[0] = 0;
     unlink(marker);
-    ps_capture_set_experimental(hevc, hdr, large, 0, marker);
+    set_switches(hevc, hdr, large, 0);
     ps_capture_set_codec(codec);
     ps_capture_set_ten_bit(ten_bit);
     ps_capture_set_video_mode(resolution, 1);
@@ -76,7 +86,7 @@ static int full_and_high_rate_fail(const char *step, const uint8_t *record)
 static void setup_high(uint32_t firmware, int hevc, uint32_t codec, uint32_t average)
 {
     setup(firmware, hevc, 0, 0, codec, 0, 4);
-    ps_capture_set_experimental(hevc, 0, 0, 1, marker);
+    set_switches(hevc, 0, 0, 1);
     ps_capture_set_opening_bitrate(average, average / 100 * 112);
     fake_log[0] = 0;
 }
@@ -85,6 +95,22 @@ static uint32_t record_u32(size_t at)
     uint32_t value;
     memcpy(&value, fake_record + at, sizeof value);
     return value;
+}
+
+static int refuse_resource(const char *step, const uint8_t *record)
+{
+    (void)record;
+    return !strcmp(step, "grant") ? 3 : 0;
+}
+static int revoke_resource(const char *step, const uint8_t *record)
+{
+    (void)record;
+    return !strcmp(step, "grant") ? FAKE_REVOKE : 0;
+}
+static int no_answer(const char *step, const uint8_t *record)
+{
+    (void)record;
+    return !strcmp(step, "grant") ? FAKE_SILENT : 0;
 }
 
 static int reads;
@@ -231,7 +257,7 @@ int main(void)
     fputs("switches=hevc,large firmware=0x13600000 trial=hevc,large codec=hevc bits=8 mode=3840x2160 fps=60 kbit=20000 variant=minimal", left);
     fclose(left);
     fake_log[0] = 0;
-    ps_capture_set_experimental(1, 0, 1, 0, marker);
+    set_switches(1, 0, 1, 0);
     assert(logged("experimental result=failed switches=hevc,large firmware=0x13600000 trial=hevc,large codec=hevc bits=8 "
                   "mode=3840x2160 fps=60 kbit=20000 variant=minimal error=0 rc=0 step=host went down\n"));
     assert(logged("feature=hevc") && logged("feature=large"));
@@ -250,7 +276,7 @@ int main(void)
     assert(open_and_close() == 0);
     assert(!memcmp(with_switches, fake_record, sizeof with_switches));
     fake_log[0] = 0;
-    ps_capture_set_experimental(1, 1, 1, 1, marker);
+    set_switches(1, 1, 1, 1);
     assert(logged("experimental switches=none set=hevc,hdr,large,bitrate firmware=0x13000040\n"));
 
     // 10.20: HEVC and HDR are verified, 1440p and 4K are not.
@@ -324,7 +350,7 @@ int main(void)
     fputs("switches=bitrate firmware=0x13600000 trial=bitrate codec=h264 bits=8 mode=1920x1080 fps=60 kbit=100000 variant=standard", left);
     fclose(left);
     fake_log[0] = 0;
-    ps_capture_set_experimental(0, 0, 0, 1, marker);
+    set_switches(0, 0, 0, 1);
     assert(logged("kbit=100000 variant=standard error=0 rc=0 step=host went down\n") && logged("feature=bitrate"));
     assert(!ps_capture_high_bitrate_allowed());
 
@@ -344,8 +370,32 @@ int main(void)
     assert(open_and_close() == 0);
     assert(!memcmp(high_record, fake_record, sizeof high_record));
     fake_log[0] = 0;
-    ps_capture_set_experimental(0, 0, 0, 1, marker);
+    set_switches(0, 0, 0, 1);
     assert(logged("experimental switches=none set=bitrate firmware=0x10400000\n"));
+
+    // The wait for the resource: which of three endings it was, how long it took, and who else is active.
+    fake_active[0] = 175;
+    fake_active[1] = 177;
+    setup(0x13600000u, 0, 0, 0, 0, 0, 4);
+    fake_decide = refuse_resource;
+    assert(open_and_close() == PS_CAPTURE_ERROR);
+    assert(logged("capture RUNNING outcome=refused value=3 waited_ms=") && logged("list_rc=0 active=175,177\n"));
+    assert(logged("capture open failed step=RUNNING"));
+    setup(0x13600000u, 0, 0, 0, 0, 0, 4);
+    fake_decide = revoke_resource;
+    assert(open_and_close() == PS_CAPTURE_ERROR);
+    assert(logged("capture RUNNING outcome=revoked value=-1 waited_ms="));
+    setup(0x13600000u, 0, 0, 0, 0, 0, 4);
+    fake_decide = no_answer;
+    assert(open_and_close() == PS_CAPTURE_ERROR);
+    assert(logged("capture RUNNING outcome=timeout value=-1 waited_ms=2000 list_rc=0 active=175,177\n"));
+    fake_active[0] = fake_active[1] = 0;
+    setup(0x13600000u, 0, 0, 0, 0, 0, 4);
+    fake_decide = no_answer;
+    assert(open_and_close() == PS_CAPTURE_ERROR);
+    assert(logged("active=none\n"));
+    setup(0x13000040u, 0, 0, 0, 0, 0, 4);
+    assert(open_and_close() == 0 && !logged("outcome="));
 
     // Where 13.00's layout holds, the full variant is the record 13.00 has always sent; on 10.x the minimal one is.
     uint8_t standard[0x2e8], variant[0x2e8];

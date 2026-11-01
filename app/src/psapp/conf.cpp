@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "app/psapp/conf.hpp"
 
+#include "app/psapp/experimental_list.h"
+
 #include <cstdlib>
 
 namespace psapp
@@ -35,7 +37,8 @@ const std::vector<Choice> kEncryption = {
 // host's own (src/sunshine/main_ps5.cpp sets 2 s before the file is read).
 const std::vector<OptionSpec> &option_specs()
 {
-    static const std::vector<OptionSpec> specs = {
+    static const std::vector<OptionSpec> specs = [] {
+        std::vector<OptionSpec> list = {
         {"sunshine_name", "Host name", "The name Moonlight shows.", OptionKind::text,
          "network name", {}, 0, 0, 1, 0},
         {"min_log_level", "Log level", "Detail in sunshine.log and the kernel log.", OptionKind::choice, "Info",
@@ -59,20 +62,15 @@ const std::vector<OptionSpec> &option_specs()
         {"port", "Base port",
          "Moonlight's ports count from here.",
          OptionKind::number, "47989", {}, 1025, 65514, 1, 47989},
-        // Read by the host itself (src/sunshine/main_ps5.cpp), not by Sunshine. diag::experimental_needed says where they count.
-        {"experimental_hevc", "HEVC (8 bit)",
-         "Offers HEVC on this firmware. If it fails, H.264 again until the host restarts.",
-         OptionKind::toggle, "Off", {}, 0, 0, 1, 0},
-        {"experimental_hdr", "HDR (HEVC 10 bit)",
-         "Offers HDR, and HEVC with it, on this firmware. If it fails, off until the host restarts.",
-         OptionKind::toggle, "Off", {}, 0, 0, 1, 0},
-        {"experimental_large_modes", "1440p and 4K",
-         "Offers modes above 1080p on this firmware. If they fail, 1080p until the host restarts.",
-         OptionKind::toggle, "Off", {}, 0, 0, 1, 0},
-        {"experimental_high_bitrate", "Up to 150 Mbit/s",
-         "Raises the bitrate cap from 50 to 150 Mbit/s on this firmware. If it fails, 50 until the host restarts.",
-         OptionKind::toggle, "Off", {}, 0, 0, 1, 0},
-    };
+        };
+        // The Experimental switches, which the host reads itself (src/sunshine/main_ps5.cpp), not Sunshine.
+        for (int i = 0; i < PS_EXP_SWITCH_COUNT; ++i)
+        {
+            const ps_exp_switch_info *info = ps_exp_switch_at(i);
+            list.push_back({info->key, info->label, info->help, OptionKind::toggle, "Off", {}, 0, 0, 1, 0});
+        }
+        return list;
+    }();
     return specs;
 }
 

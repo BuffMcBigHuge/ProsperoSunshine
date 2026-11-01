@@ -56,11 +56,15 @@ static atomic_flag owned = ATOMIC_FLAG_INIT;
 static atomic_int granted;
 static atomic_int revoked;
 static atomic_int refused;
+static atomic_int refused_value;  // data[0] of the answer that refused
 static int resource_event(int id, int event, const uint8_t *data)
 {
     if (id == atomic_load(&session_resource) && event == 1 && data) {
         atomic_store(&granted, data[0] == 1);
-        if (data[0] != 1) atomic_store(&refused, 1);
+        if (data[0] != 1) {
+            atomic_store(&refused_value, data[0]);
+            atomic_store(&refused, 1);
+        }
     }
     if (id == atomic_load(&session_resource) && event == 2) {
         atomic_store(&revoked, 1);
@@ -354,6 +358,19 @@ static int first_frame(ps_capture *s, const char **step)
     return rc;
 }
 
+// The resources the arbitrator lists as active, for the log. Returns list()'s result.
+static int active_resources(int (*list)(int32_t *), char *out, size_t size, char separator)
+{
+    int32_t now[32] = {0};
+    const int rc = list(now);
+    const char between[2] = {separator, 0};
+    size_t used = 0;
+    out[0] = 0;
+    for (size_t i = 0; i < 32; i++)
+        if (now[i]) used += (size_t)snprintf(out + used, size - used, "%s%d", used ? between : "", now[i]);
+    return rc;
+}
+
 int ps_capture_open(ps_capture **out)
 {
     if (!out) return PS_CAPTURE_ERROR;
@@ -373,6 +390,7 @@ int ps_capture_open(ps_capture **out)
     atomic_store(&granted, 0);
     atomic_store(&revoked, 0);
     atomic_store(&refused, 0);
+    atomic_store(&refused_value, -1);
     int error = PS_CAPTURE_ERROR;
     load_fn load = NULL;
     const char *kernels[] = {"libkernel_web.sprx", "libkernel_sys.sprx", "libkernel.sprx"};
@@ -445,8 +463,17 @@ int ps_capture_open(ps_capture **out)
     rc = s->request(s->resource, "RUNNING", NULL, getpid());
     LOG("RUNNING rc=%#x\n", rc);
     if (rc < 0) goto fail;
-    for (int i = 0; i < 200 && !atomic_load(&granted) && !atomic_load(&revoked) && !atomic_load(&refused); i++) usleep(10000);
-    if (!atomic_load(&granted) || atomic_load(&revoked)) goto fail;
+    int waited_ms = 0;
+    for (; waited_ms < 2000 && !atomic_load(&granted) && !atomic_load(&revoked) && !atomic_load(&refused); waited_ms += 10) usleep(10000);
+    if (!atomic_load(&granted) || atomic_load(&revoked)) {
+        // The app's report reads this line (parse_host_log): no answer, refused or taken away are different problems.
+        char ids[32 * 12];
+        const int list_rc = active_resources(list, ids, sizeof ids, ',');
+        LOG("RUNNING outcome=%s value=%d waited_ms=%d list_rc=%#x active=%s\n",
+            atomic_load(&revoked) ? "revoked" : atomic_load(&refused) ? "refused" : "timeout", atomic_load(&refused_value), waited_ms,
+            list_rc, ids[0] ? ids : "none");
+        goto fail;
+    }
     step = "Initialize";
     rc = init();
     LOG("Initialize rc=%#x\n", rc);
@@ -514,13 +541,9 @@ int ps_capture_open(ps_capture **out)
     if (rc) atomic_store(&refused, 1);
     if (rc == RESOURCE_NOT_ACTIVE) {
         // For the app's report: is our resource listed, and which others are?
-        int32_t now[32] = {0};
-        const int list_rc = list(now);
-        char ids[32 * 12] = "";
-        size_t used = 0;
-        for (size_t i = 0; i < 32; i++)
-            if (now[i]) used += (size_t)snprintf(ids + used, sizeof ids - used, " %d", now[i]);
-        LOG("active resources rc=%#x:%s\n", list_rc, ids);
+        char ids[32 * 12];
+        const int list_rc = active_resources(list, ids, sizeof ids, ' ');
+        LOG("active resources rc=%#x:%s%s\n", list_rc, ids[0] ? " " : "", ids);
     }
     if (rc) goto fail;
     s->opened = 1;
@@ -548,22 +571,28 @@ fail:
 
 // host_diag.log gets a line for each attempt while a switch counts, and the app's parser reads them
 // (parse_host_log in app/src/psapp/diag.cpp), so its field names and this have to agree.
-static void names(char *out, size_t size, int hevc, int hdr, int large, int bitrate)
+static void names(char *out, size_t size, const uint8_t flags[PS_EXP_SWITCH_COUNT])
 {
-    snprintf(out, size, "%s%s%s%s%s", hevc ? "hevc," : "", hdr ? "hdr," : "", large ? "large," : "", bitrate ? "bitrate," : "",
-             hevc || hdr || large || bitrate ? "" : "none");
-    const size_t length = strlen(out);
-    if (length && out[length - 1] == ',') out[length - 1] = 0;
+    size_t used = 0;
+    out[0] = 0;
+    for (int i = 0; i < PS_EXP_SWITCH_COUNT; i++)
+        if (flags[i]) used += (size_t)snprintf(out + used, size - used, "%s%s", used ? "," : "", ps_exp_switch_at(i)->name);
+    if (!used) snprintf(out, size, "none");
 }
 
 static void describe_attempt(char *out, size_t size, const ps_experiment *e, uint32_t codec, uint32_t ten_bit, uint32_t resolution,
                              uint32_t timing, uint32_t average)
 {
     static const char *const variants[] = {"standard", "minimal", "full"};
-    char on[32], trial[32];
-    names(on, sizeof on, e->hevc, e->hdr, e->large, e->high_bitrate);
+    char on[64], trial[64];
+    names(on, sizeof on, e->on);
     const int unproven = ps_exp_unproven_codec(e, codec, ten_bit);
-    names(trial, sizeof trial, unproven && !ten_bit, unproven && ten_bit, ps_exp_unproven_mode(e, resolution), ps_exp_unproven_rate(e, average));
+    uint8_t proving[PS_EXP_SWITCH_COUNT] = {0};
+    proving[PS_EXP_HEVC] = unproven && !ten_bit;
+    proving[PS_EXP_HDR] = unproven && ten_bit;
+    proving[PS_EXP_LARGE] = (uint8_t)ps_exp_unproven_mode(e, resolution);
+    proving[PS_EXP_BITRATE] = (uint8_t)ps_exp_unproven_rate(e, average);
+    names(trial, sizeof trial, proving);
     snprintf(out, size, "switches=%s firmware=%#x trial=%s codec=%s bits=%d mode=%s fps=%d kbit=%u variant=%s", on, kernel_get_fw_version(), trial,
              codec == 1 ? "hevc" : "h264", ten_bit ? 10 : 8,
              resolution == 6 ? "3840x2160" : resolution == 5 ? "2560x1440" : "1920x1080", timing ? 60 : 30, average / 1000,
@@ -591,21 +620,22 @@ static void marker_clear(void)
 
 static void log_disabled(const ps_experiment *before, const ps_experiment *after)
 {
-    if (after->hevc_failed && !before->hevc_failed) ps_diag_log("ProsperoSunshine: experimental disabled feature=hevc\n");
-    if (after->hdr_failed && !before->hdr_failed) ps_diag_log("ProsperoSunshine: experimental disabled feature=hdr\n");
-    if (after->large_failed && !before->large_failed) ps_diag_log("ProsperoSunshine: experimental disabled feature=large\n");
-    if (after->high_bitrate_failed && !before->high_bitrate_failed) ps_diag_log("ProsperoSunshine: experimental disabled feature=bitrate\n");
+    for (int i = 0; i < PS_EXP_SWITCH_COUNT; i++)
+        if (after->failed[i] && !before->failed[i]) ps_diag_log("ProsperoSunshine: experimental disabled feature=%s\n", ps_exp_switch_at(i)->name);
 }
 
-void ps_capture_set_experimental(int hevc, int hdr, int large, int high_bitrate, const char *marker)
+void ps_capture_set_experimental(const int switches[PS_EXP_SWITCH_COUNT], const char *marker)
 {
     const uint32_t firmware = kernel_get_fw_version();
     ps_experiment now;
-    ps_exp_init(&now, firmware, hevc, hdr, large, high_bitrate);
-    if (hevc || hdr || large || high_bitrate) {
-        char set[32], on[32];
-        names(set, sizeof set, hevc, hdr, large, high_bitrate);
-        names(on, sizeof on, now.hevc, now.hdr, now.large, now.high_bitrate);
+    ps_exp_init(&now, firmware, switches);
+    uint8_t asked[PS_EXP_SWITCH_COUNT];
+    int any = 0;
+    for (int i = 0; i < PS_EXP_SWITCH_COUNT; i++) any |= asked[i] = switches[i] != 0;
+    if (any) {
+        char set[64], on[64];
+        names(set, sizeof set, asked);
+        names(on, sizeof on, now.on);
         ps_diag_log("ProsperoSunshine: experimental switches=%s set=%s firmware=%#x\n", on, set, firmware);
     }
     snprintf(marker_path, sizeof marker_path, "%s", marker ? marker : "");
@@ -623,12 +653,13 @@ void ps_capture_set_experimental(int hevc, int hdr, int large, int high_bitrate,
         if (trial) {
             const char *const end = strchr(trial + 1, ' ');
             const size_t length = end ? (size_t)(end - trial) : strlen(trial);
-            char words[40];
+            char words[80];
             snprintf(words, sizeof words, "%.*s", (int)length, trial);
-            if (strstr(words, "hevc") && (now.hevc || now.hdr)) now.hevc_failed = 1;
-            if (strstr(words, "hdr") && now.hdr) now.hdr_failed = 1;
-            if (strstr(words, "large") && now.large) now.large_failed = 1;
-            if (strstr(words, "bitrate") && now.high_bitrate) now.high_bitrate_failed = 1;
+            for (int i = 0; i < PS_EXP_SWITCH_COUNT; i++) {
+                // The HDR switch alone also offers HEVC.
+                const int counts = now.on[i] || (i == PS_EXP_HEVC && now.on[PS_EXP_HDR]);
+                if (counts && strstr(words, ps_exp_switch_at(i)->name)) now.failed[i] = 1;
+            }
         }
     }
     marker_clear();
@@ -687,7 +718,7 @@ int ps_capture_open_or_fall_back(ps_capture **out)
         }
         if (next == PS_EXP_FALL_BACK && ps_capture_fall_back_mode()) continue;
         // Audio may open next, for the stream that is about to end: not with what just failed.
-        if (after.hevc_failed != before.hevc_failed || after.hdr_failed != before.hdr_failed) {
+        if (after.failed[PS_EXP_HEVC] != before.failed[PS_EXP_HEVC] || after.failed[PS_EXP_HDR] != before.failed[PS_EXP_HDR]) {
             atomic_store(&video_ten_bit, 0);
             if (!ps_capture_hevc_allowed()) atomic_store(&video_codec, 0);
         }

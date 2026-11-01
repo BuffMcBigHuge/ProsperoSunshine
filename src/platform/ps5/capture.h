@@ -29,10 +29,10 @@ int ps_capture_hevc_verified(void);
 int ps_capture_large_modes_verified(void);
 // Whether opening above 50 Mbit/s was verified on this firmware.
 int ps_capture_high_bitrate_verified(void);
-// The app's Experimental switches from sunshine.conf, read once when the host starts; a switch counts only where its
-// function isn't verified (experimental.h). `marker` is a file that names an attempt under way. A marker left by a host
-// that went down keeps that function off for this run.
-void ps_capture_set_experimental(int hevc, int hdr, int large, int high_bitrate, const char *marker);
+// The app's Experimental switches from sunshine.conf, read once when the host starts, one value per entry of
+// app/src/psapp/experimental_list.h; a switch counts only where its function isn't verified. `marker` is a file that names
+// an attempt under way. A marker left by a host that went down keeps that function off for this run.
+void ps_capture_set_experimental(const int *switches, const char *marker);
 // What the host may offer now: verified, or switched on and not failed since the host started.
 int ps_capture_hevc_allowed(void);
 int ps_capture_hdr_allowed(void);

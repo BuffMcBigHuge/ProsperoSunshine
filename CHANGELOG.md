@@ -16,8 +16,15 @@
   10.x, whose encoder keeps its own rate, and says so. HEVC tries `cfg+0x24` alone first, then 13.00's full setup. A function whose every
   try fails is off until the host restarts, and the host offers H.264, 1080p and 50 Mbit/s again: a lower rate or mode takes over in the
   same stream, while a stream that failed on HEVC or HDR ends and the next one works. The
-  diagnostics report lists the switches and every try (codec, mode, variant, the step that failed and its code), and the Home
-  page asks for it to be posted, also after a success. None of this has run on a console yet.
+  diagnostics report lists the switches, each function's result and code, and every try (codec, mode, variant, the step that failed and
+  its code), and the Home
+  page asks for it to be posted, also after a success. None of this has run on a console yet. The switches come from one list,
+  `app/src/psapp/experimental_list.h`, so a new lock starts with one entry there.
+- `host version=` in `host_diag.log` and the diagnostics report name the build's commit, so a test build can be told from the
+  release. Without git data it says `unknown`.
+- When the wait for the capture resource ends without it, `host_diag.log` and the report say which case it was: no answer within
+  2 seconds, refused (with the value) or taken away, how long it waited and which resources were active. The report also says outright
+  when the firmware is refused because the ResourceArbitrator calls can't be found, which no switch changes.
 
 ### Changed
 

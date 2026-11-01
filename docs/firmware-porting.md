@@ -102,7 +102,7 @@ Nur auf einer Konsole mit dieser Firmware, Schritt für Schritt, mit klog:
 7. **HEVC (optional):** `hevc_spike.elf`: `OpenVideo` mit `cfg+0x24 = 1`, Speicher-Reservierung (`yN0w4tWivqs`) und
    `sceAvcap2Start` müssen 0 liefern, `ReadVideo2` Bilder; mit `ffmpeg -xerror` decodieren, das VPS muss vorn stehen. Bis das
    belegt ist, bietet der Host HEVC auf dieser Version nur mit dem experimentellen Schalter an (`ps_capture_hevc_verified` ist nur auf 13.00 und 10.20 wahr, siehe „Experimentelle Schalter“); die Prüfung
-   in `experimental.h` muss dann für die Version erweitert werden.
+   in `app/src/psapp/experimental_list.h` muss dann für die Version erweitert werden.
 8. **Pad:** `pad_probe.elf` (fügt ein neutrales virtuelles Pad hinzu und entfernt es wieder; vorher
    klären, dass niemand die Konsole gerade bedient). Prüfen: ioctl-Nummern, 0xA8-Blockgröße,
    Feldlagen von Tasten, Sticks und Triggern, Zuordnungsdialog. Das Pad hat keinen eigenen
@@ -133,6 +133,15 @@ und IDs sind entfernt. Der Bericht ersetzt keine der Prüfungen oben.
 ## Experimentelle Schalter
 
 Damit Tester auf ungeprüfter Firmware gesperrte Funktionen selbst einschalten und uns das Ergebnis schicken können, gibt es in den Einstellungen der App die Sektion „Experimental“. Bisher ist das auf keiner Konsole gelaufen, auch nicht auf 13.00; geprüft sind nur die Tests unten.
+
+Die Regel: Was auf anderer Firmware nur gesperrt ist, aber funktionieren könnte, wird ein Schalter mit Diagnose und Fehlerlog. Alle stehen in einer Liste, `app/src/psapp/experimental_list.h`: Schlüssel in `sunshine.conf`, Name im Log, Texte der App und die Prüfung, wo die Funktion verifiziert ist. Daraus entstehen die Kacheln der App (ihre Breite folgt der Anzahl), das Lesen der Konfiguration im Host, die Log-Zeilen und der Bericht. Eine neue Sperre beginnt mit einem Eintrag dort. Was die Funktion im Versuch tut und wann sie als unbewiesen gilt, kommt dazu nach `experimental.h` und in den Versuchspfad von `capture.c`; das lässt sich nicht aus einer Tabelle ableiten.
+
+Bewusst kein Schalter:
+
+- **`ps_ra_resolve` lehnt ab**, wenn die ResourceArbitrator-Aufrufe nicht aufgelöst werden: Dann gibt es nichts, was man aufrufen könnte. Der Bericht sagt das in der Zeile „Capture“ und dass kein Schalter daran etwas ändert.
+- **Die Rate-Felder auf 10.x** bleiben weg: Der Datensatz dort hat sie nicht, und der Encoder behält seine Standardrate. Deshalb wirkt dort auch der Bitrate-Schalter nicht.
+
+Die übrigen Firmware-Abfragen im Code sind keine Sperren: `record_shift` legt das Layout fest, `firmware_verified` der App ändert nur Text (Suche nach `_verified`, `kernel_get_fw_version` und Firmware-Vergleichen).
 
 | Schalter in der App | Schlüssel in `sunshine.conf` | Zählt nicht auf |
 | --- | --- | --- |
@@ -171,8 +180,12 @@ ProsperoSunshine: experimental result=ok switches=hevc firmware=0x13600000 trial
 ProsperoSunshine: experimental disabled feature=hevc
 ```
 
-`switches` sind die Schalter, die auf dieser Firmware zählen, `set` die in der Datei, `trial` was dieser Versuch zeigen muss (`hevc`, `hdr`, `large`, `bitrate`; `none` bei einem gewöhnlichen Stream), `kbit` das Mittel, mit dem er öffnet. `feature=bitrate` heißt: wieder 50 Mbit/s bis zum Neustart. Der Bericht der App führt daraus den Abschnitt „Experimental switches“, ohne Adressen, Gerätenamen und IDs. Die Home-Seite der App bittet nach einem Fehlschlag und nach einem Erfolg darum, den Bericht auf GitHub zu posten.
+`switches` sind die Schalter, die auf dieser Firmware zählen, `set` die in der Datei, `trial` was dieser Versuch zeigen muss (`hevc`, `hdr`, `large`, `bitrate`; `none` bei einem gewöhnlichen Stream), `kbit` das Mittel, mit dem er öffnet. `feature=bitrate` heißt: wieder 50 Mbit/s bis zum Neustart. Der Bericht der App führt daraus den Abschnitt „Experimental switches“ mit Ergebnis und `rc` je benutzter Funktion, im Erfolg wie im Fehlschlag, und mit jedem Versuch, ohne Adressen, Gerätenamen und IDs. Die Home-Seite der App bittet nach einem Fehlschlag und nach einem Erfolg darum, den Bericht auf GitHub zu posten.
 
-**Was ein Bericht hergibt:** Läuft `minimal` oder `full` auf einer Firmware und sehen Tester ein richtiges Bild, gehört die Version nach den Schritten der Checkliste in `ps_capture_hevc_verified`, `ps_capture_large_modes_verified` bzw. `ps_capture_high_bitrate_verified`. Ein Bericht, der auf `Start` oder `OpenVideo` scheitert, nennt den Code: `0x81950001` ist der Validator, also ein falsches Layout (`record_shift`). Ein Erfolg sagt nur, dass Bilder kamen; ob sie sich dekodieren lassen, sagt der Tester.
+**Was ein Bericht hergibt:** Läuft `minimal` oder `full` auf einer Firmware und sehen Tester ein richtiges Bild, gehört die Version nach den Schritten der Checkliste in die Prüfung ihres Eintrags in `experimental_list.h`. Ein Bericht, der auf `Start` oder `OpenVideo` scheitert, nennt den Code: `0x81950001` ist der Validator, also ein falsches Layout (`record_shift`). Ein Erfolg sagt nur, dass Bilder kamen; ob sie sich dekodieren lassen, sagt der Tester.
+
+**Welcher Build:** Die Kopfzeile `host version=... commit=...` nennt den Commit. `scripts/build.sh` nimmt `PROSPERO_COMMIT` aus der Umgebung, sonst `git rev-parse`, sonst `unknown` mit einer Warnung. `scripts/build.ps1` und CI reichen den Wert hinein. In einem Worktree zeigt `.git` auf einen Ordner außerhalb des Containers, dort findet git nichts: Ohne `-e PROSPERO_COMMIT=<hash>` steht dann `unknown` da. Der Hash ist der Stand von `HEAD`; nicht eingecheckte Änderungen zeigt er nicht.
+
+**Warten auf die Ressource:** Endet das Warten nach `RUNNING` ohne Freigabe, steht in `host_diag.log` zum Beispiel `capture RUNNING outcome=refused value=3 waited_ms=120 list_rc=0 active=175,177`. `outcome` ist `timeout` (keine Antwort in 2 s), `refused` (`value` ist `data[0]` der Antwort, sonst `-1`) oder `revoked`; `active` ist die Liste aus `list()`. Der Bericht führt das in der Zeile „Capture“ aus. Am Datensatz ändert das nichts.
 
 **Prüfung ohne Konsole.** `tests/capture_records_test.c` übersetzt `capture.c` nativ gegen `tests/fake_avcap.h` und vergleicht 240 Datensätze (12.40, 13.00, 13.60, 10.20, 10.40; H.264 und HEVC; 1080p bis 4K; 30 und 60 fps; 8 und 10 Bit; 20 und 150 Mbit/s) aus `configure()` und wie `OpenVideo` sie bekommt mit `tests/capture_records.golden`, erzeugt aus dem Code vor den Schaltern. `tests/capture_open_test.c` führt die Abläufe oben durch den echten Pfad von `ps_capture_open`.

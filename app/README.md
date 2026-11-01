@@ -90,7 +90,9 @@ The names, ranges and defaults are Sunshine's (`src/config.cpp` at a679b059), ex
 reads itself. Every other line of the file, comments included, is kept as it is. Sunshine uses the first line of a key; when the app
 sets a key that appears more than once, it keeps the first line's place and removes the others.
 
-The third row, **Experimental**, is for testers on firmware where a function isn't verified. Cross flips a switch; off removes the
+The third row, **Experimental**, is for testers on firmware where a function isn't verified. Its tiles come from one list,
+`app/src/psapp/experimental_list.h`, which also holds the keys, the names and where each function is verified, for the app and the host
+alike. Cross flips a switch; off removes the
 key. As with the other settings, **Save and restart host** applies it. On verified firmware (13.00; 10.20 for HEVC and HDR) a tile
 says "Not needed", doesn't react, and the host ignores the key. The bitrate tile says "No effect on 10.x" on any firmware 10.x and
 behaves the same, because the encoder keeps its own rate there. HDR also offers HEVC, because it is HEVC at 10 bit. `hevc_mode = 1` in
@@ -99,10 +101,12 @@ the file beats the HEVC and HDR switches. What testers do and post is in the mai
 function that fails is off until the host restarts. The notice on Home then says, for example, "Experimental HEVC failed on Firmware
 13.60 (off until the host restarts). Please post the Diagnostics report on GitHub."
 
-**Diagnostics** collects a report when the page opens, and again on Cross. It says which app, host and
-firmware run, how the last capture attempt ended, which ports answer, how each file the app and host need
-looks from the title, which settings differ from the defaults, which Experimental switches are set and how each try with them went
-(codec, mode, frame rate, bitrate, variant, the step that failed and its code, or that it ran), the host's `host_diag.log` and the end of
+**Diagnostics** collects a report when the page opens, and again on Cross. It says which app, host (with its build's commit) and
+firmware run, how the last capture attempt ended (if the system didn't hand over the capture resource: no answer, refused or taken
+away, how long the host waited, and what else was active; if the firmware is refused outright, that no switch changes this), which ports
+answer, how each file the app and host need looks from the title, which settings differ from the defaults, which Experimental switches
+are set, each function's result and code, how each try went (codec, mode, frame rate, bitrate, variant, the step that failed and its
+code), the host's `host_diag.log` and the end of
 `sunshine.log`. Addresses, device names, the console's name and long ids are taken out, so it can go into a
 public issue. It is saved as `/data/prosperosunshine/diagnostics.txt`. While the page is open and the host
 runs, a phone or PC in the same network can open it at `http://<console-ip>:47996`: a title may not listen on

@@ -6,6 +6,7 @@
 #include "control/listener_watch.hpp"
 #include "platform/ps5/mdns_responder.hpp"
 #include "platform/ps5/capture.h"
+#include "platform/ps5/experimental.h"
 #include "src/config.h"
 #include "src/file_handler.h"
 #include "src/globals.h"
@@ -84,8 +85,9 @@ int main(int argc, char *argv[]) {
     std::filesystem::create_directories(platf::appdata(), ec);
     // Before anything that can fail: the app's diagnostic report reads this file, also after a crash.
     const uint32_t firmware = kernel_get_fw_version();
-    char header[128];
-    std::snprintf(header, sizeof header, "ProsperoSunshine: host version=%s firmware=%#x known=%d", PROJECT_VERSION, firmware,
+    char header[160];
+    std::snprintf(header, sizeof header, "ProsperoSunshine: host version=%s commit=%s firmware=%#x known=%d", PROJECT_VERSION,
+                  PROJECT_VERSION_COMMIT, firmware,
                   ps_ra_find_known(firmware) != nullptr);
     ps_diag_open((platf::appdata() / "host_diag.log").c_str(), header);
     ps_diag_log("ProsperoSunshine: host appdata=%s mkdir_ec=%d config=%s\n", platf::appdata().c_str(), ec.value(),
@@ -117,8 +119,9 @@ int main(int argc, char *argv[]) {
         const auto it = settings.find(key);
         return it != settings.end() && it->second == "1";
     };
-    ps_capture_set_experimental(switched_on("experimental_hevc"), switched_on("experimental_hdr"), switched_on("experimental_large_modes"),
-                                switched_on("experimental_high_bitrate"), (platf::appdata() / "experimental_attempt").c_str());
+    int switches[PS_EXP_SWITCH_COUNT];
+    for (int i = 0; i < PS_EXP_SWITCH_COUNT; ++i) switches[i] = switched_on(ps_exp_switch_at(i)->key);
+    ps_capture_set_experimental(switches, (platf::appdata() / "experimental_attempt").c_str());
 
     task_pool.start(1);
     auto shutdown_event = mail::man->event<bool>(mail::shutdown);

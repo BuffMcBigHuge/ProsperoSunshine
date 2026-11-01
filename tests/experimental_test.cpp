@@ -5,6 +5,7 @@
 #include "video/capture_mode.hpp"
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <initializer_list>
 
 namespace {
@@ -13,22 +14,46 @@ constexpr uint32_t fw1300 = 0x13000040u, fw1020 = 0x10200006u, fw1040 = 0x104000
 constexpr uint32_t low = 20000000u, high = 100000000u;
 
 ps_experiment make(uint32_t firmware, int hevc, int hdr, int large, int bitrate = 0) {
+    int switches[PS_EXP_SWITCH_COUNT] = {};
+    switches[PS_EXP_HEVC] = hevc;
+    switches[PS_EXP_HDR] = hdr;
+    switches[PS_EXP_LARGE] = large;
+    switches[PS_EXP_BITRATE] = bitrate;
     ps_experiment e;
-    ps_exp_init(&e, firmware, hevc, hdr, large, bitrate);
+    ps_exp_init(&e, firmware, switches);
     return e;
 }
 }
 
 int main() {
+    // The list: each entry complete, keys and names different, nothing locked without a rule for where it is verified.
+    for (int i = 0; i < PS_EXP_SWITCH_COUNT; ++i) {
+        const ps_exp_switch_info *info = ps_exp_switch_at(i);
+        assert(!std::strncmp(info->key, "experimental_", 13) && *info->name && *info->shown && *info->label && *info->help);
+        assert(info->verified && info->no_effect);
+        for (int j = 0; j < i; ++j) {
+            assert(std::strcmp(info->key, ps_exp_switch_at(j)->key) && std::strcmp(info->name, ps_exp_switch_at(j)->name));
+            // capture.c finds a name in a list of names by searching for it.
+            assert(!std::strstr(info->name, ps_exp_switch_at(j)->name) && !std::strstr(ps_exp_switch_at(j)->name, info->name));
+        }
+        // 13.00 has everything verified; a switch that can do nothing somewhere says why.
+        assert(!ps_exp_counts(i, fw1300));
+        assert(ps_exp_counts(i, fw1360));
+        if (info->no_effect(fw1040)) assert(*info->no_effect_word && *info->no_effect_help);
+    }
+    assert(!ps_exp_counts(PS_EXP_HEVC, fw1020) && ps_exp_counts(PS_EXP_LARGE, fw1020) && !ps_exp_counts(PS_EXP_BITRATE, fw1020));
+    assert(ps_exp_counts(PS_EXP_HEVC, fw1040) && ps_exp_counts(PS_EXP_HDR, fw1040) && ps_exp_counts(PS_EXP_LARGE, fw1040));
+    assert(!ps_exp_counts(PS_EXP_BITRATE, fw1040));
+
     // Verified firmware: the switches don't count, so they can't change anything.
     for (const uint32_t firmware : {fw1300, fw1020}) {
         const ps_experiment e = make(firmware, 1, 1, 0);
-        assert(!e.hevc && !e.hdr && !ps_exp_any(&e));
+        assert(!e.on[PS_EXP_HEVC] && !e.on[PS_EXP_HDR] && !ps_exp_any(&e));
         assert(!ps_exp_codec_on_trial(&e, 1, 0) && !ps_exp_codec_on_trial(&e, 1, 1));
         assert(ps_exp_variant_for(&e, 1, 0) == PS_EXP_STANDARD);
     }
-    assert(!make(fw1300, 0, 0, 1).large);
-    assert(make(fw1020, 0, 0, 1).large);  // 10.20 has only HEVC and HDR verified
+    assert(!make(fw1300, 0, 0, 1).on[PS_EXP_LARGE]);
+    assert(make(fw1020, 0, 0, 1).on[PS_EXP_LARGE]);  // 10.20 has only HEVC and HDR verified
     assert(ps_exp_hevc_verified(fw1300) && ps_exp_hevc_verified(fw1020) && !ps_exp_hevc_verified(fw1040) && !ps_exp_hevc_verified(fw1360));
     assert(ps_exp_large_verified(fw1300) && !ps_exp_large_verified(fw1020) && !ps_exp_large_verified(fw1360));
 
@@ -66,14 +91,14 @@ int main() {
     e = make(fw1360, 1, 0, 0);
     assert(ps_exp_failed(&e, 1, 0, low, 1, 0) == PS_EXP_NEXT_VARIANT);
     assert(ps_exp_failed(&e, 1, 0, low, 1, 0) == PS_EXP_GIVE_UP);
-    assert(e.hevc_failed && !ps_exp_hevc_offered(&e) && ps_exp_variant_for(&e, 1, 0) == PS_EXP_STANDARD);
+    assert(e.failed[PS_EXP_HEVC] && !ps_exp_hevc_offered(&e) && ps_exp_variant_for(&e, 1, 0) == PS_EXP_STANDARD);
 
     // 8 and 10 bit try on their own; losing 8 bit takes HDR along.
     e = make(fw1360, 1, 1, 0);
     assert(ps_exp_failed(&e, 1, 1, low, 1, 0) == PS_EXP_NEXT_VARIANT);
     assert(ps_exp_variant_for(&e, 1, 0) == PS_EXP_MINIMAL && ps_exp_variant_for(&e, 1, 1) == PS_EXP_FULL);
     assert(ps_exp_failed(&e, 1, 1, low, 1, 0) == PS_EXP_GIVE_UP);
-    assert(e.hdr_failed && !e.hevc_failed && !ps_exp_hdr_offered(&e) && ps_exp_hevc_offered(&e));
+    assert(e.failed[PS_EXP_HDR] && !e.failed[PS_EXP_HEVC] && !ps_exp_hdr_offered(&e) && ps_exp_hevc_offered(&e));
     e = make(fw1360, 1, 1, 0);
     assert(ps_exp_failed(&e, 1, 0, low, 1, 0) == PS_EXP_NEXT_VARIANT);
     assert(ps_exp_failed(&e, 1, 0, low, 1, 0) == PS_EXP_GIVE_UP);
@@ -93,12 +118,12 @@ int main() {
     assert(ps_exp_failed(&e, 0, 0, low, 1, 1) == PS_EXP_FALL_BACK);
     assert(ps_exp_large_offered(&e));
     ps_exp_succeeded(&e, 0, 0, 4, low);
-    assert(e.large_failed && !ps_exp_large_offered(&e));
+    assert(e.failed[PS_EXP_LARGE] && !ps_exp_large_offered(&e));
     // 1080p fails as well: nothing shows that the mode was at fault.
     e = make(fw1360, 0, 0, 1);
     assert(ps_exp_failed(&e, 0, 0, low, 1, 1) == PS_EXP_FALL_BACK);
     assert(ps_exp_failed(&e, 0, 0, low, 1, 0) == PS_EXP_GIVE_UP);
-    assert(!e.large_failed && !e.large_pending);
+    assert(!e.failed[PS_EXP_LARGE] && !e.pending[PS_EXP_LARGE]);
     // A mode that ran once stays: later refusals are the title's.
     e = make(fw1360, 0, 0, 1);
     ps_exp_succeeded(&e, 0, 0, 6, low);
@@ -122,11 +147,11 @@ int main() {
     assert(!ps_exp_hevc_offered(&e));
 
     // The bitrate switch: 13.00 is verified, and 10.x has no rate fields, so it has no effect there.
-    assert(!make(fw1300, 0, 0, 0, 1).high_bitrate);
-    assert(!make(fw1020, 0, 0, 0, 1).high_bitrate);
-    assert(!make(fw1040, 0, 0, 0, 1).high_bitrate);
-    assert(make(fw1360, 0, 0, 0, 1).high_bitrate);
-    assert(make(fw1240, 0, 0, 0, 1).high_bitrate);
+    assert(!make(fw1300, 0, 0, 0, 1).on[PS_EXP_BITRATE]);
+    assert(!make(fw1020, 0, 0, 0, 1).on[PS_EXP_BITRATE]);
+    assert(!make(fw1040, 0, 0, 0, 1).on[PS_EXP_BITRATE]);
+    assert(make(fw1360, 0, 0, 0, 1).on[PS_EXP_BITRATE]);
+    assert(make(fw1240, 0, 0, 0, 1).on[PS_EXP_BITRATE]);
     assert(ps_exp_bitrate_verified(fw1300) && !ps_exp_bitrate_verified(fw1020) && !ps_exp_bitrate_verified(fw1360));
     e = make(fw1360, 0, 0, 0, 0);
     assert(!ps_exp_bitrate_offered(&e) && !ps_exp_unproven_rate(&e, high));
@@ -141,12 +166,12 @@ int main() {
     assert(ps_exp_failed(&e, 0, 0, high, 1, 0) == PS_EXP_LOWER_RATE);
     assert(ps_exp_bitrate_offered(&e));
     ps_exp_succeeded(&e, 0, 0, 4, PS_EXP_SAFE_AVERAGE);
-    assert(e.high_bitrate_failed && !ps_exp_bitrate_offered(&e) && !ps_exp_unproven_rate(&e, high));
+    assert(e.failed[PS_EXP_BITRATE] && !ps_exp_bitrate_offered(&e) && !ps_exp_unproven_rate(&e, high));
     // 50 fails as well: nothing shows that the rate was at fault.
     e = make(fw1360, 0, 0, 0, 1);
     assert(ps_exp_failed(&e, 0, 0, high, 1, 0) == PS_EXP_LOWER_RATE);
     assert(ps_exp_failed(&e, 0, 0, PS_EXP_SAFE_AVERAGE, 1, 0) == PS_EXP_GIVE_UP);
-    assert(!e.high_bitrate_failed && !e.high_bitrate_pending && ps_exp_bitrate_offered(&e));
+    assert(!e.failed[PS_EXP_BITRATE] && !e.pending[PS_EXP_BITRATE] && ps_exp_bitrate_offered(&e));
     // Failures that say nothing about the function don't lower anything.
     e = make(fw1360, 0, 0, 0, 1);
     assert(ps_exp_failed(&e, 0, 0, high, 0, 0) == PS_EXP_GIVE_UP && ps_exp_bitrate_offered(&e));
