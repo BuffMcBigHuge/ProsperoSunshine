@@ -30,6 +30,11 @@ std::shared_ptr<SharedCapture> SharedCapture::acquire(int &rc) {
     return created;
 }
 
+std::shared_ptr<SharedCapture> SharedCapture::attach() {
+    std::unique_lock lock(registry, std::try_to_lock);
+    return lock ? current.lock() : nullptr;
+}
+
 int SharedCapture::reopen() {
     ps_capture_close(session_);  // also closes an audio channel on it
     session_ = nullptr;

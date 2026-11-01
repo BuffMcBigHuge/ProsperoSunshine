@@ -200,20 +200,20 @@ private:
 // Game audio from Avcap2 as raw PCM: float32, stereo, 48 kHz, 1024 frames per packet (R2). Sunshine's
 // own Opus encoder then cuts the frames Moonlight negotiated (5 ms by default).
 //
-// When the capture session is lost (a game start takes the resource) or replaced by a reopen, the
-// audio channel is gone; the microphone then delivers paced silence and reopens its channel on the
-// current session every half second, so the stream itself never ends because of audio.
+// When the capture session is lost (a game start takes the resource), replaced by a reopen, or not
+// there yet as the stream starts, the audio channel is gone; the microphone then delivers paced
+// silence and reopens its channel on the current session every half second, so the stream itself
+// never ends because of audio.
 class avcap_mic final : public mic_t {
 public:
     static std::unique_ptr<mic_t> open(int channels, std::uint32_t sample_rate, std::uint32_t frame_size) {
         int rc = 0;
         auto shared = prospero::SharedCapture::acquire(rc);
-        if (!shared) {
-            BOOST_LOG(error) << "PS5 audio: capture session unavailable: "sv << rc;
-            return nullptr;
-        }
+        if (!shared) BOOST_LOG(warning) << "PS5 audio: capture session unavailable: "sv << rc << ", retrying"sv;
         auto mic = std::unique_ptr<avcap_mic>(new avcap_mic(std::move(shared), channels, sample_rate, frame_size));
-        if (!mic->open_channel()) return nullptr;
+        // A title started with the stream can hold the capture for a moment. Returning no microphone here left the
+        // whole stream silent: Sunshine only asks for a new one after a reinit, which the silent fallback never sends.
+        if (!mic->shared_ || !mic->open_channel()) mic->retry_at_ = std::chrono::steady_clock::now() + 500ms;
         return mic;
     }
 
@@ -290,8 +290,11 @@ private:
 
     capture_e silence(std::vector<float> &frame_buffer) {
         if (std::chrono::steady_clock::now() >= retry_at_) {
+            // Only the session video opened: if video failed too, the stream is ending, and opening one here would hold
+            // up its teardown.
+            if (!shared_) shared_ = prospero::SharedCapture::attach();
+            if (shared_ && open_channel()) BOOST_LOG(info) << "PS5 audio: channel reopened"sv;
             retry_at_ = std::chrono::steady_clock::now() + 500ms;
-            if (open_channel()) BOOST_LOG(info) << "PS5 audio: channel reopened"sv;
         }
         next_ = std::max(next_ + period_, std::chrono::steady_clock::now() - period_);
         std::this_thread::sleep_until(next_);
