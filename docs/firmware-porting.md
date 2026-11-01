@@ -14,7 +14,7 @@ Zusage, dass andere Versionen funktionieren.
 | Avcap2-Video-Konfiguration | `capture.c` `configure()` | 0x2E0 Bytes (10.x und 13.60 abweichend, `record_shift`, siehe „Berichte zum Video-Datensatz anderer Firmwares“), Unterblock-Größen, `0x2A4 = 2` (Bildschirm inkl. Home-Menü), RA-Profil 180 bei `0x28`, 182 für 1440p und 4K (nur auf 13.00 freigeschaltet, `ps_capture_large_modes_verified`), Zweck `0x14` = 2, für HEVC über 1080p 6 (`docs/re/hevc.md`) | Fest, auf 13.00 gemessen (`docs/re/avcap2-exports.md`) |
 | Avcap2-Audio-Konfiguration | `capture.c` | 0x38 Bytes, `cfg+0x14 = 2` (Remote-Play-Mix), `cfg+0x1C = 180` | Fest, auf 13.00 gemessen |
 | Frame-Descriptor | `video_ps5.cpp`, `docs/avcap2-descriptor.md` | `ReadVideo`: 0x70 Bytes, TSC-Zeitstempel in Wort 9. `ReadVideo2` (HEVC): 0x88 Bytes, Bildtyp `+0x2c`, TSC `+0x58`, Bytes des Bildes `+0x6c` (`docs/re/hevc.md`) | Fest, auf 13.00 gemessen |
-| Bitrate | `capture.c` `configure()`, Host-Konfiguration | Die Bitrate steht beim Öffnen in `cfg+0xc8/0xcc/0xd0` (HEVC zusätzlich `+0x10c`); der Host klemmt auf 50 Mbit/s. `SetVideoBitrate` allein stoppte den Encoder ab 16 Mbit/s und bei HEVC über dem Wert beim Öffnen | Auf 13.00 gemessen (`docs/re/hevc.md`) |
+| Bitrate | `capture.c` `configure()`, Host-Konfiguration | Die Bitrate steht beim Öffnen in `cfg+0xc8/0xcc/0xd0` (HEVC zusätzlich `+0x10c`); der Host klemmt auf 150 Mbit/s auf 13.00 und sonst auf 50 (`ps_capture_high_bitrate_verified`). `SetVideoBitrate` allein stoppte den Encoder ab 16 Mbit/s und bei HEVC über dem Wert beim Öffnen | Auf 13.00 gemessen (`docs/re/hevc.md`) |
 | HEVC | `capture.c` `ps_capture_open`, `configure()` | `cfg+0x24 = 1`; Encoder-Speicher (Memory Mode 1: `cfg+0x198 = 0x50`, `cfg+0x1a0 = 1`, Import per NID `yN0w4tWivqs`, Freigabe `96UQhNnBlxc`); die Remote-Play-Felder (nicht auf ein Minimum reduziert); Lesen nur mit `ReadVideo2`; Parameter-Sets aus `GetNonVclNalUnitStream` als SPS, PPS, VPS, der Host sortiert das VPS nach vorn | Fest, auf 13.00 gemessen. Auf 10.20 reicht `cfg+0x24 = 1`, auch für 10 Bit; Speicher und Remote-Play-Felder entfallen auf 10.x. Der Host bietet HEVC auf 13.00 und 10.20 an (`ps_capture_hevc_verified`), sonst H.264 |
 | Virtuelles Pad | `pad.c`, `pad.h` | ioctls auf `/dev/hid`: add `0xC018482A`, insert `0x8018482C`, delete `0x80104850`; Blöcke 0xA8 Bytes, Layout im Kopfkommentar von `pad.c` | Fest, auf 13.00 gemessen; unverändert |
 | Kernel-Zugriffe des SDK | PS5 Payload SDK v0.45 | `kernel_dynlib_*`, `kernel_get_fw_version` nutzen SDK-interne Kernel-Offsets je Firmware | Vom SDK abgedeckt, sofern es die Version kennt |
@@ -98,7 +98,7 @@ Nur auf einer Konsole mit dieser Firmware, Schritt für Schritt, mit klog:
    `docs/avcap2-descriptor.md`).
 5. **Audio:** `audio_spike.elf`: `OpenAudio` mit `cfg+0x1C = 180` muss PCM liefern.
 6. **Bitrate:** Das Öffnen mit der Bitrate in `cfg+0xc8/0xcc/0xd0` muss auch über 15 Mbit/s laufen (13.00: 20, 30 und 50 Mbit/s
-   ohne Fehler, `docs/re/hevc.md`). Hält der Encoder nur weniger, die Klemme des Hosts (50 Mbit/s) senken.
+   ohne Fehler, `docs/re/hevc.md`). Hält der Encoder nur weniger, die Klemme des Hosts (50 Mbit/s außerhalb von 13.00) senken.
 7. **HEVC (optional):** `hevc_spike.elf`: `OpenVideo` mit `cfg+0x24 = 1`, Speicher-Reservierung (`yN0w4tWivqs`) und
    `sceAvcap2Start` müssen 0 liefern, `ReadVideo2` Bilder; mit `ffmpeg -xerror` decodieren, das VPS muss vorn stehen. Bis das
    belegt ist, bietet der Host HEVC auf dieser Version nicht an (`ps_capture_hevc_verified` ist nur auf 13.00 und 10.20 wahr); die Prüfung

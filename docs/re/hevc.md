@@ -50,9 +50,10 @@ HEVC 256.
 * **Bitrate nur senken:** `SetVideoBitrate` über den Wert beim Öffnen hinaus tötet den Kanal, das nächste `ReadVideo2`
   liefert `0x80c78000`. Gemessen: 20 → 40 Mbit/s bricht ab; 30 → 10 → 30 Mbit/s läuft durch.
 * **Obergrenze bei extremem Bild:** H.264 hält die Bitrate bei Rauschen über die ganze Fläche nicht ein (1080p 35–39, 4K rund 132 Mbit/s, unabhängig
-  von der Vorgabe); bei Rauschen auf einem Viertel der Fläche folgt sie der Vorgabe. HEVC ist so nicht gemessen.
-* **Last nur begrenzt gemessen:** Getestet mit dem Home-Bildschirm und der Demo von Mario 64. Mario erzeugte bei 100 Mbit/s
-  nur rund 33 Mbit/s. Ob der Encoder 100 Mbit/s in einem aufwendigen Spiel hält, ist offen; der Host klemmt daher auf 50 Mbit/s.
+  von der Vorgabe); bei Rauschen auf einem Viertel der Fläche folgt sie der Vorgabe.
+* **HEVC über 50 Mbit/s (13.00, 4K, je 15 s, Testclient):** HEVC folgt bei vollem Rauschen der Vorgabe: 51 → 73, 102 → 102, 154 → 151 Mbit/s; HDR 102 → 99. Bei Rauschen auf einem Viertel der Fläche bleibt es darunter (51 → 45, 81 → 57, 102 → 63, 154 → 67), HDR 102 → 36. Keine fehlenden Bilder, längste Lücke höchstens 34 ms. Der Host klemmt auf 13.00 deshalb auf 150 Mbit/s, auf anderer Firmware weiter auf 50, weil das Öffnen mit hoher Bitrate dort nicht gemessen ist (`ps_capture_high_bitrate_verified`).
+* **Last nur begrenzt gemessen:** Getestet mit dem Home-Bildschirm, der Demo von Mario 64 und Rauschseiten im Browser. Mario erzeugte bei 100 Mbit/s
+  nur rund 33 Mbit/s. Ob ein aufwendiges Spiel und ein echter Moonlight-Client über 50 Mbit/s sauber laufen, ist offen.
 
 ## 1440p und 4K
 

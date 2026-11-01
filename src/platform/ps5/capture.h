@@ -27,6 +27,8 @@ void ps_capture_set_ten_bit(uint32_t ten_bit);
 int ps_capture_hevc_verified(void);
 // Whether 1440p and 2160p were verified on this firmware.
 int ps_capture_large_modes_verified(void);
+// Whether opening above 50 Mbit/s was verified on this firmware.
+int ps_capture_high_bitrate_verified(void);
 // The resolution set for the next open. After the system refused the last open of a mode above 1080p (seen in a title,
 // the arbitrator logs "4K NG(4K120)"; other sources report OpenVideo refusing it when the console's output is smaller),
 // ps_capture_fall_back_mode sets 1080p and returns 1; otherwise it changes nothing.

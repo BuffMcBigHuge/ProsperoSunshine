@@ -112,6 +112,8 @@ int ps_capture_hevc_verified(void)
 
 int ps_capture_large_modes_verified(void) { return (kernel_get_fw_version() & 0xffff0000u) == 0x13000000u; }
 
+int ps_capture_high_bitrate_verified(void) { return (kernel_get_fw_version() & 0xffff0000u) == 0x13000000u; }
+
 static void mode_snapshot(uint32_t mode[6])
 {
     mode[5] = atomic_load(&video_ten_bit);

@@ -82,8 +82,10 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
 - HEVC and HDR are offered on firmware 13.00 and 10.20, elsewhere H.264. Clients that prefer HEVC pick it on their own. To
   force H.264, choose it in Moonlight's settings or set `hevc_mode = 1` in `sunshine.conf`; `hevc_mode = 2` keeps HEVC
   and turns HDR off.
-- The bitrate is capped at 50 Mbit/s. The encoder holds it in normal scenes, but extreme images can exceed it: full-screen
-  random noise reached about 130 Mbit/s at 4K and 35 Mbit/s at 1080p, whatever was set.
+- The bitrate is capped at 150 Mbit/s on firmware 13.00 and at 50 Mbit/s elsewhere. Above 50 Mbit/s it is measured only with a
+  test client on wired LAN and a noise image at 4K, not yet with Moonlight or in a game. Games may stay well below what you set.
+  With H.264, extreme images can exceed the setting: full-screen random noise reached about 140 Mbit/s at 4K and 35 Mbit/s at
+  1080p, whatever was set.
 - One streaming session at a time. More than one Moonlight controller is untested.
 - A real DualSense disconnects when the stream controller connects. Turned back on during the stream it stays without
   effect, because apps read only the controller that connected first; after the stream it works normally. The other way

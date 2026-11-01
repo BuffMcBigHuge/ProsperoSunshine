@@ -12,6 +12,9 @@
 
 ### Changed
 
+- The bitrate cap is 150 Mbit/s on firmware 13.00, up from 50, and stays at 50 elsewhere. Measured with a test client on wired LAN
+  and a noise image at 4K: HEVC follows the setting up to about 151 Mbit/s with no missing frames. Not yet tested with Moonlight or
+  in a game, and games may stay well below the setting.
 - Firmware 10.20 counts as verified: the app no longer calls it untested, and the host knows its ResourceArbitrator offsets.
   Moonlight on Android, iOS, Windows and Nintendo Switch streamed from a 10.20 console.
 
