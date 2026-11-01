@@ -1,16 +1,16 @@
 # ProsperoSunshine Roadmap und Umsetzungsplan
 
-Stand: 31. Oktober 2026, nach Release 0.1.3. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
+Stand: 1. November 2026, nach Release 0.1.5. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
 
-## Stand (31. Oktober 2026, nach Release 0.1.3)
+## Stand (1. November 2026, nach Release 0.1.5)
 
 Erledigt und live belegt (Details in `STATUS.md`): Phase 0 komplett, Spikes R1–R5 positiv (R6 ohne mDNS, das kam mit P9.2), Phase 1 komplett, P2.1–P2.4, P3.1–P3.4, P4.1–P4.2, P5.1, aus P6 die 30-Minuten-Sitzung und zehn Wiederverbindungen, P6.4 (automatischer Testclient in `tools/moonlight/`), P4.3 geprüft (Pad wird nach Abbruch neutral), P6.2 Paketverlust (10 % ohne Abbruch), P7.1 bis P7.5 und P8.1 bis P8.5, P8.7, P8.8. Ende-zu-Ende-Stream mit einem moonlight-common-c-Client funktioniert.
 
-Releases: `v0.1.0` am 2026-10-30 auf GitHub (CI grün, Katalog-Eintrag `PPSA47989` gemergt), `v0.1.1` mit der PS-Taste über Select, `v0.1.2` am 2026-10-31 mit HEVC, Rumble und Lichtleiste, `v0.1.3` am selben Tag mit Diagnosebericht, adaptiven Triggern und Erholung nach dem Ruhemodus. Die Store-API meldet `0.1.2`. Die Installation aus dem Store hat laut Nutzerbericht (2026-10-31) geklappt; die Installation von 0.1.2 selbst ist nicht eigens geprüft (P8.9).
+Releases: `v0.1.0` am 2026-10-30 auf GitHub (CI grün, Katalog-Eintrag `PPSA47989` gemergt), `v0.1.1` mit der PS-Taste über Select, `v0.1.2` am 2026-10-31 mit HEVC, Rumble und Lichtleiste, `v0.1.3` am selben Tag mit Diagnosebericht, adaptiven Triggern und Erholung nach dem Ruhemodus, `v0.1.4` ebenfalls am selben Tag mit H.264 in 1440p und 4K und dem Rückfall auf 1080p, `v0.1.5` am 2026-11-01 mit HEVC in 1440p und 4K, größerem Frame-Budget und einem ersten Versuch für 13.60. Die Store-API meldet `0.1.5`. Die Installation aus dem Store hat laut Nutzerbericht (2026-10-31) geklappt; die Installation der späteren Versionen ist nicht eigens geprüft (P8.9).
 
-Echte Clients: Moonlight Web, Moonlight am PC und Moonlight auf dem iPhone sind gepairt und streamen, das iPhone findet die PS5 per mDNS von selbst. Spiele sind als Bildquelle möglich (P1.4), der Host stellt Bild und Ton nach Spielstart/-ende selbst wieder her, es läuft nur eine Sitzung gleichzeitig. HEVC bis 50 Mbit/s (Nutzertest mit GTA III am PC bei 15 und 49,5 Mbit/s, iPhone bei 7 Mbit/s), Rumble (Nutzertest) und Lichtleiste (am Testclient) sind drin.
+Echte Clients: Moonlight Web, Moonlight am PC und Moonlight auf dem iPhone sind gepairt und streamen, das iPhone findet die PS5 per mDNS von selbst. Spiele sind als Bildquelle möglich (P1.4), der Host stellt Bild und Ton nach Spielstart/-ende selbst wieder her, es läuft nur eine Sitzung gleichzeitig. HEVC bis 50 Mbit/s (Nutzertest mit GTA III am PC bei 15 und 49,5 Mbit/s, iPhone bei 7 Mbit/s), Rumble (Nutzertest) und Lichtleiste (am Testclient) sind drin. H.264 und HEVC laufen in 1440p und 4K, HEVC-4K auch in Moonlight am PC (Nutzertest vor dem größeren Frame-Budget).
 
-Verifiziert ist nur Firmware 13.00. Auf anderen Versionen ist das Verhalten ungeprüft; es gibt Meldungen zu 13.60 (Issue #1) und 10.40 (Issue #2). Das bestimmt die nächsten Schritte, siehe „Nächste konkrete Schritte“ am Ende.
+Verifiziert ist nur Firmware 13.00. Für andere Versionen gibt es jetzt konkrete Spuren: Der Video-Datensatz hängt von der Firmware ab (`docs/firmware-porting.md`). Für 13.60 enthält 0.1.5 ein Layout aus öffentlichen Projekten, ungeprüft (Issue #1). Für 10.20 meldet ein Tester Streams mit einem kürzeren Datensatz, 10.40 dürfte ihn ebenfalls brauchen (Issue #2). Das bestimmt die nächsten Schritte, siehe „Nächste konkrete Schritte“ am Ende.
 
 ## Zielbild v1.0
 
@@ -241,7 +241,7 @@ Offen, in dieser Reihenfolge, jeweils mit eigenem Spike: weitere Firmware-Versio
 
 | Meilenstein | Ziel | Fertig, wenn | Abhängig von |
 | --- | --- | --- | --- |
-| 0.2 Mehr Konsolen | Andere Firmwares, zuerst 10.40 und 13.60 aus den Issues | Mindestens eine weitere Firmware besteht die Checkliste in `docs/firmware-porting.md` | Diagnoseberichten und Testern; hier läuft nur 13.00 |
+| 0.2 Mehr Konsolen | Andere Firmwares, zuerst 10.40 und 13.60 aus den Issues | Mindestens eine weitere Firmware besteht die Checkliste in `docs/firmware-porting.md`. Stand: 13.60 wartet auf Berichte zu 0.1.5, für 10.x hat ein Tester einen PR angeboten | Diagnoseberichten und Testern; hier läuft nur 13.00 |
 | 0.3 Alltagstauglich | Der Host läuft zuverlässig, ohne Pflege | Ruhemodus mit Controller, offenem Spiel und laufendem Stream geprüft; Android und TV geprüft; Wake-on-LAN geprüft (die MAC kommt beim Client an); Fehlstarts geklärt (Windows-Client: 0 in 150); Dauertest über mehrere Stunden im Spiel; mehrere Controller im Spiel geprüft | Teils Nutzertests |
 | 0.4 Mehr Bild | 1440p, 4K, HDR | Mindestens eines davon stabil im Stream, oder belegt, warum nicht. Stand: H.264 und HEVC in 1440p und 4K laufen auch unter Last (`STATUS.md`); es fehlt der aktive Spielbetrieb. HDR ist offen | Reverse Engineering |
 | 1.0 Stabil | Klare Zusage, was unterstützt ist | Liste geprüfter Firmwares und Clients; mehrstündige Sitzung in mindestens zwei Spielen ohne Ausfall; Ruhemodus belegt oder klar ausgeschlossen; Neuinstallation aus dem Store nach Anleitung, von jemandem ohne Vorwissen | Den Meilensteinen davor |
@@ -250,8 +250,12 @@ Bewusst nicht geplant: Haptik (Moonlight hat keinen Kanal dafür); harte Trigger
 
 ## Nächste konkrete Schritte
 
-1. Diagnoseberichte aus den Issues #1 (13.60) und #2 (10.40) abwarten; 0.1.3 enthält den Bericht und die klare Meldung auf nicht unterstützter Firmware.
-2. Portierung einzelner Firmwares, sobald Berichte vorliegen. Reihenfolge nach Bericht, Checkliste in `docs/firmware-porting.md`; eine Version gilt erst als unterstützt, wenn die Schritte 3 bis 6, 8 und 9 belegt sind (Schritt 7 nur für HEVC).
-3. Weitere Clients (P9.6): Android, TV/Shield, Steam Deck.
-4. Adaptive Trigger (P9.10): Moonlight PC müsste die Effekte beim Beenden zurücksetzen (`docs/re/adaptive-triggers.md`).
-5. Ungeklärtes aus `STATUS.md`: seltene Fehlstarts (1 in 86 im Docker-Client, 0 in 150 im Windows-Client). Ruhemodus: Der Host erkennt die verlorenen Ports und startet seine Dienste im selben Prozess neu (`src/control/listener_watch.hpp`, Patch 0009), in zwei Tests sauber (`STATUS.md`). Offen sind der einmalige Hänger des ersten Tests ohne diese Erholung und die Fälle Aufwecken per Controller, offenes Spiel, laufender Stream; Tests nur nach Rückfrage.
+1. 13.60: Berichte aus Issue #1 zu 0.1.5 auswerten. Der Versuch gilt H.264 in 1080p; Ton und Controller sind dort ebenfalls ungeprüft.
+2. 10.x: Den angebotenen PR aus Issue #2 prüfen und mergen, danach 10.40 testen lassen. Bei 10.20 offen laut Bericht: Bitrate, 34 Slices je Bild (Moonlight unter Windows nur mit Software-Decoding), PCM-Ton zu langsam.
+3. Eine Firmware gilt erst als unterstützt, wenn die Schritte 3 bis 6, 8 und 9 der Checkliste in `docs/firmware-porting.md` belegt sind (Schritt 7 nur für HEVC). Dann kommt sie in die README.
+4. Längere Spielsitzung in 4K mit HEVC in Moonlight (Nutzertest, Logs danach auswerten): Das fehlt für 0.3 und 0.4 und prüft auch das größere Frame-Budget am echten Client.
+5. Rückfall bei echter kleinerer Bildausgabe: Bildausgabe der Konsole auf 1080p, 4K verlangen. Die Einstellung ändert der Nutzer. Bisher nur per Probe nachgestellt (`STATUS.md`).
+6. Weitere Clients (P9.6): Android, TV/Shield, Steam Deck. Mehrere Controller im Spiel.
+7. Ungeklärtes aus `STATUS.md`: seltene Fehlstarts (1 in 86 im Docker-Client, 0 in 150 im Windows-Client). Ruhemodus: Der Host erkennt die verlorenen Ports und startet seine Dienste im selben Prozess neu (`src/control/listener_watch.hpp`, Patch 0009), in zwei Tests sauber (`STATUS.md`). Offen sind der einmalige Hänger des ersten Tests ohne diese Erholung und die Fälle Aufwecken per Controller, offenes Spiel, laufender Stream, dazu Wake-on-LAN; Tests nur nach Rückfrage.
+8. Danach HDR (letzter offener Punkt von 0.4). Bei Bedarf: Level 6.0 in 4K, falls ein Client daran scheitert (erster Versuch `cfg+0x5c = 4`, `docs/re/hevc.md`); zurück auf 4K, wenn nach einem Rückfall der Titel endet.
+9. Adaptive Trigger (P9.10): Moonlight PC müsste die Effekte beim Beenden zurücksetzen (`docs/re/adaptive-triggers.md`).
