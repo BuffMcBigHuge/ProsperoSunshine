@@ -14,6 +14,7 @@
 
 - Firmware 10.20 counts as verified: the app no longer calls it untested, and the host knows its ResourceArbitrator offsets.
   Moonlight on Android, iOS, Windows and Nintendo Switch streamed from a 10.20 console.
+
 ### Fixed
 
 - Game audio no longer stays silent after the capture is reopened, as happens when a title starts during a stream. The
@@ -22,8 +23,6 @@
 - Game audio also comes when the capture isn't available as the stream starts, as can happen while the game picked in
   Moonlight starts. The stream used to stay silent to its end; the audio now retries every half second, as after a later
   loss. Not yet seen on the console.
-### Fixed
-
 - Picking a game in Moonlight while another one is in front now fails the launch instead of reporting success. The host still
   doesn't close the game in front; before, Moonlight named the game it asked for while the stream showed the other one. "PS5
   Screen" streams whatever is in front.
