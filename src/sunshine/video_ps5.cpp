@@ -53,7 +53,7 @@ std::chrono::steady_clock::time_point capture_time(const prospero::CaptureSessio
 
 int probe_encoders() {
     tsc_per_ns();
-    // The HEVC setup is measured on firmware 13.00 only. Elsewhere a client that prefers HEVC would lose the
+    // The HEVC setup is measured on firmware 13.00 and 10.20 only. Elsewhere a client that prefers HEVC would lose the
     // stream if it fails, while H.264 may still run. hevc_mode = 1 in sunshine.conf turns it off, 2 turns off HDR.
     const int hevc_mode = config::video.hevc_mode;
     active_hevc_mode = hevc_mode == 1 || !ps_capture_hevc_verified() ? 1 : hevc_mode == 2 ? 2 : 3;

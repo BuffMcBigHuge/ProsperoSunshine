@@ -104,7 +104,11 @@ void ps_capture_set_ten_bit(uint32_t ten_bit) { atomic_store(&video_ten_bit, ten
 
 int ps_capture_last_open_rc(void) { return atomic_load(&last_open_rc); }
 
-int ps_capture_hevc_verified(void) { return (kernel_get_fw_version() & 0xffff0000u) == 0x13000000u; }
+int ps_capture_hevc_verified(void)
+{
+    const uint32_t firmware = kernel_get_fw_version();
+    return (firmware & 0xffff0000u) == 0x13000000u || (firmware & 0xffff0000u) == 0x10200000u;
+}
 
 int ps_capture_large_modes_verified(void) { return (kernel_get_fw_version() & 0xffff0000u) == 0x13000000u; }
 
@@ -160,7 +164,8 @@ void ps_capture_override_config(size_t field, uint32_t value)
 // Firmware 10.x (measured on 10.20): the block is 0x18 bytes smaller, and what 13.00 keeps from 0x198 on sits 0x18 lower.
 // 13.00's rate fields land on other encoder fields there (Start returns 0x80c78000). The measured record also leaves out
 // 13.00's inner sub-block headers, so 10.x writes neither, and the encoder keeps its default rate.
-// HEVC is offered on 13.00 only (ps_capture_hevc_verified): its fields stay at 13.00's offsets on 13.60 and are left out on 10.x.
+// HEVC is offered on 13.00 and 10.20 (ps_capture_hevc_verified). On 10.20 cfg+0x24 alone starts it, 8 and 10 bit, so
+// Remote Play's fields and the encoder memory are left out on 10.x. On 13.60 its fields would stay at 13.00's offsets.
 static ptrdiff_t record_shift(void)
 {
     const uint32_t firmware = kernel_get_fw_version();
@@ -378,7 +383,7 @@ int ps_capture_open(ps_capture **out)
     uint8_t config[0x2e8] = {0};
     mode_snapshot(s->mode);
     configure(config, (uint32_t)output);
-    if (atomic_load(&video_codec) == 1) {
+    if (atomic_load(&video_codec) == 1 && record_shift() >= 0) {
         // Memory Mode 1 as Remote Play sets it up (SceRemotePlay 0x6fb83..0x6fc65).
         step = "encoder memory";
         int (*reserve)(const void *, void *, void *) = (void *)kernel_dynlib_resolve(-1, av, "yN0w4tWivqs");

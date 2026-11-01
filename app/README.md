@@ -16,7 +16,7 @@ ShadowMountPlus.
 
 ## Requirements
 
-- The host's requirements (`../README.md`): an ELF loader on port 9021; FW 13.00 is the only tested version.
+- The host's requirements (`../README.md`): an ELF loader on port 9021; FW 13.00 and 10.20 are the tested versions.
 - ShadowMountPlus, to register the title.
 - For **Start at boot**: the [Payload Manager](https://github.com/itsPLK/ps5-payload-manager)
   (`PLDM00001`, tested with v0.6.3), with its own autoload switched on.

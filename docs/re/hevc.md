@@ -1,14 +1,14 @@
 # HEVC über Avcap2 (P9.7)
 
-Stand 2026-10-31, Firmware 13.00. `src/hevc_spike.cpp` ist der Spike, der Host nutzt den Weg über `video_ps5.cpp`; die Messwerte stehen in `STATUS.md`.
+Stand 2026-11-01, Firmware 13.00; 10.x im Abschnitt „Firmware 10.x“. `src/hevc_spike.cpp` ist der Spike, der Host nutzt den Weg über `video_ps5.cpp`; die Messwerte stehen in `STATUS.md`.
 
 ## Ergebnis
 
-Avcap2 liefert HEVC Main (8 Bit, 4:2:0, BT.709, nur I- und P-Bilder) in 1080p (Level 5.0), 1440p und 4K (Level 6.0). Über 1080p braucht es einen anderen Zweck als Remote Play, siehe „1440p und 4K“. Der Host bietet HEVC auf Firmware 13.00 an (`ps_capture_hevc_verified`), auf anderen nur H.264.
+Avcap2 liefert HEVC Main (8 Bit, 4:2:0, BT.709, nur I- und P-Bilder) in 1080p (Level 5.0), 1440p und 4K (Level 6.0). Über 1080p braucht es einen anderen Zweck als Remote Play, siehe „1440p und 4K“. Der Host bietet HEVC auf Firmware 13.00 und 10.20 an (`ps_capture_hevc_verified`, siehe „Firmware 10.x“), auf anderen nur H.264.
 
 ## Was nötig war
 
-Nur `cfg+0x24 = 1` reicht nicht: `sceAvcap2OpenVideo` meldet 0, `sceAvcap2Start` dann `0x80c78000`. `ps_capture_open`
+Auf 13.00 reicht `cfg+0x24 = 1` allein nicht: `sceAvcap2OpenVideo` meldet 0, `sceAvcap2Start` dann `0x80c78000`. `ps_capture_open`
 macht für HEVC zusätzlich drei Dinge wie Remote Play (`SceRemotePlay 0x6f7f0`, Bitraten `0x70130`):
 
 1. **Encoder-Speicher reservieren** (Memory Mode 1): `cfg+0x198 = 0x50`, `cfg+0x1a0 = 1` und vor dem Öffnen der Import
@@ -22,6 +22,18 @@ macht für HEVC zusätzlich drei Dinge wie Remote Play (`SceRemotePlay 0x6f7f0`,
    „alle Felder außer den Quantisierer- und Endwerten“ (`+0xd4`, `+0x220..`, `+0x2b8..`) ergaben beide `0x80c78000`.
 
 Das Ressourcen-Profil ist nicht die Ursache: 175, 177, 180, 182 und 185 scheiterten ohne die Punkte 1–3 gleich.
+
+## Firmware 10.x
+
+Gemessen auf 10.20 mit einer Sonde auf dem Datensatz von 10.x (`docs/firmware-porting.md`): `cfg+0x24 = 1` allein startet HEVC,
+mit 8 und 10 Bit, 30 und 60 fps. Die Speicher-Reservierung (an `0x180`, wo 10.x das `0x198` von 13.00 hat) und die
+Remote-Play-Felder außerhalb des Blocks `0xb8` ändern nichts; die inneren Felder an den Stellen von 13.00 lehnt der Validator ab
+(`0x81950001`). Der Host lässt auf 10.x deshalb beides weg und bietet HEVC auf 10.20 an; andere 10.x-Versionen sind ungemessen. Jedes Bild hat 17 Slice-Segmente (H.264 dort: 34). 10 Bit ergibt
+Main 10 mit BT.2020 und PQ. Die Quantisierer-Felder von 10.x (`cfg+0xc4` IDR, `cfg+0xc8` P) wirken auch bei HEVC.
+
+Auf einem Windows-PC (FFmpeg mit `err_detect=explode`, wie Moonlight) decodieren D3D11VA, DXVA2 und D3D12VA alle HEVC-Bilder von
+10.20; das H.264 von 10.20 scheitert dort an jedem Bild, weil FFmpeg für H.264 höchstens 32 Slices annimmt (`MAX_SLICES`), für
+HEVC 256.
 
 ## Lesen und Header
 

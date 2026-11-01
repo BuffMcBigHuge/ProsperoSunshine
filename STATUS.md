@@ -14,7 +14,7 @@ Echte Moonlight-Clients (Moonlight Web, Moonlight PC, Moonlight auf dem iPhone i
 
 **Bild-/Ton-Synchronisation (P5.2, erste Messung; die Bildwerte sind überholt, siehe „Bild und Ton beim Tastendruck“ unter „Stand 30. Oktober 2026“):** Navigationsklick im Home-Menü als gemeinsames Ereignis, 60 s, gemessen am Client (`tools/moonlight/av_sync.py`). Tastendruck → Bildänderung 23–25 ms, Tastendruck → Klickton 28–49 ms; Ton liegt 5–23 ms hinter dem Bild (burst-korrigiert Median ≈ 0 ms), also innerhalb der üblichen ±45-ms-Toleranz. Nur die Rechts-Drücke sind auswertbar (bei Links-Drücken erkennt der Bild-Detektor die Änderung nicht zuverlässig); der Drift über 60 s (−4,3 ms/min) ist zu kurz gemessen, ein 10-Minuten-Lauf steht aus.
 
-**Noch nicht geprüft:** Moonlight auf Android/TV, andere Firmwares als 13.00.
+**Noch nicht geprüft:** Moonlight auf Android/TV, andere Firmwares als 13.00 und 10.20.
 
 ## Nachweise nach Roadmap
 
@@ -227,6 +227,28 @@ Moonlight bekommt nun HEVC Main 10 angeboten (`ServerCodecModeSupport` 769), `he
 - **Metadaten:** Avcap2 liefert keine, der Host schickt Nullen (unbekannt).
 - **Echter Client auf einem HDR-Fernseher:** Der Besitzer startete Digimon Story Time Stranger aus Moonlight am TV mit eingeschaltetem HDR. `sunshine.log`: Spiel gestartet, `requested 3840x2160@60, delivering 3840x2160@60`, `HEVC HDR bitrate 50000 kbit/s (requested 110988)`, Ton und Pad verbunden, keine Warnung bis zum Lesen während des laufenden Streams. Das Urteil zum Bild kommt vom Besitzer: Es passt, trotz der Metadaten-Nullen. Gemessen ist am Client nichts, die Dauer des Streams auch nicht.
 - **Offen:** andere Clients und Bildschirme, wie sie mit den Metadaten-Nullen umgehen. Ob Digimon selbst HDR ausgibt. Die Matrix aus Bildausgabe der Konsole und Stream (`docs/re/hdr.md`, Schritt 5); die Einstellung ändert der Besitzer. Der Rückfall auf 1080p in 10 Bit ist nicht eigens gemessen.
+
+### HEVC auf Firmware 10.20 (2026-11-01, nicht veröffentlicht)
+
+Gemessen auf einer PS5 Pro mit 10.20 (Datensatz von 10.x, `record_shift`). Eine Sonde zeigte: `cfg+0x24 = 1` allein startet HEVC,
+8 und 10 Bit, 30 und 60 fps; Speicher-Reservierung und Remote-Play-Felder ändern nichts (`docs/re/hevc.md`). Jedes Bild hat
+17 Slice-Segmente, H.264 dort 34.
+
+| Lauf | Ergebnis |
+| --- | --- |
+| Sonde, je 2 s, Startbildschirm, Bilder auf einem Windows-PC mit FFmpeg (`err_detect=explode`) decodiert | HEVC 8 und 10 Bit: D3D11VA, DXVA2 und D3D12VA je 120 von 120 Bildern. H.264 derselben Konsole: 0 von 180 per Hardware, 180 von 180 in Software |
+| 10 Bit | Main 10, `p010` über D3D11VA, BT.2020, PQ, begrenzter Bereich |
+| Testhost mit dieser Änderung, dazu #4, #5 und ein Test-Quantisierer für 10.x (`cfg+0xc4`/`+0xc8` je nach Bitrate 24/28, 27/31 oder 30/34; nicht in diesem Stand), Moonlight unter Windows, Decoder und Codec auf „Automatisch“, „PS5 Screen“, 36 s | `HEVC`, 1920x1080, 60,3 fps, 0 % verlorene Bilder, Decodierzeit 0,38 ms. Log: `PS5 capture HEVC bitrate …`, keine Warnung |
+| dasselbe mit HDR | `HEVC 10-bit HDR`, 60,05 fps, 0 % verlorene Bilder, Decodierzeit 0,40 ms. Log: `PS5 capture HEVC HDR bitrate …` |
+
+- **Clients:** Der Besitzer hat am selben Tag auf dieser Konsole Moonlight auf Android (2448x1080), iOS (2796x1290), Windows x64
+  und Nintendo Switch (1280x720) genutzt, alle ohne Probleme. Windows mit dem Testhost oben (HEVC und HEVC HDR), die anderen vorher mit
+  H.264 auf dem Datensatz von 10.x.
+- **10.20 gilt als geprüft:** Die App zeigt dort keinen Hinweis „untested“ mehr, und `ra_nids.h` kennt die Adressen der
+  ResourceArbitrator-Aufrufe (`0xde0`, `0xfe0`, `0x1220`, `0x1360`, auf 10.20 per NID gefunden). `ra_nid_probe.elf` aus diesem Stand meldet dort `result=PASS … known=1`, NID und Tabelle stimmen für alle vier überein.
+- **Offen:** HEVC auf Android, iOS und Switch (dort bisher nur H.264); andere 10.x-Versionen (bekommen nur H.264); Schritt 6
+  der Checkliste (Bitrate beim Öffnen) ist auf 10.x nicht erfüllbar; Modi über 1080p bleiben auf 10.x aus (`ps_capture_large_modes_verified`); die Bitrate,
+  die der Encoder auf 10.x wie bei H.264 nicht aus der Konfiguration übernimmt.
 
 ## Bauen und testen
 
