@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Picking a game in Moonlight while another one is in front now fails the launch instead of reporting success. The host still
+  doesn't close the game in front; before, Moonlight named the game it asked for while the stream showed the other one. "PS5
+  Screen" streams whatever is in front.
+
 ## 0.1.6 (2026-11-01)
 
 ### Added

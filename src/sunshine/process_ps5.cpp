@@ -73,22 +73,24 @@ bool settings_app_closed() {
     return false;
 }
 
-void start_title(const std::string &id) {
+// False when another title is in front and stays there: the stream would show that one, not the title the client asked for.
+bool start_title(const std::string &id) {
     char running[16];
     if (ps_title_running(running) > 0) {
         if (id == running) {
             BOOST_LOG(info) << "Title "sv << id << " is already in front"sv;
-            return;
+            return true;
         }
         if (settings_app != running || !settings_app_closed()) {
             BOOST_LOG(warning) << "Not starting "sv << id << ": "sv << running << " is in front and closing it could lose progress"sv;
-            return;
+            return false;
         }
     }
     // Without a title the stream still shows the console.
     const int rc = ps_title_launch(id.c_str());
     if (rc < 0) BOOST_LOG(warning) << "Starting "sv << id << " failed: "sv << util::hex(rc).to_string_view();
     else BOOST_LOG(info) << "Started "sv << id;
+    return true;
 }
 
 class proc_deinit_t final : public platf::deinit_t {
@@ -117,7 +119,12 @@ int proc_t::execute(int app_id, std::shared_ptr<rtsp_stream::launch_session_t>) 
     _app_launch_time = std::chrono::steady_clock::now();
     placebo = true;
     BOOST_LOG(info) << "Session app ["sv << _app.name << "] marked running"sv;
-    if (!_app.cmd.empty()) start_title(_app.cmd);
+    if (!_app.cmd.empty() && !start_title(_app.cmd)) {
+        // Refuse the launch, so the client doesn't name this title over a stream of the one in front. "PS5 Screen" still
+        // streams whatever is in front.
+        terminate();
+        return 409;
+    }
     return 0;
 }
 
