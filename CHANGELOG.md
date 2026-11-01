@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Game audio no longer stays silent after the capture is reopened, as happens when a title starts during a stream. The
+  microphone read the session's generation before taking the lock that opens its channel; a reopen in between left the new
+  channel marked as old, and every later open failed on it until the capture was reopened again or the stream ended.
+
 ## 0.1.6 (2026-11-01)
 
 ### Added

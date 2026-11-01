@@ -263,8 +263,14 @@ private:
           period_(std::chrono::nanoseconds(1'000'000'000LL * frame_size / sample_rate)), packet_(0xC000) {}
 
     bool open_channel() {
-        const unsigned generation = shared_->generation();
-        const int rc = shared_->exclusive([](ps_capture *s) { return ps_capture_audio_open(s, 0, 0, 0); });
+        // The generation is read under the lock that opens the channel. Read before it, a reopen in between (a game
+        // starting) left the channel on the new session marked with the old generation: the next sample() then dropped
+        // it without closing it, and every later open failed on the channel already there.
+        unsigned generation = 0;
+        const int rc = shared_->exclusive([&](ps_capture *s) {
+            generation = shared_->generation();
+            return ps_capture_audio_open(s, 0, 0, 0);
+        });
         if (rc) {
             BOOST_LOG(warning) << "PS5 audio: OpenAudio failed: "sv << rc;
             return false;
@@ -276,9 +282,9 @@ private:
     }
 
     void close_channel() {
-        // After a reopen the channel died with the old session; closing would hit the new one.
-        if (generation_ == shared_->generation())
-            shared_->exclusive([](ps_capture *s) { return ps_capture_audio_close(s); });
+        // After a reopen the channel died with the old session; closing would hit the new one. Checked under the lock,
+        // so a reopen can't slip in between.
+        shared_->exclusive([&](ps_capture *s) { return generation_ == shared_->generation() ? ps_capture_audio_close(s) : 0; });
         open_ = false;
     }
 
