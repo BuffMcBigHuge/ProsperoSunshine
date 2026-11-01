@@ -18,7 +18,7 @@ Ein unveränderter Moonlight-Client im lokalen Netz fügt die PS5 per IP hinzu, 
 
 Nicht in v1.0: HEVC/AV1, HDR, 4K, mehrere Clients oder Controller, Mikrofon, Rumble, adaptive Trigger, Internetzugriff, Maus/Tastatur.
 
-Davon ist seit 0.1.2 HEVC (bis 50 Mbit/s), Rumble und die Lichtleiste des Pads dazugekommen, seit 0.1.4 1440p und 4K, jeweils nur auf Firmware 13.00. HDR läuft im Testclient (`STATUS.md`), noch nicht veröffentlicht. Weiter nicht vorgesehen: AV1, mehrere Clients oder Controller, Mikrofon, adaptive Trigger, Internetzugriff, Maus/Tastatur.
+Davon ist seit 0.1.2 HEVC (bis 50 Mbit/s), Rumble und die Lichtleiste des Pads dazugekommen, seit 0.1.4 1440p und 4K, jeweils nur auf Firmware 13.00. HDR läuft im Testclient und mit einem echten Moonlight am HDR-Fernseher (`STATUS.md`), noch nicht veröffentlicht. Weiter nicht vorgesehen: AV1, mehrere Clients oder Controller, Mikrofon, adaptive Trigger, Internetzugriff, Maus/Tastatur.
 
 ## Architekturentscheidung (Vorschlag ADR-001, Abschluss in Phase 0)
 
@@ -243,7 +243,7 @@ Offen, in dieser Reihenfolge, jeweils mit eigenem Spike: weitere Firmware-Versio
 | --- | --- | --- | --- |
 | 0.2 Mehr Konsolen | Andere Firmwares, zuerst 10.40 und 13.60 aus den Issues | Mindestens eine weitere Firmware besteht die Checkliste in `docs/firmware-porting.md`. Stand: 13.60 wartet auf Berichte zu 0.1.5, für 10.x hat ein Tester einen PR angeboten | Diagnoseberichten und Testern; hier läuft nur 13.00 |
 | 0.3 Alltagstauglich | Der Host läuft zuverlässig, ohne Pflege | Ruhemodus mit Controller, offenem Spiel und laufendem Stream geprüft; Android und TV geprüft; Wake-on-LAN geprüft (die MAC kommt beim Client an); Fehlstarts geklärt (Windows-Client: 0 in 150); Dauertest über mehrere Stunden im Spiel; mehrere Controller im Spiel geprüft | Teils Nutzertests |
-| 0.4 Mehr Bild | 1440p, 4K, HDR | Mindestens eines davon stabil im Stream, oder belegt, warum nicht. Stand: H.264 und HEVC in 1440p und 4K laufen auch unter Last (`STATUS.md`); es fehlt der aktive Spielbetrieb. HDR läuft im Testclient, es fehlt ein echter Client auf einem HDR-Bildschirm | Reverse Engineering |
+| 0.4 Mehr Bild | 1440p, 4K, HDR | Mindestens eines davon stabil im Stream, oder belegt, warum nicht. Stand: H.264 und HEVC in 1440p und 4K laufen auch unter Last (`STATUS.md`); es fehlt der aktive Spielbetrieb. HDR läuft im Testclient und mit einem echten Client am HDR-Fernseher | Reverse Engineering |
 | 1.0 Stabil | Klare Zusage, was unterstützt ist | Liste geprüfter Firmwares und Clients; mehrstündige Sitzung in mindestens zwei Spielen ohne Ausfall; Ruhemodus belegt oder klar ausgeschlossen; Neuinstallation aus dem Store nach Anleitung, von jemandem ohne Vorwissen | Den Meilensteinen davor |
 
 Bewusst nicht geplant: Haptik (Moonlight hat keinen Kanal dafür); harte Trigger nach dem Stream lassen sich nur in Moonlight beheben.
@@ -257,5 +257,5 @@ Bewusst nicht geplant: Haptik (Moonlight hat keinen Kanal dafür); harte Trigger
 5. Rückfall bei echter kleinerer Bildausgabe: Bildausgabe der Konsole auf 1080p, 4K verlangen. Die Einstellung ändert der Nutzer. Bisher nur per Probe nachgestellt (`STATUS.md`).
 6. Weitere Clients (P9.6): Android, TV/Shield, Steam Deck. Mehrere Controller im Spiel.
 7. Ungeklärtes aus `STATUS.md`: seltene Fehlstarts (1 in 86 im Docker-Client, 0 in 150 im Windows-Client). Ruhemodus: Der Host erkennt die verlorenen Ports und startet seine Dienste im selben Prozess neu (`src/control/listener_watch.hpp`, Patch 0009), in zwei Tests sauber (`STATUS.md`). Offen sind der einmalige Hänger des ersten Tests ohne diese Erholung und die Fälle Aufwecken per Controller, offenes Spiel, laufender Stream, dazu Wake-on-LAN; Tests nur nach Rückfrage.
-8. HDR am echten Client (letzter offener Punkt von 0.4): Moonlight mit HDR-Schalter auf einem HDR-Bildschirm, ein HDR-Spiel, dazu die Matrix aus `docs/re/hdr.md`, Schritt 5 (Einstellung ändert der Nutzer). Touch und Bewegung in einem Titel, der sie nutzt. Bei Bedarf: Level 6.0 in 4K, falls ein Client daran scheitert (erster Versuch `cfg+0x5c = 4`, `docs/re/hevc.md`); zurück auf 4K, wenn nach einem Rückfall der Titel endet.
+8. HDR weiter prüfen: andere Clients und Bildschirme wegen der fehlenden Metadaten, ein Spiel, das sicher HDR ausgibt, dazu die Matrix aus `docs/re/hdr.md`, Schritt 5 (Einstellung ändert der Nutzer). Touch und Bewegung in einem Titel, der sie nutzt. Bei Bedarf: Level 6.0 in 4K, falls ein Client daran scheitert (erster Versuch `cfg+0x5c = 4`, `docs/re/hevc.md`); zurück auf 4K, wenn nach einem Rückfall der Titel endet.
 9. Adaptive Trigger (P9.10): Moonlight PC müsste die Effekte beim Beenden zurücksetzen (`docs/re/adaptive-triggers.md`).

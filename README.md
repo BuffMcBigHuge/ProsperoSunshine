@@ -70,7 +70,7 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
 
 ## Known limits
 
-- SDR only. On firmware 13.00, H.264 and HEVC stream at 1080p, 1440p or 4K, whichever the client asks for. Every other
+- On firmware 13.00, H.264 and HEVC stream at 1080p, 1440p or 4K, whichever the client asks for. Every other
   firmware stays at 1080p. A client asking for less than 1080p gets 1080p and scales it. The frame rate follows the client:
   30 or 60 fps.
 - The console refuses 1440p and 4K capture in some titles (seen in a Mario 64 port and Teardown; GTA III works). The stream
@@ -78,8 +78,9 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   apply when the console's video output is smaller than the request; that is not tested yet.
 - At 4K the console can show "Gameplay recording paused because you entered a blocked scene" shortly after the stream starts
   (seen in GTA III). The stream keeps running.
-- HEVC (8-bit) is offered on firmware 13.00 only, elsewhere H.264. Clients that prefer HEVC pick it on their own. To
-  force H.264, choose it in Moonlight's settings or set `hevc_mode = 1` in `sunshine.conf`.
+- HEVC and HDR are offered on firmware 13.00 only, elsewhere H.264. Clients that prefer HEVC pick it on their own. To
+  force H.264, choose it in Moonlight's settings or set `hevc_mode = 1` in `sunshine.conf`; `hevc_mode = 2` keeps HEVC
+  and turns HDR off.
 - The bitrate is capped at 50 Mbit/s. The encoder holds it in normal scenes, but extreme images can exceed it: full-screen
   random noise reached about 130 Mbit/s at 4K and 35 Mbit/s at 1080p, whatever was set.
 - One streaming session at a time. More than one Moonlight controller is untested.
@@ -89,8 +90,10 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   only the console's home screen still reacts to Moonlight. If the stream controller does nothing in an app, turn the
   other controller off.
 - No AV1, mouse, keyboard, touchscreen or microphone.
-- HDR and the pad's touchpad and motion sensors are measured with the test client only, not yet with a real Moonlight client on an
-  HDR screen or in a game that uses them. Motion has no orientation, because Moonlight sends none.
+- HDR has been seen on one real setup so far: Moonlight on an HDR TV, 4K, one game. The capture provides no HDR metadata, so the
+  host sends none, and other screens may handle that differently.
+- The pad's touchpad and motion sensors are measured with the test client only, not yet with a real Moonlight client or in a game
+  that uses them. Motion has no orientation, because Moonlight sends none.
 - Rumble is the classic two-motor kind only. Games that drive the DualSense's haptics send nothing to your controller.
   Whether your device vibrates also depends on the Moonlight client.
 - Rest mode is young. The host starts its services again after waking, which worked in two tests on the home screen, with no

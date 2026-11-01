@@ -223,7 +223,8 @@ Moonlight bekommt nun HEVC Main 10 angeboten (`ServerCodecModeSupport` 769), `he
 - **Echtes PQ, nicht nur umetikettiert:** Die helle Oberfläche des Startbildschirms hat in 8 Bit Luma 251, in 10 Bit 638 von 64..940, also rund 0,66 PQ. Ein Bild aus Mario 64 sieht nach PQ-Tone-Mapping (`zscale`, `tonemap`) richtig aus. Der Scan-In meldet dabei `dynamicRange(2)` statt `(1)`.
 - **Sonde:** `out/hdr_spike.elf`, 8 und 10 Bit je 299 Bilder in 5 s, Rückgaben 0. Keine der Ausweich-Varianten war nötig. Die Felder von `docs/re/hdr.md` stimmen also.
 - **Metadaten:** Avcap2 liefert keine, der Host schickt Nullen (unbekannt).
-- **Offen:** echter Moonlight-Client auf einem HDR-Bildschirm, wie sich die Metadaten-Nullen dort auswirken. Die Matrix aus Bildausgabe der Konsole und Stream (`docs/re/hdr.md`, Schritt 5) und ein HDR-Spiel; die Einstellung ändert der Besitzer. Der Rückfall auf 1080p in 10 Bit ist nicht eigens gemessen.
+- **Echter Client auf einem HDR-Fernseher:** Der Besitzer startete Digimon Story Time Stranger aus Moonlight am TV mit eingeschaltetem HDR. `sunshine.log`: Spiel gestartet, `requested 3840x2160@60, delivering 3840x2160@60`, `HEVC HDR bitrate 50000 kbit/s (requested 110988)`, Ton und Pad verbunden, keine Warnung bis zum Lesen während des laufenden Streams. Das Urteil zum Bild kommt vom Besitzer: Es passt, trotz der Metadaten-Nullen. Gemessen ist am Client nichts, die Dauer des Streams auch nicht.
+- **Offen:** andere Clients und Bildschirme, wie sie mit den Metadaten-Nullen umgehen. Ob Digimon selbst HDR ausgibt. Die Matrix aus Bildausgabe der Konsole und Stream (`docs/re/hdr.md`, Schritt 5); die Einstellung ändert der Besitzer. Der Rückfall auf 1080p in 10 Bit ist nicht eigens gemessen.
 
 ## Bauen und testen
 
