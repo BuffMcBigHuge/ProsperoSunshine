@@ -38,8 +38,9 @@ constexpr int kReportVisible = 19; // lines of the report on screen
 constexpr float kReportLine = 26.0f;
 
 const Icon kOptionIcons[] = {Icon::tag, Icon::log, Icon::timer, Icon::lock, Icon::globe, Icon::plug,
-                             Icon::monitor, Icon::monitor, Icon::monitor};
-constexpr int kTiles = 9; // option_specs(): three rows of three, the last the Experimental section
+                             Icon::monitor, Icon::monitor, Icon::monitor, Icon::sliders};
+constexpr int kTiles = 10;      // option_specs(): two rows of three, then a row of four, the Experimental section
+constexpr int kFirstSwitch = 6; // where that row starts
 
 float approach(float value, float target, float dt, float speed)
 {
@@ -87,7 +88,7 @@ std::string Screen::value_text(int index) const
 {
     const OptionSpec &spec = option_specs()[static_cast<std::size_t>(index)];
     if (switch_not_needed(index))
-        return "Not needed: verified here";
+        return diag::experimental_no_effect(snap_.firmware, spec.key) ? "No effect on 10.x" : "Not needed: verified here";
     const auto it = edits_.find(spec.key);
     if (it == edits_.end() || !it->second)
         return spec.default_label;
@@ -139,9 +140,11 @@ Rect Screen::pairing_rect(int index) const
 
 Rect Screen::tile_rect(int index) const
 {
-    static const float rows[3] = {276.0f, 414.0f, 594.0f}; // the gap before the last holds the section's caption
+    // The gap before the switches holds the section's caption.
+    if (index >= kFirstSwitch)
+        return {96.0f + static_cast<float>(index - kFirstSwitch) * 437.0f, 594.0f, 417.0f, 124.0f};
     const int col = index % 3, row = index / 3;
-    return {96.0f + static_cast<float>(col) * 584.0f, rows[row], 560.0f, 124.0f};
+    return {96.0f + static_cast<float>(col) * 584.0f, 276.0f + static_cast<float>(row) * 138.0f, 560.0f, 124.0f};
 }
 
 Rect Screen::settings_action_rect(int index) const
@@ -378,15 +381,16 @@ void Screen::handle_settings(const hui::InputFrame &input, hui::ui::Feedback &fe
         int next = tile_;
         if (tile_ < kTiles)
         {
-            const int col = tile_ % 3, row = tile_ / 3;
+            const bool switches = tile_ >= kFirstSwitch;
+            const int col = switches ? tile_ - kFirstSwitch : tile_ % 3, row = switches ? 2 : tile_ / 3;
             if (input.nav == Direction::left)
                 next = col > 0 ? tile_ - 1 : -1;
             else if (input.nav == Direction::right)
-                next = col < 2 ? tile_ + 1 : -1;
+                next = col < (switches ? 3 : 2) ? tile_ + 1 : -1;
             else if (input.nav == Direction::up)
-                next = row > 0 ? tile_ - 3 : -1;
+                next = switches ? 3 + std::min(col, 2) : row > 0 ? tile_ - 3 : -1;
             else
-                next = tile_ + 3 < kTiles ? tile_ + 3 : kTiles + col;
+                next = switches ? kTiles + std::min(col, 2) : row == 0 ? tile_ + 3 : kFirstSwitch + col;
         }
         else
         {
@@ -396,7 +400,7 @@ void Screen::handle_settings(const hui::InputFrame &input, hui::ui::Feedback &fe
             else if (input.nav == Direction::right)
                 next = index < 2 ? tile_ + 1 : -1;
             else if (input.nav == Direction::up)
-                next = kTiles - 3 + index;
+                next = kFirstSwitch + index;
             else
                 next = -1;
         }
@@ -1164,7 +1168,7 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
     const float caption = hui::ui::text(list, fonts_.semibold, "EXPERIMENTAL", 152.0f, 576.0f, 22.0f, kAccent, Align::left, 4.0f);
     const std::string where = snap_.firmware != 0 ? "Firmware " + diag::firmware_text(snap_.firmware) : std::string("this firmware");
     const std::string note = switch_not_needed(8)   ? "Nothing to switch on " + where + ": all of this is verified there."
-                             : switch_not_needed(6) ? "On " + where + " HEVC and HDR are verified. Only 1440p and 4K are untested."
+                             : switch_not_needed(6) ? "On " + where + " HEVC and HDR are verified. 1440p and 4K are untested."
                                                     : "Untested on " + where + ". Off by default; what fails turns itself off.";
     hui::ui::text(list, fonts_.regular, note, 176.0f + caption, 576.0f, 22.0f, kMuted);
     list.pop_opacity();
@@ -1188,13 +1192,15 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
         if (f > 0.01f)
             list.glow(base, 24.0f, 26.0f, kAccent.with_alpha(0.28f * f));
         glass_card(list, glass, base, 24.0f, f);
-        icons::draw(list, kOptionIcons[i], base.x + 46.0f, base.cy(), 34.0f, inert ? kFaint : kAccent);
-        hui::ui::text(list, fonts_.semibold, spec.label, base.x + 90.0f, base.y + 52.0f, 30.0f, inert ? kMuted : kInk);
-        hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, value_text(i), 25.0f, base.w - 250.0f), base.x + 90.0f,
+        // The switches' row is narrower: the same parts closer together, with the switch on the value's line.
+        const float text_x = base.x + (toggle ? 62.0f : 90.0f);
+        icons::draw(list, kOptionIcons[i], base.x + (toggle ? 34.0f : 46.0f), base.cy(), toggle ? 30.0f : 34.0f, inert ? kFaint : kAccent);
+        hui::ui::text(list, fonts_.semibold, spec.label, text_x, base.y + 52.0f, toggle ? 28.0f : 30.0f, inert ? kMuted : kInk);
+        hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, value_text(i), 25.0f, base.w - (inert ? 80.0f : 250.0f)), text_x,
                       base.y + 94.0f, 25.0f, is_default || inert ? kMuted : mix(kInk, kAccent, 0.35f));
         if (toggle && !inert)
         {
-            const Rect track{base.x + base.w - 98.0f, base.y + 20.0f, 76.0f, 38.0f};
+            const Rect track{base.x + base.w - 96.0f, base.y + 68.0f, 76.0f, 38.0f};
             list.rounded_rect(track, 19.0f, on ? kAccent : Color::rgb(0x3a4363));
             if (on)
                 list.glow(track, 19.0f, 12.0f, kAccent.with_alpha(0.35f));
@@ -1205,7 +1211,7 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
         if (!tag.empty())
         {
             const float w = fonts_.semibold.measure(tag, 16.0f) + 34.0f;
-            const Rect t{base.x + base.w - w - 22.0f, base.y + 72.0f, w, 32.0f};
+            const Rect t{base.x + base.w - w - (toggle ? 108.0f : 22.0f), base.y + 72.0f, w, 32.0f};
             list.rounded_rect(t, 16.0f, changed ? kAccent.with_alpha(0.22f) : Color::rgb(0xffffff, 0.07f));
             hui::ui::text(list, fonts_.semibold, tag, t.cx(), t.cy() + 6.0f, 16.0f, changed ? kAccent : kMuted,
                           Align::center, 2.0f);
@@ -1230,7 +1236,9 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
     std::string extra;
     if (tile_ < kTiles && switch_not_needed(tile_))
     {
-        help = "Verified on " + where + ": it is there without a switch, and this switch changes nothing.";
+        help = diag::experimental_no_effect(snap_.firmware, option_specs()[static_cast<std::size_t>(tile_)].key)
+                   ? "The encoder keeps its own rate on firmware 10.x, so this switch would change nothing."
+                   : "Verified on " + where + ": it is there without a switch, and this switch changes nothing.";
     }
     else if (tile_ < kTiles)
     {

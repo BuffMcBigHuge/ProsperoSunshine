@@ -69,6 +69,9 @@ const std::vector<OptionSpec> &option_specs()
         {"experimental_large_modes", "1440p and 4K",
          "Offers modes above 1080p on this firmware. If they fail, 1080p until the host restarts.",
          OptionKind::toggle, "Off", {}, 0, 0, 1, 0},
+        {"experimental_high_bitrate", "Up to 150 Mbit/s",
+         "Raises the bitrate cap from 50 to 150 Mbit/s on this firmware. If it fails, 50 until the host restarts.",
+         OptionKind::toggle, "Off", {}, 0, 0, 1, 0},
     };
     return specs;
 }

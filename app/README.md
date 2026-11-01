@@ -84,6 +84,7 @@ it only when it starts, so use **Save and restart host** (or Restart host later)
 | HEVC (8 bit) | `experimental_hevc` | 1 on | off |
 | HDR (HEVC 10 bit) | `experimental_hdr` | 1 on | off |
 | 1440p and 4K | `experimental_large_modes` | 1 on | off |
+| Up to 150 Mbit/s | `experimental_high_bitrate` | 1 on | off (cap 50 Mbit/s; 150 on firmware 13.00 anyway) |
 
 The names, ranges and defaults are Sunshine's (`src/config.cpp` at a679b059), except for the `experimental_` keys, which the host
 reads itself. Every other line of the file, comments included, is kept as it is. Sunshine uses the first line of a key; when the app
@@ -91,7 +92,8 @@ sets a key that appears more than once, it keeps the first line's place and remo
 
 The third row, **Experimental**, is for testers on firmware where a function isn't verified. Cross flips a switch; off removes the
 key. As with the other settings, **Save and restart host** applies it. On verified firmware (13.00; 10.20 for HEVC and HDR) a tile
-says "Not needed", doesn't react, and the host ignores the key. HDR also offers HEVC, because it is HEVC at 10 bit. `hevc_mode = 1` in
+says "Not needed", doesn't react, and the host ignores the key. The bitrate tile says "No effect on 10.x" on any firmware 10.x and
+behaves the same, because the encoder keeps its own rate there. HDR also offers HEVC, because it is HEVC at 10 bit. `hevc_mode = 1` in
 the file beats the HEVC and HDR switches. What testers do and post is in the main README, under
 [Testing other firmware](../README.md#testing-other-firmware); what the host does is in `docs/firmware-porting.md` (German). A
 function that fails is off until the host restarts. The notice on Home then says, for example, "Experimental HEVC failed on Firmware
@@ -100,7 +102,7 @@ function that fails is off until the host restarts. The notice on Home then says
 **Diagnostics** collects a report when the page opens, and again on Cross. It says which app, host and
 firmware run, how the last capture attempt ended, which ports answer, how each file the app and host need
 looks from the title, which settings differ from the defaults, which Experimental switches are set and how each try with them went
-(codec, mode, frame rate, variant, the step that failed and its code, or that it ran), the host's `host_diag.log` and the end of
+(codec, mode, frame rate, bitrate, variant, the step that failed and its code, or that it ran), the host's `host_diag.log` and the end of
 `sunshine.log`. Addresses, device names, the console's name and long ids are taken out, so it can go into a
 public issue. It is saved as `/data/prosperosunshine/diagnostics.txt`. While the page is open and the host
 runs, a phone or PC in the same network can open it at `http://<console-ip>:47996`: a title may not listen on

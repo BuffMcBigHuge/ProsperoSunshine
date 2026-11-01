@@ -141,8 +141,8 @@ class Screen
     int home_row_ = 0; // 0 the actions, 1 the pairing cards
     int home_action_ = 0;
     int home_card_ = 0;
-    int tile_ = 0; // 0..8 the tiles, 9..11 the actions under them
-    float tile_amount_[12] = {};
+    int tile_ = 0; // 0..9 the tiles, 10..12 the actions under them
+    float tile_amount_[13] = {};
     float action_amount_[3] = {};
     float card_amount_[2] = {};
     float tab_x_ = -1.0f; // the selected tab's plate glides between tabs

@@ -17,7 +17,7 @@ static void setup(uint32_t firmware, int hevc, int hdr, int large, uint32_t code
     fake_opens = 0;
     fake_log[0] = 0;
     unlink(marker);
-    ps_capture_set_experimental(hevc, hdr, large, marker);
+    ps_capture_set_experimental(hevc, hdr, large, 0, marker);
     ps_capture_set_codec(codec);
     ps_capture_set_ten_bit(ten_bit);
     ps_capture_set_video_mode(resolution, 1);
@@ -62,6 +62,31 @@ static int large_fails(const char *step, const uint8_t *record)
     memcpy(&resolution, record + 0x18, sizeof resolution);
     return !strcmp(step, "OpenVideo") && resolution >= 5 ? INVALID : 0;
 }
+// A rate above 50 Mbit/s fails to start, whatever else the record holds.
+static int high_rate_fails(const char *step, const uint8_t *record)
+{
+    uint32_t average;
+    memcpy(&average, record + 0xc8, sizeof average);
+    return !strcmp(step, "Start") && average > PS_EXP_SAFE_AVERAGE ? START_FAILED : 0;
+}
+static int full_and_high_rate_fail(const char *step, const uint8_t *record)
+{
+    return full_fields(record) ? INVALID : high_rate_fails(step, record);
+}
+static void setup_high(uint32_t firmware, int hevc, uint32_t codec, uint32_t average)
+{
+    setup(firmware, hevc, 0, 0, codec, 0, 4);
+    ps_capture_set_experimental(hevc, 0, 0, 1, marker);
+    ps_capture_set_opening_bitrate(average, average / 100 * 112);
+    fake_log[0] = 0;
+}
+static uint32_t record_u32(size_t at)
+{
+    uint32_t value;
+    memcpy(&value, fake_record + at, sizeof value);
+    return value;
+}
+
 static int reads;
 static int count_reads(const char *step, const uint8_t *record)
 {
@@ -85,10 +110,10 @@ int main(void)
     fake_decide = start_needs_full;
     assert(open_and_close() == 0);
     assert(fake_opens == 2);
-    assert(logged("experimental attempt switches=hevc firmware=0x13600000 trial=hevc codec=hevc bits=8 mode=1920x1080 fps=60 variant=minimal\n"));
-    assert(logged("experimental result=failed switches=hevc firmware=0x13600000 trial=hevc codec=hevc bits=8 mode=1920x1080 fps=60 "
+    assert(logged("experimental attempt switches=hevc firmware=0x13600000 trial=hevc codec=hevc bits=8 mode=1920x1080 fps=60 kbit=20000 variant=minimal\n"));
+    assert(logged("experimental result=failed switches=hevc firmware=0x13600000 trial=hevc codec=hevc bits=8 mode=1920x1080 fps=60 kbit=20000 "
                   "variant=minimal error=-1 rc=0x80c78000 step=Start\n"));
-    assert(logged("experimental result=ok switches=hevc firmware=0x13600000 trial=hevc codec=hevc bits=8 mode=1920x1080 fps=60 "
+    assert(logged("experimental result=ok switches=hevc firmware=0x13600000 trial=hevc codec=hevc bits=8 mode=1920x1080 fps=60 kbit=20000 "
                   "variant=full error=0 rc=0 step=none\n"));
     assert(!logged("disabled"));
     // The full variant on 13.60: what 13.00 keeps from 0x198 on sits 8 higher, also the encoder's memory.
@@ -170,7 +195,7 @@ int main(void)
     fake_decide = large_fails;
     assert(open_and_close() == 0);
     assert(fake_opens == 3 && ps_capture_video_resolution() == 4);
-    assert(logged("mode=1920x1080 fps=60 variant=minimal error=0") && logged("feature=large") && !logged("feature=hevc"));
+    assert(logged("mode=1920x1080 fps=60 kbit=20000 variant=minimal error=0") && logged("feature=large") && !logged("feature=hevc"));
     assert(ps_capture_hevc_allowed() && !ps_capture_large_modes_allowed());
 
     // HEVC at 4K fails everywhere: HEVC is off, and 1440p and 4K are still unproven with H.264.
@@ -203,12 +228,12 @@ int main(void)
     // A host that went down inside an attempt: the next one says so and keeps the function off for its run.
     setup(0x13600000u, 1, 0, 1, 1, 0, 4);
     FILE *left = fopen(marker, "w");
-    fputs("switches=hevc,large firmware=0x13600000 trial=hevc,large codec=hevc bits=8 mode=3840x2160 fps=60 variant=minimal", left);
+    fputs("switches=hevc,large firmware=0x13600000 trial=hevc,large codec=hevc bits=8 mode=3840x2160 fps=60 kbit=20000 variant=minimal", left);
     fclose(left);
     fake_log[0] = 0;
-    ps_capture_set_experimental(1, 0, 1, marker);
+    ps_capture_set_experimental(1, 0, 1, 0, marker);
     assert(logged("experimental result=failed switches=hevc,large firmware=0x13600000 trial=hevc,large codec=hevc bits=8 "
-                  "mode=3840x2160 fps=60 variant=minimal error=0 rc=0 step=host went down\n"));
+                  "mode=3840x2160 fps=60 kbit=20000 variant=minimal error=0 rc=0 step=host went down\n"));
     assert(logged("feature=hevc") && logged("feature=large"));
     assert(!ps_capture_hevc_allowed() && !ps_capture_large_modes_allowed() && access(marker, F_OK) != 0);
 
@@ -225,8 +250,8 @@ int main(void)
     assert(open_and_close() == 0);
     assert(!memcmp(with_switches, fake_record, sizeof with_switches));
     fake_log[0] = 0;
-    ps_capture_set_experimental(1, 1, 1, marker);
-    assert(logged("experimental switches=none set=hevc,hdr,large firmware=0x13000040\n"));
+    ps_capture_set_experimental(1, 1, 1, 1, marker);
+    assert(logged("experimental switches=none set=hevc,hdr,large,bitrate firmware=0x13000040\n"));
 
     // 10.20: HEVC and HDR are verified, 1440p and 4K are not.
     setup(0x10200006u, 1, 1, 1, 1, 0, 4);
@@ -248,6 +273,79 @@ int main(void)
     fake_decide = large_fails;
     assert(open_and_close() == 0);
     assert(fake_opens == 2 && ps_capture_video_resolution() == 4 && !logged("experimental"));
+
+    // High bitrate: it fails at 100 Mbit/s, the stream runs at 50, and 50 stays until the host restarts.
+    setup_high(0x13600000u, 0, 0, 100000000u);
+    assert(ps_capture_high_bitrate_allowed());
+    fake_decide = high_rate_fails;
+    assert(open_and_close() == 0);
+    assert(fake_opens == 2 && record_u32(0xc8) == 50000000u && record_u32(0xcc) == 56000000u);
+    assert(ps_capture_opening_average() == 50000000u);
+    assert(logged("experimental result=failed switches=bitrate firmware=0x13600000 trial=bitrate codec=h264 bits=8 mode=1920x1080 fps=60 "
+                  "kbit=100000 variant=standard error=-1 rc=0x80c78000 step=Start\n"));
+    assert(logged("experimental result=ok switches=bitrate firmware=0x13600000 trial=none codec=h264 bits=8 mode=1920x1080 fps=60 "
+                  "kbit=50000 variant=standard error=0 rc=0 step=none\n"));
+    assert(logged("experimental disabled feature=bitrate\n") && !ps_capture_high_bitrate_allowed());
+
+    // It runs: the record is the one the same rate gets without the switch, and the rate stays allowed.
+    setup_high(0x13600000u, 0, 0, 100000000u);
+    assert(open_and_close() == 0);
+    assert(fake_opens == 1 && logged("trial=bitrate") && logged("result=ok") && ps_capture_high_bitrate_allowed());
+    uint8_t high_record[sizeof fake_record];
+    memcpy(high_record, fake_record, sizeof high_record);
+    setup(0x13600000u, 0, 0, 0, 0, 0, 4);
+    ps_capture_set_opening_bitrate(100000000u, 112000000u);
+    assert(open_and_close() == 0);
+    assert(!memcmp(high_record, fake_record, sizeof high_record));
+
+    // At 50 or below the switch has nothing to show: no trial, no frame read.
+    setup_high(0x13600000u, 0, 0, 50000000u);
+    reads = 0;
+    fake_decide = count_reads;
+    assert(open_and_close() == 0);
+    assert(reads == 0 && logged("trial=none") && logged("kbit=50000"));
+
+    // It fails at 50 too: the rate wasn't at fault, and nothing goes off.
+    setup_high(0x13600000u, 0, 0, 100000000u);
+    fake_decide = open_always_fails;
+    assert(open_and_close() == PS_CAPTURE_ERROR);
+    assert(fake_opens == 2 && !logged("disabled") && ps_capture_high_bitrate_allowed());
+
+    // HEVC at a high rate: both variants, then 50 from the first variant on, where the rate turns out to be the cause.
+    setup_high(0x13600000u, 1, 1, 100000000u);
+    fake_decide = full_and_high_rate_fail;
+    assert(open_and_close() == 0);
+    assert(fake_opens == 3 && record_u32(0xc8) == 50000000u && !full_fields(fake_record));
+    assert(logged("feature=bitrate") && !logged("feature=hevc") && ps_capture_hevc_allowed() && !ps_capture_high_bitrate_allowed());
+
+    // A host that went down at a high rate: 50 for its successor's run.
+    setup_high(0x13600000u, 0, 0, 100000000u);
+    left = fopen(marker, "w");
+    fputs("switches=bitrate firmware=0x13600000 trial=bitrate codec=h264 bits=8 mode=1920x1080 fps=60 kbit=100000 variant=standard", left);
+    fclose(left);
+    fake_log[0] = 0;
+    ps_capture_set_experimental(0, 0, 0, 1, marker);
+    assert(logged("kbit=100000 variant=standard error=0 rc=0 step=host went down\n") && logged("feature=bitrate"));
+    assert(!ps_capture_high_bitrate_allowed());
+
+    // 13.00 has it verified: the switch changes nothing, and a failure lowers nothing.
+    setup_high(0x13000040u, 0, 0, 100000000u);
+    assert(ps_capture_high_bitrate_allowed());
+    fake_decide = high_rate_fails;
+    assert(open_and_close() == PS_CAPTURE_ERROR);
+    assert(fake_opens == 1 && ps_capture_opening_average() == 100000000u && !logged("experimental"));
+    // On 10.x the record has no rate fields: the switch is ignored, and the record is the same at any rate.
+    setup_high(0x10400000u, 0, 0, 100000000u);
+    assert(!ps_capture_high_bitrate_allowed());
+    assert(open_and_close() == 0);
+    assert(!logged("experimental"));
+    memcpy(high_record, fake_record, sizeof high_record);
+    setup(0x10400000u, 0, 0, 0, 0, 0, 4);
+    assert(open_and_close() == 0);
+    assert(!memcmp(high_record, fake_record, sizeof high_record));
+    fake_log[0] = 0;
+    ps_capture_set_experimental(0, 0, 0, 1, marker);
+    assert(logged("experimental switches=none set=bitrate firmware=0x10400000\n"));
 
     // Where 13.00's layout holds, the full variant is the record 13.00 has always sent; on 10.x the minimal one is.
     uint8_t standard[0x2e8], variant[0x2e8];

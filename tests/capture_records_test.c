@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The capture records must not change while the Experimental switches are off: every firmware, codec, mode, frame rate
-// and bit depth below, from configure() and as OpenVideo receives them, hashed and compared with
+// The capture records must not change while the Experimental switches are off: every firmware, codec, mode, frame rate,
+// bit depth and bitrate below, from configure() and as OpenVideo receives them, hashed and compared with
 // tests/capture_records.golden, taken from the code before the switches existed.
 // `--hashes` prints those lines, `--full` the records themselves, for a byte-wise comparison with another build.
 #include "fake_avcap.h"
@@ -26,6 +26,7 @@ static void hex(const uint8_t *bytes, size_t size)
 int main(int argc, char **argv)
 {
     static const uint32_t firmwares[] = {0x12400000u, 0x13000040u, 0x13600000u, 0x10200006u, 0x10400000u};
+    static const uint32_t rates[] = {20000000u, 150000000u};
     const int hashes = argc > 1 && !strcmp(argv[1], "--hashes"), full = argc > 1 && !strcmp(argv[1], "--full");
     FILE *golden = hashes || full ? NULL : fopen(GOLDEN, "r");
     if (!hashes && !full && !golden) { puts("FAIL: no " GOLDEN); return 1; }
@@ -34,12 +35,14 @@ int main(int argc, char **argv)
         for (uint32_t codec = 0; codec < 2; codec++)
             for (uint32_t resolution = 4; resolution <= 6; resolution++)
                 for (uint32_t timing = 0; timing < 2; timing++)
-                    for (uint32_t ten_bit = 0; ten_bit < 2; ten_bit++) {
+                    for (uint32_t ten_bit = 0; ten_bit < 2; ten_bit++)
+                        for (size_t r = 0; r < 2; r++) {
                         fake_firmware = firmwares[f];
                         ps_capture_set_codec(codec);
                         ps_capture_set_ten_bit(ten_bit);
                         ps_capture_set_video_mode(resolution, timing);
-                        ps_capture_set_opening_bitrate(20000000, 22400000);
+                        const uint32_t average = rates[r];
+                        ps_capture_set_opening_bitrate(average, average / 100 * 112);
                         atomic_store(&session_resource, atomic_load(&resource_id));
                         uint8_t configured[0x2e8] = {0};
                         CONFIGURE(configured, 0x13c);
@@ -48,9 +51,9 @@ int main(int argc, char **argv)
                         const int rc = ps_capture_open(&session);
                         ps_capture_close(session);
                         fake_log[0] = 0;
-                        char label[64];
-                        snprintf(label, sizeof label, "%08x codec=%u mode=%u timing=%u ten_bit=%u rc=%d", firmwares[f], codec,
-                                 resolution, timing, ten_bit, rc);
+                        char label[96];
+                        snprintf(label, sizeof label, "%08x codec=%u mode=%u timing=%u ten_bit=%u kbit=%u rc=%d", firmwares[f], codec,
+                                 resolution, timing, ten_bit, average / 1000, rc);
                         if (full) {
                             printf("%s configure ", label);
                             hex(configured, sizeof configured);
@@ -58,7 +61,7 @@ int main(int argc, char **argv)
                             hex(fake_record, sizeof fake_record);
                             continue;
                         }
-                        char want[128], have[128];
+                        char want[160], have[160];
                         snprintf(have, sizeof have, "%s %016llx %016llx\n", label,
                                  (unsigned long long)fnv1a(configured, sizeof configured),
                                  (unsigned long long)fnv1a(fake_record, sizeof fake_record));

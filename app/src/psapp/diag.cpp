@@ -109,6 +109,8 @@ std::string feature_name(const std::string &feature)
         return "HDR";
     if (feature == "large")
         return "1440p/4K";
+    if (feature == "bitrate")
+        return "high bitrate";
     return feature;
 }
 
@@ -167,7 +169,14 @@ bool experimental_needed(std::uint32_t firmware, const std::string &key)
         return true;
     if (key == "experimental_large_modes")
         return (firmware & 0xffff0000u) != 0x13000000u;
+    if (key == "experimental_high_bitrate")
+        return (firmware & 0xffff0000u) != 0x13000000u && !experimental_no_effect(firmware, key);
     return !firmware_verified(firmware);
+}
+
+bool experimental_no_effect(std::uint32_t firmware, const std::string &key)
+{
+    return key == "experimental_high_bitrate" && (firmware & 0xff000000u) == 0x10000000u;
 }
 
 HostLog parse_host_log(const std::string &text)
@@ -215,6 +224,7 @@ HostLog parse_host_log(const std::string &text)
             attempt.bits = field(line, "bits");
             attempt.mode = field(line, "mode");
             attempt.fps = field(line, "fps");
+            attempt.kbit = field(line, "kbit");
             attempt.variant = field(line, "variant");
             attempt.rc = field(line, "rc");
             // The step's name may hold spaces and ends the line.
@@ -308,7 +318,7 @@ std::string experimental_report(const HostLog &log, const std::vector<std::strin
         out += "  No attempt since the host started.\n";
     for (const Attempt &attempt : log.attempts)
     {
-        out += "  " + attempt.codec + " " + attempt.bits + " bit " + attempt.mode + "@" + attempt.fps + " variant " + attempt.variant +
+        out += "  " + attempt.codec + " " + attempt.bits + " bit " + attempt.mode + "@" + attempt.fps + " " + attempt.kbit + " kbit/s variant " + attempt.variant +
                " trial " + attempt.trial + ": ";
         out += attempt.ok ? std::string("ok") : "failed at " + attempt.step + ", rc " + attempt.rc;
         out += "\n";

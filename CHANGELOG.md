@@ -10,15 +10,20 @@
   frame, more than FFmpeg's hardware decoders on Windows take (32), so Moonlight on Windows needs software decoding for it; HEVC
   comes as 17 and decodes by hardware. Other 10.x versions are untested and get H.264 only.
 - An **Experimental** section in the app's Settings, for testers on firmware where a function isn't verified: one switch each for
-  HEVC (8 bit), HDR (HEVC 10 bit), and 1440p and 4K, all off by default. They go to `sunshine.conf` as `experimental_hevc`,
-  `experimental_hdr` and `experimental_large_modes`. On verified firmware (13.00; 10.20 for HEVC and HDR) a switch shows as not
-  needed and changes nothing. HEVC tries `cfg+0x24` alone first, then 13.00's full setup. A function whose every try fails is off
-  until the host restarts, and the host offers H.264 and 1080p again: the stream that failed ends, the next one works. The
+  HEVC (8 bit), HDR (HEVC 10 bit), 1440p and 4K, and a bitrate cap of 150 instead of 50 Mbit/s, all off by default. They go to
+  `sunshine.conf` as `experimental_hevc`, `experimental_hdr`, `experimental_large_modes` and `experimental_high_bitrate`. On verified
+  firmware (13.00; 10.20 for HEVC and HDR) a switch shows as not needed and changes nothing. The bitrate switch has no effect on any
+  10.x, whose encoder keeps its own rate, and says so. HEVC tries `cfg+0x24` alone first, then 13.00's full setup. A function whose every
+  try fails is off until the host restarts, and the host offers H.264, 1080p and 50 Mbit/s again: a lower rate or mode takes over in the
+  same stream, while a stream that failed on HEVC or HDR ends and the next one works. The
   diagnostics report lists the switches and every try (codec, mode, variant, the step that failed and its code), and the Home
   page asks for it to be posted, also after a success. None of this has run on a console yet.
 
 ### Changed
 
+- The bitrate cap is 150 Mbit/s on firmware 13.00, up from 50, and stays at 50 elsewhere. Measured with a test client on wired LAN
+  and a noise image at 4K: HEVC follows the setting up to about 151 Mbit/s with no missing frames. Not yet tested with Moonlight or
+  in a game, and games may stay well below the setting.
 - Firmware 10.20 counts as verified: the app no longer calls it untested, and the host knows its ResourceArbitrator offsets.
   Moonlight on Android, iOS, Windows and Nintendo Switch streamed from a 10.20 console.
 

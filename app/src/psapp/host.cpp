@@ -726,7 +726,7 @@ std::string Host::build_report()
     if (!snap.client.empty())
         names.push_back(snap.client);
     std::vector<std::string> switches;
-    for (const char *key : {"experimental_hevc", "experimental_hdr", "experimental_large_modes"})
+    for (const char *key : {"experimental_hevc", "experimental_hdr", "experimental_large_modes", "experimental_high_bitrate"})
     {
         const auto it = snap.config.find(key);
         if (it != snap.config.end() && it->second && *it->second == "1")

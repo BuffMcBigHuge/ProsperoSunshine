@@ -27,14 +27,17 @@ void ps_capture_set_ten_bit(uint32_t ten_bit);
 int ps_capture_hevc_verified(void);
 // Whether 1440p and 2160p were verified on this firmware.
 int ps_capture_large_modes_verified(void);
+// Whether opening above 50 Mbit/s was verified on this firmware.
+int ps_capture_high_bitrate_verified(void);
 // The app's Experimental switches from sunshine.conf, read once when the host starts; a switch counts only where its
 // function isn't verified (experimental.h). `marker` is a file that names an attempt under way. A marker left by a host
 // that went down keeps that function off for this run.
-void ps_capture_set_experimental(int hevc, int hdr, int large, const char *marker);
+void ps_capture_set_experimental(int hevc, int hdr, int large, int high_bitrate, const char *marker);
 // What the host may offer now: verified, or switched on and not failed since the host started.
 int ps_capture_hevc_allowed(void);
 int ps_capture_hdr_allowed(void);
 int ps_capture_large_modes_allowed(void);
+int ps_capture_high_bitrate_allowed(void);
 // The resolution set for the next open. After the system refused the last open of a mode above 1080p (seen in a title,
 // the arbitrator logs "4K NG(4K120)"; other sources report OpenVideo refusing it when the console's output is smaller),
 // ps_capture_fall_back_mode sets 1080p and returns 1; otherwise it changes nothing.
@@ -43,6 +46,8 @@ int ps_capture_fall_back_mode(void);
 // Bitrate in the config of the next open, in bit/s. Default 6 Mbit/s and no peak. HEVC needs a peak. Raising
 // the bitrate above this at runtime kills the channel (0x80c78000 on the next read).
 void ps_capture_set_opening_bitrate(uint32_t average, uint32_t peak);
+// The average set for the next open: ps_capture_open_or_fall_back lowers it when a high rate fails.
+uint32_t ps_capture_opening_average(void);
 // Research, for other firmwares: the resource for the next open (ps_capture_set_video_mode sets the default for the
 // mode, so call this after it), and one more 32-bit config field to write after all others (field 0 = none).
 void ps_capture_set_resource(int id);

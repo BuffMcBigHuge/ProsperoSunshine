@@ -19,6 +19,9 @@ bool firmware_verified(std::uint32_t firmware);
 // there anyway and the host ignores the switch: src/platform/ps5/experimental.h has the same rule. An unknown firmware
 // (0) keeps the switch: the host still decides.
 bool experimental_needed(std::uint32_t firmware, const std::string &key);
+// Firmware 10.x has no rate fields in its record, so the encoder keeps its own rate and the bitrate switch can't do anything
+// there. It counts as not needed, but for another reason than a verified function.
+bool experimental_no_effect(std::uint32_t firmware, const std::string &key);
 
 enum class Capture
 {
@@ -32,11 +35,12 @@ enum class Capture
 struct Attempt
 {
     bool ok = false;
-    std::string trial;   // the functions it had to show: hevc, hdr, large, comma separated; "none"
+    std::string trial;   // the functions it had to show: hevc, hdr, large, bitrate, comma separated; "none"
     std::string codec;   // hevc, h264
     std::string bits;    // 8, 10
     std::string mode;    // 1920x1080
     std::string fps;
+    std::string kbit;    // the average it opened with
     std::string variant; // standard, minimal, full
     std::string step;    // where it failed: OpenVideo, Start, first frame, ... ; "none"
     std::string rc;      // the raw code as hex text; "0" when the step has none
@@ -56,7 +60,7 @@ struct HostLog
     std::string switches;          // the switches this host uses; empty when none is set
     std::string switches_set;      // what sunshine.conf had when it started, also where they don't count
     std::vector<Attempt> attempts; // this host's, the last kMaxAttempts
-    std::vector<std::string> disabled; // functions off until the host restarts: hevc, hdr, large
+    std::vector<std::string> disabled; // functions off until the host restarts: hevc, hdr, large, bitrate
     std::string pending_trial;     // an attempt without an outcome had these on trial
 };
 

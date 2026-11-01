@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
         return it != settings.end() && it->second == "1";
     };
     ps_capture_set_experimental(switched_on("experimental_hevc"), switched_on("experimental_hdr"), switched_on("experimental_large_modes"),
-                                (platf::appdata() / "experimental_attempt").c_str());
+                                switched_on("experimental_high_bitrate"), (platf::appdata() / "experimental_attempt").c_str());
 
     task_pool.start(1);
     auto shutdown_event = mail::man->event<bool>(mail::shutdown);

@@ -83,8 +83,11 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   [experimental switches](#testing-other-firmware). Clients that prefer HEVC pick it on their own. To force H.264, choose it in
   Moonlight's settings or set `hevc_mode = 1` in `sunshine.conf`, which also beats the switches; `hevc_mode = 2` keeps HEVC and
   turns HDR off.
-- The bitrate is capped at 50 Mbit/s. The encoder holds it in normal scenes, but extreme images can exceed it: full-screen
-  random noise reached about 130 Mbit/s at 4K and 35 Mbit/s at 1080p, whatever was set.
+- The bitrate is capped at 150 Mbit/s on firmware 13.00 and at 50 Mbit/s elsewhere, unless you turn on the
+  [experimental switch](#testing-other-firmware). Above 50 Mbit/s it is measured only with a
+  test client on wired LAN and a noise image at 4K, not yet with Moonlight or in a game. Games may stay well below what you set.
+  With H.264, extreme images can exceed the setting: full-screen random noise reached about 140 Mbit/s at 4K and 35 Mbit/s at
+  1080p, whatever was set.
 - One streaming session at a time. More than one Moonlight controller is untested.
 - A real DualSense disconnects when the stream controller connects. Turned back on during the stream it stays without
   effect, because apps read only the controller that connected first; after the stream it works normally. The other way
@@ -132,17 +135,19 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
 HEVC, HDR, 1440p and 4K stay locked on firmware where nobody could check them. If you have such a console, you can turn them
 on yourself and help find out. Nothing here has been seen working on an untested firmware yet, so expect it to fail.
 
-1. In the app, open **Settings**. Under **Experimental**, turn on what you want to try: HEVC (8 bit), HDR (HEVC 10 bit), or 1440p
-   and 4K. On firmware where a function is verified, its switch says it isn't needed. HDR also offers HEVC.
+1. In the app, open **Settings**. Under **Experimental**, turn on what you want to try: HEVC (8 bit), HDR (HEVC 10 bit), 1440p
+   and 4K, or a bitrate cap of 150 instead of 50 Mbit/s. On firmware where a function is verified, its switch says it isn't needed. HDR
+   also offers HEVC. The bitrate switch has no effect on firmware 10.x, because the encoder keeps its own rate there, and says so.
 2. Choose **Save and restart host**.
-3. Start a stream in Moonlight with that setting, for example with HEVC chosen as the codec, or 4K as the resolution. Check that
-   the picture and sound are right.
+3. Start a stream in Moonlight with that setting, for example with HEVC chosen as the codec, 4K as the resolution, or a bitrate
+   above 50 Mbit/s. Check that the picture and sound are right.
 4. Open the app's **Diagnostics** page and post the report in a [GitHub issue](https://github.com/Darkatek7/ProsperoSunshine/issues),
    whether it worked or not. Add your Moonlight client and what you saw on the screen. The report has no addresses, device names
    or ids in it.
 
 **When it fails:** the host tries each function in more than one way. If every way fails, it turns that function off until it
-restarts and offers H.264 and 1080p again. A larger mode falls back to 1080p within the same stream. With HEVC or HDR the
+restarts and offers H.264, 1080p and 50 Mbit/s again. A high bitrate falls back to 50 Mbit/s and a larger mode to 1080p within the
+same stream. With HEVC or HDR the
 stream that failed ends with an error, because the client set itself up for that codec: start it again and it runs with what
 the host still offers. If the client keeps asking for HEVC, choose H.264 in its settings. If the host itself goes down during a try,
 start it again; it then keeps that function off for that run. To try again, restart the host, and to stop testing, turn the

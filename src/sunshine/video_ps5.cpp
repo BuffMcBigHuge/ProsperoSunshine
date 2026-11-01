@@ -121,7 +121,8 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
 
     // config.bitrate is in kbit/s. The channel opens with its bitrate in the config: raising it later above the
     // opening value stops the encoder (docs/re/hevc.md). Peak as Remote Play: H.264 average * 1.12, HEVC * 1.10.
-    constexpr uint32_t default_average = 6'000'000, max_average = 50'000'000;
+    // Above 50 Mbit/s is measured on firmware 13.00 only (docs/re/hevc.md); elsewhere it takes a switch in the app.
+    const uint32_t default_average = 6'000'000, max_average = ps_capture_high_bitrate_allowed() ? 150'000'000 : 50'000'000;
     const uint32_t requested = config.bitrate > 0 ? static_cast<uint32_t>(config.bitrate) * 1000u : default_average;
     const uint32_t average = std::min(requested, max_average);
     ps_capture_set_opening_bitrate(average, average / 100 * (hevc ? 110 : 112));
@@ -138,7 +139,7 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
         return;
     }
     check_fallback();
-    BOOST_LOG(info) << "PS5 capture "sv << (hdr ? "HEVC HDR"sv : hevc ? "HEVC"sv : "H.264"sv) << " bitrate "sv << average / 1000 << " kbit/s (requested "sv
+    BOOST_LOG(info) << "PS5 capture "sv << (hdr ? "HEVC HDR"sv : hevc ? "HEVC"sv : "H.264"sv) << " bitrate "sv << ps_capture_opening_average() / 1000 << " kbit/s (requested "sv
                     << requested / 1000 << ')';
     // The audio thread may have opened the channel earlier, and the next periodic IDR can be ten seconds away.
     if (session.request_keyframe())

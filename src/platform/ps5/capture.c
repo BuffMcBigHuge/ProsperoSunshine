@@ -96,6 +96,8 @@ void ps_capture_set_opening_bitrate(uint32_t average, uint32_t peak)
     atomic_store(&opening_peak, peak);
 }
 
+uint32_t ps_capture_opening_average(void) { return atomic_load(&opening_average); }
+
 int ps_capture_set_codec(uint32_t codec)
 {
     if (codec > 1) return PS_CAPTURE_ERROR;
@@ -110,6 +112,8 @@ int ps_capture_last_open_rc(void) { return atomic_load(&last_open_rc); }
 int ps_capture_hevc_verified(void) { return ps_exp_hevc_verified(kernel_get_fw_version()); }
 
 int ps_capture_large_modes_verified(void) { return ps_exp_large_verified(kernel_get_fw_version()); }
+
+int ps_capture_high_bitrate_verified(void) { return ps_exp_bitrate_verified(kernel_get_fw_version()); }
 
 // The Experimental switches (experimental.h). The lock also covers what the failure handling below changes.
 static pthread_mutex_t experiment_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -139,6 +143,12 @@ int ps_capture_large_modes_allowed(void)
 {
     const ps_experiment now = experiment_now();
     return ps_capture_large_modes_verified() || ps_exp_large_offered(&now);
+}
+
+int ps_capture_high_bitrate_allowed(void)
+{
+    const ps_experiment now = experiment_now();
+    return ps_capture_high_bitrate_verified() || ps_exp_bitrate_offered(&now);
 }
 
 static void mode_snapshot(uint32_t mode[7])
@@ -538,24 +548,25 @@ fail:
 
 // host_diag.log gets a line for each attempt while a switch counts, and the app's parser reads them
 // (parse_host_log in app/src/psapp/diag.cpp), so its field names and this have to agree.
-static void names(char *out, size_t size, int hevc, int hdr, int large)
+static void names(char *out, size_t size, int hevc, int hdr, int large, int bitrate)
 {
-    snprintf(out, size, "%s%s%s%s", hevc ? "hevc," : "", hdr ? "hdr," : "", large ? "large," : "", hevc || hdr || large ? "" : "none");
+    snprintf(out, size, "%s%s%s%s%s", hevc ? "hevc," : "", hdr ? "hdr," : "", large ? "large," : "", bitrate ? "bitrate," : "",
+             hevc || hdr || large || bitrate ? "" : "none");
     const size_t length = strlen(out);
     if (length && out[length - 1] == ',') out[length - 1] = 0;
 }
 
 static void describe_attempt(char *out, size_t size, const ps_experiment *e, uint32_t codec, uint32_t ten_bit, uint32_t resolution,
-                             uint32_t timing)
+                             uint32_t timing, uint32_t average)
 {
     static const char *const variants[] = {"standard", "minimal", "full"};
-    char on[24], trial[24];
-    names(on, sizeof on, e->hevc, e->hdr, e->large);
+    char on[32], trial[32];
+    names(on, sizeof on, e->hevc, e->hdr, e->large, e->high_bitrate);
     const int unproven = ps_exp_unproven_codec(e, codec, ten_bit);
-    names(trial, sizeof trial, unproven && !ten_bit, unproven && ten_bit, ps_exp_unproven_mode(e, resolution));
-    snprintf(out, size, "switches=%s firmware=%#x trial=%s codec=%s bits=%d mode=%s fps=%d variant=%s", on, kernel_get_fw_version(), trial,
+    names(trial, sizeof trial, unproven && !ten_bit, unproven && ten_bit, ps_exp_unproven_mode(e, resolution), ps_exp_unproven_rate(e, average));
+    snprintf(out, size, "switches=%s firmware=%#x trial=%s codec=%s bits=%d mode=%s fps=%d kbit=%u variant=%s", on, kernel_get_fw_version(), trial,
              codec == 1 ? "hevc" : "h264", ten_bit ? 10 : 8,
-             resolution == 6 ? "3840x2160" : resolution == 5 ? "2560x1440" : "1920x1080", timing ? 60 : 30,
+             resolution == 6 ? "3840x2160" : resolution == 5 ? "2560x1440" : "1920x1080", timing ? 60 : 30, average / 1000,
              variants[ps_exp_variant_for(e, codec, ten_bit)]);
 }
 
@@ -583,17 +594,18 @@ static void log_disabled(const ps_experiment *before, const ps_experiment *after
     if (after->hevc_failed && !before->hevc_failed) ps_diag_log("ProsperoSunshine: experimental disabled feature=hevc\n");
     if (after->hdr_failed && !before->hdr_failed) ps_diag_log("ProsperoSunshine: experimental disabled feature=hdr\n");
     if (after->large_failed && !before->large_failed) ps_diag_log("ProsperoSunshine: experimental disabled feature=large\n");
+    if (after->high_bitrate_failed && !before->high_bitrate_failed) ps_diag_log("ProsperoSunshine: experimental disabled feature=bitrate\n");
 }
 
-void ps_capture_set_experimental(int hevc, int hdr, int large, const char *marker)
+void ps_capture_set_experimental(int hevc, int hdr, int large, int high_bitrate, const char *marker)
 {
     const uint32_t firmware = kernel_get_fw_version();
     ps_experiment now;
-    ps_exp_init(&now, firmware, hevc, hdr, large);
-    if (hevc || hdr || large) {
-        char set[24], on[24];
-        names(set, sizeof set, hevc, hdr, large);
-        names(on, sizeof on, now.hevc, now.hdr, now.large);
+    ps_exp_init(&now, firmware, hevc, hdr, large, high_bitrate);
+    if (hevc || hdr || large || high_bitrate) {
+        char set[32], on[32];
+        names(set, sizeof set, hevc, hdr, large, high_bitrate);
+        names(on, sizeof on, now.hevc, now.hdr, now.large, now.high_bitrate);
         ps_diag_log("ProsperoSunshine: experimental switches=%s set=%s firmware=%#x\n", on, set, firmware);
     }
     snprintf(marker_path, sizeof marker_path, "%s", marker ? marker : "");
@@ -611,11 +623,12 @@ void ps_capture_set_experimental(int hevc, int hdr, int large, const char *marke
         if (trial) {
             const char *const end = strchr(trial + 1, ' ');
             const size_t length = end ? (size_t)(end - trial) : strlen(trial);
-            char words[32];
+            char words[40];
             snprintf(words, sizeof words, "%.*s", (int)length, trial);
             if (strstr(words, "hevc") && (now.hevc || now.hdr)) now.hevc_failed = 1;
             if (strstr(words, "hdr") && now.hdr) now.hdr_failed = 1;
             if (strstr(words, "large") && now.large) now.large_failed = 1;
+            if (strstr(words, "bitrate") && now.high_bitrate) now.high_bitrate_failed = 1;
         }
     }
     marker_clear();
@@ -630,12 +643,14 @@ int ps_capture_open_or_fall_back(ps_capture **out)
     for (;;) {
         const uint32_t codec = atomic_load(&video_codec), ten_bit = atomic_load(&video_ten_bit);
         const uint32_t resolution = atomic_load(&video_resolution), timing = atomic_load(&video_timing);
+        const uint32_t average = atomic_load(&opening_average);
         const ps_experiment before = experiment_now();
         const int logged = ps_exp_any(&before);
-        const int unproven = ps_exp_unproven_codec(&before, codec, ten_bit) || ps_exp_unproven_mode(&before, resolution);
+        const int unproven = ps_exp_unproven_codec(&before, codec, ten_bit) || ps_exp_unproven_mode(&before, resolution) ||
+                             ps_exp_unproven_rate(&before, average);
         char fields[192] = "";
         if (logged) {
-            describe_attempt(fields, sizeof fields, &before, codec, ten_bit, resolution, timing);
+            describe_attempt(fields, sizeof fields, &before, codec, ten_bit, resolution, timing, average);
             ps_diag_log("ProsperoSunshine: experimental attempt %s\n", fields);
             if (unproven) marker_write(fields);
         }
@@ -654,15 +669,22 @@ int ps_capture_open_or_fall_back(ps_capture **out)
         enum ps_exp_next next = PS_EXP_GIVE_UP;
         if (rc) {
             const int attributable = rc == PS_CAPTURE_ERROR && atomic_load(&reached_encoder);
-            next = ps_exp_failed(&experiment, codec, ten_bit, attributable, atomic_load(&refused) && resolution >= 5);
+            next = ps_exp_failed(&experiment, codec, ten_bit, average, attributable, atomic_load(&refused) && resolution >= 5);
         } else {
-            ps_exp_succeeded(&experiment, codec, ten_bit, resolution);
+            ps_exp_succeeded(&experiment, codec, ten_bit, resolution, average);
         }
         const ps_experiment after = experiment;
         pthread_mutex_unlock(&experiment_lock);
         log_disabled(&before, &after);
         if (!rc) return 0;
         if (next == PS_EXP_NEXT_VARIANT) continue;
+        if (next == PS_EXP_LOWER_RATE) {
+            // The peak keeps its share of the average. The client needs no word of this: it gets fewer bits, nothing else.
+            const uint64_t peak = atomic_load(&opening_peak);
+            atomic_store(&opening_peak, (uint32_t)(peak * PS_EXP_SAFE_AVERAGE / average));
+            atomic_store(&opening_average, PS_EXP_SAFE_AVERAGE);
+            continue;
+        }
         if (next == PS_EXP_FALL_BACK && ps_capture_fall_back_mode()) continue;
         // Audio may open next, for the stream that is about to end: not with what just failed.
         if (after.hevc_failed != before.hevc_failed || after.hdr_failed != before.hdr_failed) {
