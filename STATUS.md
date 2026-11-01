@@ -291,8 +291,18 @@ Gemessen auf der PS5 Pro mit 10.20 und ShadowMountPlus 1.7beta11.
   Android (1167 ms). ShadowMountPlus band jeden Start und gab jeden geschlossenen Titel frei, ohne „runtime preparation timed
   out“ oder „Device busy“; danach keine Spielordner in `/mnt/sandbox`. „Quit Session“ unter Android nicht einzeln geprüft; es
   ruft dasselbe `NvHTTP.quitApp()` auf wie „Quit Current Game and Start“.
-- **Offen:** Firmware 13.00 und der Fall, in dem der Host bis zur Obergrenze von 11 s wartet (ein leerer Ordner `<Titel>_000`
-  ist noch da).
+- **Firmware 13.00, Testclient `stream_test` statt Moonlight, Mario 64 und GTA III (2026-11-02):** `/cancel` schloss das Spiel nach
+  dem Stream und mitten im Stream: Mario in 2325 bis 3080 ms, GTA III in 848 und 885 ms, danach kein Spielordner in `/mnt/sandbox`.
+  Sofort wieder gestartet: Der Host wartete 1861 und 1871 ms ab dem Schließen, der Start klappte. Wechsel durch `/cancel` und direkt
+  `/launch` von GTA III klappte. Stream-Ende ohne `/cancel`: Mario lief weiter, `serverinfo` meldete BUSY, `/resume` streamte
+  wieder. Mario hinter dem Startbildschirm: weiter BUSY, ein `/cancel` in dem Zustand lief nicht. Settings-App über Mario: FREE, `/cancel`
+  ließ Mario offen, ebenso „Restart host“. „PS5 Screen“ mit Mario vorn, dann `/cancel`: nichts geschlossen. Eine andere App bei
+  laufendem Spiel: 409, das Spiel blieb als laufend gemeldet und `/cancel` schloss es danach. Alle Titel starteten danach weiter.
+- **Einstellung aus, gleiche Konsole:** H.264 und HEVC 4K wie vorher (längste Bildlücke 19 bis 23 ms), `/cancel` ließ Mario laufen.
+  Ein selbst angelegter leerer Ordner `/mnt/sandbox/PPSA00000_000` hielt den Start von Mario nicht mehr auf; ein echter Rest nach
+  einem verpassten Ende von ShadowMountPlus war es nicht. Mario hinter der App blockierte GTA III weiter mit 409.
+- **Offen:** Moonlight auf 13.00 (Resume und Quit im Menü) und der Fall, in dem der Host bis zur Obergrenze von 11 s wartet (ein leerer
+  Ordner `<Titel>_000` ist noch da).
 
 ## Bauen und testen
 

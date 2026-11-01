@@ -9,7 +9,8 @@
   listed as running while it is in front, as Sunshine on a PC keeps its app, so Moonlight offers Resume and Quit and asks to
   quit it before starting another game. Only `/cancel` closes it, never a stream's end or the host's shutdown. Starting the same
   game again right after waits until ShadowMountPlus has released it. Measured on 10.20 with Moonlight for PC, Android and
-  iOS: resume, quit and switching games work, and a close took about 1 s.
+  iOS: resume, quit and switching games work, and a close took about 1 s. On 13.00 the same with a test client, not yet with
+  Moonlight: a close took 0.9 s in GTA III and 2.3 to 3.1 s in the Mario 64 demo.
 
 ### Fixed
 
