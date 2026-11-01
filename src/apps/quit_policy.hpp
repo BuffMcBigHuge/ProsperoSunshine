@@ -9,8 +9,9 @@ namespace prospero {
 
 enum class QuitDecision { off, no_game, not_in_front, close };
 
-// session_game: the game the last session started or found in front, empty for "PS5 Screen", a refused start or a failed
-// one. It stays listed as running after the stream while it is in front, so a /cancel at any later time is meant for it.
+// session_game: the game the last session started or found in front, empty for "PS5 Screen" or a failed start. A refused start
+// leaves it as it was. It stays listed as running after the stream while it is in front, so a /cancel at any later time is meant
+// for it.
 constexpr QuitDecision quit_decision(bool enabled, std::string_view session_game, std::string_view in_front) {
     if (!enabled) return QuitDecision::off;
     if (session_game.empty()) return QuitDecision::no_game;

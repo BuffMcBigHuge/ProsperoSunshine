@@ -204,11 +204,6 @@ void refresh(const std::string &) {}
 
 int proc_t::execute(int app_id, std::shared_ptr<rtsp_stream::launch_session_t>) {
     terminate();
-    {
-        std::lock_guard lock(quit_mutex);
-        session_game.clear();
-        session_app_id = 0;
-    }
     const auto app = std::find_if(_apps.begin(), _apps.end(), [&](const ctx_t &a) { return a.id == std::to_string(app_id); });
     if (app == _apps.end()) {
         BOOST_LOG(error) << "Couldn't find app with ID ["sv << app_id << ']';
@@ -222,16 +217,14 @@ int proc_t::execute(int app_id, std::shared_ptr<rtsp_stream::launch_session_t>) 
     bool in_front = false;
     if (!_app.cmd.empty() && !start_title(_app.cmd, in_front)) {
         // Refuse the launch, so the client doesn't name this title over a stream of the one in front. "PS5 Screen" still
-        // streams whatever is in front.
+        // streams whatever is in front. The game a session left in front stays listed: it's still the one to resume or quit.
         terminate();
         return 409;
     }
-    if (in_front) {
-        std::lock_guard lock(quit_mutex);
-        session_game = _app.cmd;
-        session_app_id = app_id;
-        session_app = _app;
-    }
+    std::lock_guard lock(quit_mutex);
+    session_game = in_front ? _app.cmd : "";
+    session_app_id = in_front ? app_id : 0;
+    if (in_front) session_app = _app;
     return 0;
 }
 
