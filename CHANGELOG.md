@@ -22,6 +22,17 @@
 - Game audio also comes when the capture isn't available as the stream starts, as can happen while the game picked in
   Moonlight starts. The stream used to stay silent to its end; the audio now retries every half second, as after a later
   loss. Not yet seen on the console.
+### Fixed
+
+- Picking a game in Moonlight while another one is in front now fails the launch instead of reporting success. The host still
+  doesn't close the game in front; before, Moonlight named the game it asked for while the stream showed the other one. "PS5
+  Screen" streams whatever is in front.
+- A game picked in Moonlight no longer starts while another one is still open in the background. A game opened before the
+  settings app stays open behind it, and once the app has closed, the system no longer reports it as running. Starting another
+  title could close it, so the launch fails with 409 as with a game in front. The host reads this from `/mnt/sandbox`.
+- A start refused while ShadowMountPlus still releases a title (`0x80940033`, about a second after the settings app closed
+  itself, seen once on firmware 10.20 with ShadowMountPlus 1.7beta11) is retried for up to 3 seconds when nothing else is
+  open. The retry itself is not yet seen working: in the next try the first start went through.
 
 ## 0.1.6 (2026-11-01)
 
