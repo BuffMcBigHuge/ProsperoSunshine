@@ -333,9 +333,10 @@ schrieb alle 5 s Mittelwert, stärkste Sekunde und größtes Bild nach `host_dia
 - **Offen:** H.264 auf 10.x mit diesen Werten (gleicher Quantisierer, mehr Bits erwartet; alle Clients wählten HEVC) und andere
   10.x-Versionen.
 
-### Schalter und Bericht, Stand 0.1.8 (2026-11-02, nicht veröffentlicht)
+### Schalter und Bericht, Stand 0.1.8 (2026-11-02)
 
-Gemessen auf der eigenen Konsole mit 13.00 und dem Testclient `stream_test`, Build `6ee70fa5` bzw. der Stand direkt davor.
+[v0.1.8](https://github.com/Darkatek7/ProsperoSunshine/releases/tag/v0.1.8) auf `6ee70fa5`, CI grün. Katalog-PR gemergt und die Katalogdatei nennt
+0.1.8; die Anzeige im Store und eine Installation daraus sind nicht geprüft. Gemessen auf der eigenen Konsole mit 13.00 und dem Testclient `stream_test`, Build `6ee70fa5` bzw. der Stand direkt davor.
 
 - **Schalter „Quit closes the game“ in den Settings:** Einschalten mit „Save and restart host“ schrieb `close_game_on_quit = 1`,
   der Host meldete `close_game_on_quit=1`. Mario 64 aus dem Stream, danach `/cancel`: „Closed PPSA99310 in 2814 ms“, kein Spielordner
@@ -352,6 +353,11 @@ Gemessen auf der eigenen Konsole mit 13.00 und dem Testclient `stream_test`, Bui
 ### Berichte von Testern zu 0.1.7 (2026-11-02, nicht selbst gemessen)
 
 - **13.60 (Issue 1):** Ein Nutzer meldet eine Stunde Spielen in 4K60 mit HDR und Controller. Der Diagnosebericht dazu fehlt noch.
+- **13.60, PS5 Pro, zweiter Nutzer (Issue 1, mit Bericht):** HEVC 10 bit bei 1080p startet (`variant=minimal`, `rc=0`). 4K scheitert bei `OpenVideo` mit
+  `0x81950008` in beiden Varianten, auch bei 50 Mbit/s; der Host fällt auf 1080p zurück. `video out mode` ist dort `0x10`, also nach `docs/re/hdr.md` nur
+  `60Hz` ohne 4K, WQHD oder HDR; dass die Bildausgabe die Ursache ist, ist nicht bewiesen. Der Nutzer meldet fehlende Bilder bei 80 und 150 Mbit/s
+  und knackenden Ton beim Blättern in der App, 120 fps verbanden nicht. In der Sitzung lief `min_log_level = verbose`, und aufeinanderfolgende
+  Logzeilen liegen etwa 3 ms auseinander; ob das die Ursache ist, ist nicht geprüft.
 - **10.40 (Issue 2):** Der Bericht zeigt, dass die Aufnahme jetzt öffnet und HEVC startet (`variant=minimal`, `rc=0`). Der Nutzer nennt das Bild
   „choppy“ und sah bei H.264 und mit nur 1440p/4K einen weißen Bildschirm. Client und Ursache sind nicht geklärt; von den weißen Läufen gibt es
   keinen Bericht.
