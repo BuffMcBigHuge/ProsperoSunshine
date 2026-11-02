@@ -12,6 +12,14 @@
   iOS: resume, quit and switching games work, and a close took about 1 s. On 13.00 the same with a test client, not yet with
   Moonlight: a close took 0.9 s in GTA III and 2.3 to 3.1 s in the Mario 64 demo.
 
+### Changed
+
+- Firmware 10.x: the picture is no longer blocky. The encoder there takes no bitrate and was left at its own QP, which sent
+  0.3 to 0.4 Mbit/s in a moving game whatever Moonlight asked for. Its QP now follows the client's bitrate: 30/34 (IDR/other
+  frames) below 8 Mbit/s, 27/31 from 8, 24/28 from 12 and 21/25 from 20. Measured on 10.20 in GTA III, driving fast, HEVC
+  10 bit at 1080p60: about 2, 2.4, 3 and 5.3 Mbit/s on average, with a busiest second of 3.1, 3.7, 5.1 and 10 Mbit/s. The
+  encoder still doesn't hold the bitrate set in Moonlight, and busier games will send more.
+
 ### Fixed
 
 - An empty `/mnt/sandbox/<title>_000`, left behind when ShadowMountPlus missed a title's exit, no longer counts as an open

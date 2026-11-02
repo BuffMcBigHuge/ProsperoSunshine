@@ -139,7 +139,7 @@ Die Regel: Was auf anderer Firmware nur gesperrt ist, aber funktionieren könnte
 Bewusst kein Schalter:
 
 - **`ps_ra_resolve` lehnt ab**, wenn die ResourceArbitrator-Aufrufe nicht aufgelöst werden: Dann gibt es nichts, was man aufrufen könnte. Der Bericht sagt das in der Zeile „Capture“ und dass kein Schalter daran etwas ändert.
-- **Die Rate-Felder auf 10.x** bleiben weg: Der Datensatz dort hat sie nicht, und der Encoder behält seine Standardrate. Deshalb wirkt dort auch der Bitrate-Schalter nicht.
+- **Die Rate-Felder auf 10.x** bleiben weg: Der Datensatz dort hat sie nicht, und der Encoder nimmt keine Bitrate an. Deshalb wirkt dort auch der Bitrate-Schalter nicht. Stattdessen setzt der Host die Quantisierer `cfg+0xc4` (IDR) und `cfg+0xc8` (übrige Bilder) nach der Bitrate des Clients (`encoder_qp.h`); ohne sie sendet der Encoder in einem bewegten Spiel 0,3 bis 0,4 Mbit/s.
 
 Die übrigen Firmware-Abfragen im Code sind keine Sperren: `record_shift` legt das Layout fest, `firmware_verified` der App ändert nur Text (Suche nach `_verified`, `kernel_get_fw_version` und Firmware-Vergleichen).
 
@@ -152,7 +152,7 @@ Die übrigen Firmware-Abfragen im Code sind keine Sperren: `record_shift` legt d
 
 Der Host liest die Schlüssel beim Start selbst (`main_ps5.cpp`), Sunshine kennt sie nicht. Die Regeln stehen in `src/platform/ps5/experimental.h`, `ps_capture_hevc_verified`, `ps_capture_large_modes_verified` und `ps_capture_high_bitrate_verified` bleiben unverändert das, was gemessen ist; der Host fragt jetzt `ps_capture_hevc_allowed`, `ps_capture_hdr_allowed`, `ps_capture_large_modes_allowed` und `ps_capture_high_bitrate_allowed`. HDR bietet HEVC mit an, weil Moonlight Main 10 nur zusammen mit HEVC bekommt. `hevc_mode = 1` schlägt die Schalter.
 
-Auf 10.x hat der Bitrate-Schalter keine Wirkung: Der Datensatz dort hat keine Rate-Felder (`configure()`, `shift < 0`), der Encoder bleibt bei seiner Standardrate, und `SetVideoBitrate` ruft der Host nicht auf. Der Host ignoriert den Schalter deshalb auf allen 10.x, und die App zeigt „No effect on 10.x“, statt eine Wirkung vorzutäuschen.
+Auf 10.x hat der Bitrate-Schalter keine Wirkung: Der Datensatz dort hat keine Rate-Felder (`configure()`, `shift < 0`), der Encoder nimmt keine Bitrate an, und `SetVideoBitrate` ruft der Host nicht auf (auf 10.20 gibt es 0 zurück, danach scheitert das nächste Lesen mit `0x80c78000`). Der Host ignoriert den Schalter deshalb auf allen 10.x, und die App zeigt „No effect on 10.x“, statt eine Wirkung vorzutäuschen.
 
 **Varianten.** Auf 10.20 startet `cfg+0x24 = 1` allein HEVC (`docs/re/hevc.md`). Der Host probiert deshalb je Bittiefe erst `minimal` (nur `cfg+0x24`, Rate-Felder wie bei H.264, kein Encoder-Speicher), dann `full` (Felder und Speicher von 13.00). Was ein Bild geliefert hat, bleibt bis zum Neustart des Hosts. Auf 10.x gibt es nur `minimal`, weil `configure()` die inneren Felder dort weglässt. Mit `full` verschiebt `configure()` auf 13.60 die Felder ab `0x198` und den Encoder-Speicher um 8 mit dem Rest des Datensatzes; die Felder darunter bleiben an den Stellen von 13.00, weil nicht bekannt ist, wo der Block `0xb8` seine zusätzlichen 8 Byte hat. Ohne Schalter nimmt der Host die Variante `standard`, also den Datensatz wie zuvor, auch bei Feldern, die auf 13.60 nicht passen.
 

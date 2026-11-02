@@ -25,7 +25,8 @@ reverse-engineering notes: `docs/` (German).
 
 ## Requirements
 
-- PS5 firmware: **13.00 and 10.20 are tested** (10.20 at 1080p, where the encoder keeps its own bitrate). Other versions are
+- PS5 firmware: **13.00 and 10.20 are tested** (10.20 at 1080p, where the encoder takes no bitrate; its picture quality follows
+  the bitrate set in Moonlight instead, and it sends well below it). Other versions are
   untested; the host refuses them only if its system-library lookups fail (`docs/firmware-porting.md`, German).
 - A homebrew environment with an **ELF loader** (for example one listening on port 9021). The app also needs
   [ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus), which registers titles from `/data/homebrew/`.
@@ -152,7 +153,7 @@ on yourself and help find out. Nothing here has been seen working on an untested
 
 1. In the app, open **Settings**. Under **Experimental**, turn on what you want to try: HEVC (8 bit), HDR (HEVC 10 bit), 1440p
    and 4K, or a bitrate cap of 150 instead of 50 Mbit/s. On firmware where a function is verified, its switch says it isn't needed. HDR
-   also offers HEVC. The bitrate switch has no effect on firmware 10.x, because the encoder keeps its own rate there, and says so.
+   also offers HEVC. The bitrate switch has no effect on firmware 10.x, because the encoder takes no bitrate there, and says so.
 2. Choose **Save and restart host**.
 3. Start a stream in Moonlight with that setting, for example with HEVC chosen as the codec, 4K as the resolution, or a bitrate
    above 50 Mbit/s. Check that the picture and sound are right.
