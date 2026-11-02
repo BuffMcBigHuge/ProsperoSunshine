@@ -99,6 +99,22 @@ Notice notice(std::uint32_t firmware, const HostLog &log, bool host_running);
 std::string pairing_label(const std::string &name);
 // ... and the name to offer for it: the client's own if it sent one, else the first free "Moonlight <n>".
 std::string suggested_device_name(const std::string &name, const std::vector<std::string> &paired);
+// What was typed as a device's name, without what the app's scan of the pairing file trips over.
+std::string clean_device_name(const std::string &text);
+
+// A paired device, as the host's DEVICES lists it. The UUID and the mode stay in the app: neither
+// goes into the report.
+struct Device
+{
+    std::string id;
+    std::string name;
+    std::string mode; // the mode it last asked for, like "1280x720@60"; "" when none is known
+    bool streaming = false;
+};
+// "OK <uuid> <streaming 0|1> <mode or -> <name>": the name is the rest of the line and may be empty.
+bool parse_device_line(const std::string &line, Device *device);
+std::string device_label(const Device &device);
+std::string device_info(const Device &device);
 
 // The log with what could identify someone taken out: IPv4 addresses, `names` (paired devices and the
 // console's name) and long hex runs (client ids, keys). Other text stays.

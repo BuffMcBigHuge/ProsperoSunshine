@@ -3,7 +3,7 @@
 // tab bar (L1/R1):
 //   Home      a hero with the host's state and the sun emblem, the host's actions (start or stop,
 //             restart, start at boot), pairing requests as cards (Cross: the PIN) and the paired
-//             devices;
+//             devices (Cross: a list to rename or remove them);
 //   Settings  one tile per sunshine.conf option (Cross opens its editor, Square puts it back to the
 //             host's default), the Experimental section's switches among them (Cross flips one), then
 //             Save, Save and restart, and Revert;
@@ -63,6 +63,8 @@ class Screen
         text,
         choice,
         number,
+        devices,
+        remove_device,
     };
     enum class Action
     {
@@ -84,6 +86,7 @@ class Screen
     void open_tile(int index);
     void open_sheet(Sheet kind, const std::string &title, const std::string &help, const std::string &initial);
     void close_sheet();
+    void open_devices();
 
     // State helpers.
     bool busy() const
@@ -103,6 +106,8 @@ class Screen
     hui::gfx::Rect focus_rect() const;
     hui::gfx::Rect action_rect(int index) const;
     hui::gfx::Rect pairing_rect(int index) const;
+    hui::gfx::Rect devices_card() const;
+    hui::gfx::Rect device_row_rect(int visible) const; // visible: counted from the first row in view
     hui::gfx::Rect tile_rect(int index) const;
     hui::gfx::Rect settings_action_rect(int index) const;
     int visible_pairings() const;
@@ -139,13 +144,14 @@ class Screen
     Page page_ = Page::home;
     float page_age_ = 0.0f; // seconds since the page appeared
     int page_direction_ = 1;
-    int home_row_ = 0; // 0 the actions, 1 the pairing cards
+    int home_row_ = 0; // 0 the actions, 1 the pairing cards and the paired devices
     int home_action_ = 0;
-    int home_card_ = 0;
+    int home_card_ = 0; // the pairing cards, then the paired devices after them
     int tile_ = 0; // the option tiles, then the three actions under them
     float tile_amount_[7 + PS_EXP_SWITCH_COUNT + 3] = {};
     float action_amount_[3] = {};
     float card_amount_[2] = {};
+    float devices_amount_ = 0.0f; // the paired devices' focus
     float tab_x_ = -1.0f; // the selected tab's plate glides between tabs
     hui::ui::ComponentStyle style_;
     hui::ui::Highlight highlight_;
@@ -173,6 +179,9 @@ class Screen
     std::string target_name_;
     std::string pair_pin_;        // the PIN while the device's name is asked after it
     std::string pair_suggestion_; // the name that takes when the field is left empty
+    bool renaming_ = false;       // the text sheet renames the device target_
+    int device_row_ = 0;          // the focused row of the device list
+    int device_top_ = 0;          // the first row in view
     int choice_ = 0; // the focused row of a choice sheet (0: the default)
     long number_ = 0;
     bool number_default_ = false;

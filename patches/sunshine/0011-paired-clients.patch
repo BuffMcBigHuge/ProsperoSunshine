@@ -1,0 +1,139 @@
+ProsperoSunshine: the paired clients for the app: a new name, and the mode each last asked for
+
+The control socket lists, renames and removes paired clients; upstream only has its web page for that, which the PS5
+host does not run. The listener hands the mode of every launch or resume to the host, which keeps it per client
+(src/control/device_modes.hpp), so a launch never rewrites the pairing file.
+
+--- a/src/nvhttp.h
++++ b/src/nvhttp.h
+@@ -13,6 +13,7 @@
+ #include <memory>
+ #include <mutex>
+ #include <optional>
++#include <functional>
+ #include <string>
+ #include <string_view>
+ #include <vector>
+@@ -253,9 +254,20 @@
+   struct launch_client_t {
+     std::string name;  ///< Friendly name from pairing.
+     std::string address;  ///< Address the request came from.
++    std::string uuid;  ///< The paired client's UUID.
++    int width = 0;  ///< Width of the mode it asked for.
++    int height = 0;  ///< Height of the mode it asked for.
++    int fps = 0;  ///< Frame rate of the mode it asked for.
+   };
+ 
+   /**
++   * @brief Set what is called with the client of every launch or resume request, on the request's thread.
++   *
++   * @param listener The function, or nullptr for none.
++   */
++  void set_launch_listener(std::function<void(const launch_client_t &)> listener);
++
++  /**
+    * @brief Name and address of the client that last launched or resumed a stream.
+    *
+    * @return Empty strings until the first launch.
+@@ -364,6 +376,15 @@
+   bool unpair_client(std::string_view uuid);
+ 
+   /**
++   * @brief Give a paired client another name.
++   *
++   * @param uuid The UUID of the client.
++   * @param name The new name.
++   * @return True when the client was found.
++   */
++  bool rename_client(std::string_view uuid, const std::string &name);
++
++  /**
+    * @brief Enable or disable a client.
+    * @param uuid The UUID of the client.
+    * @param enabled Whether the client should be enabled.
+--- a/src/nvhttp.cpp
++++ b/src/nvhttp.cpp
+@@ -697,13 +697,37 @@
+   namespace {
+     std::mutex launch_client_mutex;
+     launch_client_t last_launch_client;
++    std::function<void(const launch_client_t &)> launch_listener;
+ 
+-    void remember_launch_client(const std::string &name, const std::string &address) {
+-      std::scoped_lock lock {launch_client_mutex};
+-      last_launch_client = {name, address};
++    std::string uuid_of_cert(const std::string &cert) {
++      std::lock_guard lock {client_auth_mutex()};
++      for (const auto &named_cert : client_root.named_devices) {
++        if (named_cert.cert == cert) {
++          return named_cert.uuid;
++        }
++      }
++      return {};
++    }
++
++    void remember_launch_client(const rtsp_stream::launch_session_t &session, const std::string &address) {
++      const launch_client_t client {session.client_name, address, uuid_of_cert(session.client_cert), session.width, session.height, session.fps};
++      std::function<void(const launch_client_t &)> listener;
++      {
++        std::scoped_lock lock {launch_client_mutex};
++        last_launch_client = client;
++        listener = launch_listener;
++      }
++      if (listener) {
++        listener(client);
++      }
+     }
+   }  // namespace
+ 
++  void set_launch_listener(std::function<void(const launch_client_t &)> listener) {
++    std::scoped_lock lock {launch_client_mutex};
++    launch_listener = std::move(listener);
++  }
++
+   launch_client_t get_last_launch_client() {
+     std::scoped_lock lock {launch_client_mutex};
+     return last_launch_client;
+@@ -1434,7 +1458,7 @@
+ 
+     host_audio = util::from_view(get_arg(args, "localAudioPlayMode"));
+     auto launch_session = make_launch_session(host_audio, args);
+-    remember_launch_client(launch_session->client_name, net::addr_to_normalized_string(request->remote_endpoint().address()));
++    remember_launch_client(*launch_session, net::addr_to_normalized_string(request->remote_endpoint().address()));
+ 
+     if (rtsp_stream::session_count() == 0) {
+       // The display should be restored in case something fails as there are no other sessions.
+@@ -1555,7 +1579,7 @@
+       host_audio = util::from_view(get_arg(args, "localAudioPlayMode"));
+     }
+     const auto launch_session = make_launch_session(host_audio, args);
+-    remember_launch_client(launch_session->client_name, net::addr_to_normalized_string(request->remote_endpoint().address()));
++    remember_launch_client(*launch_session, net::addr_to_normalized_string(request->remote_endpoint().address()));
+ 
+     if (no_active_sessions) {
+       // We want to prepare display only if there are no active sessions at
+@@ -1843,6 +1867,24 @@
+     return removed;
+   }
+ 
++  bool rename_client(const std::string_view uuid, const std::string &name) {
++    {
++      std::scoped_lock lock {launch_client_mutex};
++      if (last_launch_client.uuid == uuid) {
++        last_launch_client.name = name;
++      }
++    }
++    std::lock_guard lock {client_auth_mutex()};
++    for (auto &named_cert : client_root.named_devices) {
++      if (named_cert.uuid == uuid) {
++        named_cert.name = name;
++        save_state();
++        return true;
++      }
++    }
++    return false;
++  }
++
+   bool set_client_enabled(const std::string_view uuid, bool enabled) {
+     std::lock_guard lock {client_auth_mutex()};
+     for (auto &named_cert : client_root.named_devices) {

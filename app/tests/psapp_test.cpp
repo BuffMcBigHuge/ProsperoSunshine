@@ -445,6 +445,30 @@ static void diag_tests()
     CHECK(diag::suggested_device_name("", {"roth", "Moonlight 1"}) == "Moonlight 2");
     CHECK(diag::suggested_device_name("roth", {"Moonlight 1", "Moonlight 3"}) == "Moonlight 2");
     CHECK(diag::suggested_device_name("Steam Deck", {"Steam Deck"}) == "Steam Deck");
+    // Device names and the host's device list.
+    CHECK(diag::clean_device_name("  PS Vita ") == "PS Vita");
+    CHECK(diag::clean_device_name("a\"b\\c[d]") == "abc[d]");
+    CHECK(diag::clean_device_name("   ").empty());
+    {
+        diag::Device d;
+        CHECK(diag::parse_device_line("OK 4D7B-22 0 1280x720@60 PS Vita", &d));
+        CHECK(d.id == "4D7B-22" && !d.streaming && d.mode == "1280x720@60" && d.name == "PS Vita");
+        CHECK(diag::device_label(d) == "PS Vita");
+        CHECK(diag::device_info(d) == "Last asked for 1280x720@60");
+        d.streaming = true;
+        CHECK(diag::device_info(d) == "Streaming now, 1280x720@60");
+        CHECK(diag::parse_device_line("OK 4D7B-22 1 - ", &d));
+        CHECK(d.streaming && d.mode.empty() && d.name.empty());
+        CHECK(diag::device_label(d) == "Unnamed device");
+        CHECK(diag::device_info(d) == "Streaming now");
+        d.streaming = false;
+        CHECK(diag::device_info(d) == "No stream recorded yet");
+        CHECK(!diag::parse_device_line("END", &d));
+        CHECK(!diag::parse_device_line("ERR unknown command", &d));
+        CHECK(!diag::parse_device_line("OK 4D7B-22", &d));
+        CHECK(!diag::parse_device_line("OK 4D7B-22 0", &d));
+        CHECK(!diag::parse_device_line("OK 4D7B-22 0 -", &d));
+    }
     // What someone plays stays out; the app, the system's titles and "PS5 Screen" stay.
     CHECK(diag::scrub("Started PPSA99310", {}) == "Started <title>");
     CHECK(diag::scrub("Not starting PPSA03527: CUSA12345 is in front", {}) == "Not starting <title>: <title> is in front");

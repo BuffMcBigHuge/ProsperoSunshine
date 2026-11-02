@@ -35,6 +35,8 @@ const Color kClear = Color::rgb(0x000000, 0.0f);
 
 constexpr float kMessageSeconds = 7.0f;
 constexpr float kArmSeconds = 4.0f;
+constexpr int kDeviceRows = 6; // the device list's rows in view
+const Rect kPairedDevices{1220.0f, 740.0f, 604.0f, 172.0f};
 constexpr int kReportVisible = 19; // lines of the report on screen
 constexpr float kReportLine = 26.0f;
 
@@ -140,6 +142,19 @@ Rect Screen::pairing_rect(int index) const
     return {96.0f + static_cast<float>(index) * 562.0f, 740.0f, 538.0f, 196.0f};
 }
 
+Rect Screen::devices_card() const
+{
+    const int rows = std::clamp(static_cast<int>(snap_.devices.size()), 1, kDeviceRows);
+    const float height = 262.0f + static_cast<float>(rows) * 90.0f;
+    return {960.0f - 520.0f, 540.0f - height / 2.0f + 10.0f, 1040.0f, height};
+}
+
+Rect Screen::device_row_rect(int visible) const
+{
+    const Rect card = devices_card();
+    return {card.x + 50.0f, card.y + 216.0f + static_cast<float>(visible) * 90.0f, card.w - 100.0f, 80.0f};
+}
+
 Rect Screen::tile_rect(int index) const
 {
     // The gap before the switches holds the section's caption.
@@ -166,7 +181,9 @@ Rect Screen::settings_action_rect(int index) const
 Rect Screen::focus_rect() const
 {
     if (page_ == Page::home)
-        return home_row_ == 0 ? action_rect(home_action_) : pairing_rect(home_card_);
+        return home_row_ == 0                  ? action_rect(home_action_)
+               : home_card_ >= visible_pairings() ? kPairedDevices
+                                                  : pairing_rect(home_card_);
     if (page_ == Page::diagnostics)
         return {96.0f, 836.0f, 340.0f, 76.0f};
     return tile_ < kTiles ? tile_rect(tile_) : settings_action_rect(tile_ - kTiles);
@@ -220,9 +237,7 @@ void Screen::update(const hui::InputFrame &input, float dt, hui::ui::Feedback &f
         }
     }
     seen_pairings_ = snap_.pairings.size();
-    if (visible_pairings() == 0)
-        home_row_ = 0;
-    home_card_ = std::clamp(home_card_, 0, std::max(0, visible_pairings() - 1));
+    home_card_ = std::clamp(home_card_, 0, visible_pairings());
 
     // A button that is down while the app starts (the press that started it, or a pad that reports
     // one held, as the virtual pad of a host session without its client does) is ignored until it
@@ -275,6 +290,7 @@ void Screen::update(const hui::InputFrame &input, float dt, hui::ui::Feedback &f
         action_amount_[i] = approach(action_amount_[i], page_ == Page::home && home_row_ == 0 && home_action_ == i ? 1.0f : 0.0f, dt, 14.0f);
     for (int i = 0; i < 2; ++i)
         card_amount_[i] = approach(card_amount_[i], page_ == Page::home && home_row_ == 1 && home_card_ == i ? 1.0f : 0.0f, dt, 14.0f);
+    devices_amount_ = approach(devices_amount_, page_ == Page::home && home_row_ == 1 && home_card_ == visible_pairings() ? 1.0f : 0.0f, dt, 14.0f);
     for (int i = 0; i < kTiles + 3; ++i)
         tile_amount_[i] = approach(tile_amount_[i], page_ == Page::settings && tile_ == i ? 1.0f : 0.0f, dt, 14.0f);
     report_amount_ = approach(report_amount_, page_ == Page::diagnostics ? 1.0f : 0.0f, dt, 14.0f);
@@ -292,7 +308,7 @@ void Screen::update(const hui::InputFrame &input, float dt, hui::ui::Feedback &f
     if (live())
         pulse_ += dt;
     keyboard_.update(dt);
-    if (sheet_ == Sheet::choice)
+    if (sheet_ == Sheet::choice || sheet_ == Sheet::devices)
     {
         sheet_highlight_.update(dt, style_);
     }
@@ -325,7 +341,7 @@ void Screen::handle_home(const hui::InputFrame &input, hui::ui::Feedback &feedba
     case Direction::up:
     case Direction::down: {
         const int row = input.nav == Direction::up ? 0 : 1;
-        if (row == home_row_ || (row == 1 && cards == 0))
+        if (row == home_row_)
         {
             if (!input.nav_repeat)
                 feedback.play(hui::audio::Cue::error, 1.0f, 0.0f, 0.4f);
@@ -339,7 +355,7 @@ void Screen::handle_home(const hui::InputFrame &input, hui::ui::Feedback &feedba
     case Direction::right: {
         const int step = input.nav == Direction::left ? -1 : 1;
         int &index = home_row_ == 0 ? home_action_ : home_card_;
-        const int count = home_row_ == 0 ? 3 : cards;
+        const int count = home_row_ == 0 ? 3 : cards + 1;
         if (index + step < 0 || index + step >= count)
         {
             if (!input.nav_repeat)
@@ -366,6 +382,14 @@ void Screen::handle_home(const hui::InputFrame &input, hui::ui::Feedback &feedba
             target_name_ = p.name;
             pair_pin_.clear();
             open_sheet(Sheet::pin, "Pair " + diag::pairing_label(p.name), "Type the four digits Moonlight shows.", "");
+            feedback.play(hui::audio::Cue::modal_open);
+        }
+        else
+        {
+            device_row_ = 0;
+            device_top_ = 0;
+            open_devices();
+            sheet_highlight_.snap(device_row_rect(0));
             feedback.play(hui::audio::Cue::modal_open);
         }
     }
@@ -612,8 +636,84 @@ void Screen::close_sheet()
     sheet_ = Sheet::none;
 }
 
+void Screen::open_devices()
+{
+    renaming_ = false;
+    target_.clear();
+    open_sheet(Sheet::devices, "Paired devices", "Rename a device, or take its access away.", "");
+}
+
 void Screen::handle_sheet(const hui::InputFrame &input, hui::ui::Feedback &feedback)
 {
+    if (sheet_ == Sheet::devices)
+    {
+        const int count = static_cast<int>(snap_.devices.size());
+        device_row_ = std::clamp(device_row_, 0, std::max(0, count - 1));
+        if (input.nav == Direction::up || input.nav == Direction::down)
+        {
+            const int next = device_row_ + (input.nav == Direction::up ? -1 : 1);
+            if (next >= 0 && next < count)
+            {
+                device_row_ = next;
+                feedback.play(hui::audio::Cue::focus);
+            }
+            else if (!input.nav_repeat)
+            {
+                feedback.play(hui::audio::Cue::error, 1.0f, 0.0f, 0.4f);
+            }
+        }
+        device_top_ = std::clamp(device_top_, std::max(0, device_row_ - kDeviceRows + 1), device_row_);
+        device_top_ = std::clamp(device_top_, 0, std::max(0, count - kDeviceRows));
+        sheet_highlight_.target(device_row_rect(device_row_ - device_top_));
+        if (input.is_pressed(InputAction::back))
+        {
+            feedback.play(hui::audio::Cue::modal_close);
+            close_sheet();
+        }
+        else if (count > 0 && (input.is_pressed(InputAction::confirm) || input.is_pressed(InputAction::west)))
+        {
+            if (busy())
+            {
+                feedback.play(hui::audio::Cue::error);
+                return;
+            }
+            const diag::Device &device = snap_.devices[static_cast<std::size_t>(device_row_)];
+            target_ = device.id;
+            target_name_ = diag::device_label(device);
+            if (input.is_pressed(InputAction::west))
+            {
+                open_sheet(Sheet::remove_device, "Remove " + target_name_ + "?",
+                           device.streaming ? "Its stream ends now, and it has to pair again to come back."
+                                            : "It has to pair again before it can stream here.",
+                           "");
+                feedback.play(hui::audio::Cue::modal_open);
+            }
+            else
+            {
+                renaming_ = true;
+                pair_suggestion_ = device.name;
+                open_sheet(Sheet::text, "Rename device", "So you can tell it apart later. Options keeps this name.", device.name);
+                keyboard_.style.max_length = 24;
+                feedback.play(hui::audio::Cue::select);
+            }
+        }
+        return;
+    }
+    if (sheet_ == Sheet::remove_device)
+    {
+        if (input.is_pressed(InputAction::confirm))
+        {
+            host_.remove_device(target_, target_name_);
+            feedback.play(hui::audio::Cue::select);
+            open_devices();
+        }
+        else if (input.is_pressed(InputAction::back))
+        {
+            feedback.play(hui::audio::Cue::modal_close);
+            open_devices();
+        }
+        return;
+    }
     const OptionSpec *spec = find_option(target_);
     if (sheet_ == Sheet::choice && spec != nullptr)
     {
@@ -698,7 +798,10 @@ void Screen::handle_sheet(const hui::InputFrame &input, hui::ui::Feedback &feedb
     {
         pair_pin_.clear();
         feedback.play(hui::audio::Cue::modal_close);
-        close_sheet();
+        if (renaming_)
+            open_devices();
+        else
+            close_sheet();
         return;
     }
     if (event != hui::ui::Event::activated && !input.is_pressed(InputAction::menu))
@@ -721,9 +824,19 @@ void Screen::handle_sheet(const hui::InputFrame &input, hui::ui::Feedback &feedb
     }
     if (!pair_pin_.empty())
     {
-        host_.submit_pin(target_, pair_pin_, buffer_.empty() ? pair_suggestion_ : buffer_);
+        const std::string name = diag::clean_device_name(buffer_);
+        host_.submit_pin(target_, pair_pin_, name.empty() ? pair_suggestion_ : name);
         pair_pin_.clear();
         close_sheet();
+        return;
+    }
+    if (renaming_)
+    {
+        const std::string name = diag::clean_device_name(buffer_);
+        if (!name.empty() && name != pair_suggestion_)
+            host_.rename_device(target_, name);
+        feedback.play(hui::audio::Cue::select);
+        open_devices();
         return;
     }
     if (spec == nullptr)
@@ -937,6 +1050,20 @@ void Screen::draw_footer(hui::gfx::DrawList &list, std::uint32_t glass) const
         const hui::ui::Hint hints[] = {{hui::ui::Button::cross, "Choose"}, {hui::ui::Button::circle, "Cancel"}};
         hui::ui::draw_hints(list, fonts_, glyphs, hints, 2, 1824.0f, true, layout);
     }
+    else if (sheet_ == Sheet::devices)
+    {
+        // Without a device, only Close (the last hint) means anything.
+        const hui::ui::Hint hints[] = {{hui::ui::Button::cross, "Rename"},
+                                       {hui::ui::Button::square, "Remove"},
+                                       {hui::ui::Button::circle, "Close"}};
+        const bool any = !snap_.devices.empty();
+        hui::ui::draw_hints(list, fonts_, glyphs, any ? hints : hints + 2, any ? 3 : 1, 1824.0f, true, layout);
+    }
+    else if (sheet_ == Sheet::remove_device)
+    {
+        const hui::ui::Hint hints[] = {{hui::ui::Button::cross, "Remove"}, {hui::ui::Button::circle, "Keep it"}};
+        hui::ui::draw_hints(list, fonts_, glyphs, hints, 2, 1824.0f, true, layout);
+    }
     else if (page_ == Page::home)
     {
         const hui::ui::Hint hints[] = {{hui::ui::Button::cross, "Select"},
@@ -1139,9 +1266,16 @@ void Screen::draw_home(hui::gfx::DrawList &list, std::uint32_t glass) const
         hui::ui::text(list, fonts_.regular, "+" + std::to_string(snap_.pairings.size() - 2) + " more", 1196.0f, 726.0f, 20.0f,
                       kFaint, Align::right);
     {
-        const Rect r{1220.0f, 740.0f, 604.0f, 172.0f};
-        glass_card(list, glass, r, 26.0f, 0.0f);
+        const Rect r = kPairedDevices;
+        glass_card(list, glass, r, 26.0f, devices_amount_);
         hui::ui::text(list, fonts_.semibold, "PAIRED DEVICES", r.x + 30.0f, r.y + 44.0f, 19.0f, kMuted, Align::left, 3.0f);
+        if (devices_amount_ > 0.01f)
+        {
+            list.push_opacity(devices_amount_);
+            const float label = hui::ui::text(list, fonts_.semibold, "Manage", r.x + r.w - 30.0f, r.y + 45.0f, 21.0f, kInk, Align::right);
+            hui::ui::draw_button(list, fonts_, hui::ui::GlyphStyle::dark(), hui::ui::Button::cross, r.x + r.w - 30.0f - label - 46.0f, r.y + 38.0f, 28.0f);
+            list.pop_opacity();
+        }
         if (snap_.paired.empty())
         {
             hui::ui::text(list, fonts_.regular, "None yet.", r.x + 30.0f, r.y + 96.0f, 24.0f, kFaint);
@@ -1378,8 +1512,11 @@ void Screen::draw_sheet(hui::gfx::DrawList &list, std::uint32_t glass) const
     float height = keys ? 780.0f : 640.0f;
     if (sheet_drawn_ == Sheet::choice && spec != nullptr)
         height = 300.0f + static_cast<float>(spec->choices.size() + 1) * 76.0f;
+    if (sheet_drawn_ == Sheet::remove_device)
+        height = 270.0f;
     const float width = sheet_drawn_ == Sheet::text ? 1120.0f : 880.0f;
-    const Rect card{960.0f - width / 2.0f, 540.0f - height / 2.0f + 10.0f, width, height};
+    const Rect card = sheet_drawn_ == Sheet::devices ? devices_card()
+                                                     : Rect{960.0f - width / 2.0f, 540.0f - height / 2.0f + 10.0f, width, height};
     list.push_transform(0.94f + 0.06f * a, card.cx(), card.cy(), 0.0f, 30.0f * (1.0f - a));
     list.shadow(card, 34.0f, 60.0f, Color::rgb(0x000000, 0.55f));
     list.glass(glass, card, 34.0f, Color::rgb(0xffffff));
@@ -1387,9 +1524,11 @@ void Screen::draw_sheet(hui::gfx::DrawList &list, std::uint32_t glass) const
     list.bordered_rect(card, 34.0f, kClear, 1.5f, Color::rgb(0xffffff, 0.14f));
     list.gradient_rect({card.x, card.y, card.w, 120.0f}, 34.0f, kAccent.with_alpha(0.14f), kAccent.with_alpha(0.0f));
 
+    const bool device_sheet = sheet_drawn_ == Sheet::devices || sheet_drawn_ == Sheet::remove_device || renaming_;
     const Icon icon = sheet_drawn_ == Sheet::pin ? Icon::link
-                      : spec != nullptr        ? kOptionIcons[std::min<std::size_t>(6, static_cast<std::size_t>(spec - option_specs().data()))]
-                                               : Icon::link; // the device's name when pairing
+                      : device_sheet             ? Icon::monitor
+                      : spec != nullptr          ? kOptionIcons[std::min<std::size_t>(6, static_cast<std::size_t>(spec - option_specs().data()))]
+                                                 : Icon::link; // the device's name when pairing
     icons::draw(list, icon, card.cx(), card.y + 62.0f, 40.0f, kAccent);
     hui::ui::text(list, fonts_.display, sheet_title_, card.cx(), card.y + 140.0f, 46.0f, kInk, Align::center);
     hui::ui::text(list, fonts_.regular, sheet_help_, card.cx(), card.y + 184.0f, 24.0f, kMuted, Align::center);
@@ -1461,6 +1600,45 @@ void Screen::draw_sheet(hui::gfx::DrawList &list, std::uint32_t glass) const
             hui::ui::text(list, fonts_.semibold, label, row.x + 72.0f, row.cy() + 9.0f, 26.0f, i == choice_ ? kInk : kMuted);
         }
         list.pop_transform();
+    }
+    if (sheet_drawn_ == Sheet::devices)
+    {
+        const int count = static_cast<int>(snap_.devices.size());
+        if (count == 0)
+        {
+            const std::string empty = !snap_.running       ? "Start the host to see and change the paired devices."
+                                      : !snap_.devices_known ? "Restart the host to change the paired devices here."
+                                                             : "No device is paired yet.";
+            hui::ui::text(list, fonts_.regular, empty, card.cx(), device_row_rect(0).cy() + 8.0f, 26.0f, kMuted, Align::center);
+        }
+        else
+        {
+            const Rect h = sheet_highlight_.rect(time_);
+            list.rounded_rect(h, 18.0f, kAccent.with_alpha(0.18f));
+            list.bordered_rect(h, 18.0f, kClear, 2.5f, kAccent);
+        }
+        for (int i = device_top_; i < count && i < device_top_ + kDeviceRows; ++i)
+        {
+            const diag::Device &device = snap_.devices[static_cast<std::size_t>(i)];
+            const Rect row = device_row_rect(i - device_top_);
+            const bool focused = i == device_row_;
+            icons::draw(list, Icon::monitor, row.x + 44.0f, row.cy(), 30.0f, device.streaming ? kGood : kAccent);
+            hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, diag::device_label(device), 28.0f, row.w - 120.0f),
+                          row.x + 86.0f, row.y + 36.0f, 28.0f, focused ? kInk : kMuted);
+            hui::ui::text(list, fonts_.regular, diag::device_info(device), row.x + 86.0f, row.y + 66.0f, 21.0f,
+                          device.streaming ? kGood : focused ? kMuted : kFaint);
+        }
+        if (count > kDeviceRows)
+        {
+            // Where the rows in view sit in the list.
+            const Rect first = device_row_rect(0);
+            const float span = 90.0f * static_cast<float>(kDeviceRows) - 10.0f;
+            const float x = first.x + first.w + 16.0f;
+            list.rounded_rect({x, first.y, 5.0f, span}, 2.5f, Color::rgb(0xffffff, 0.1f));
+            list.rounded_rect({x, first.y + span * static_cast<float>(device_top_) / static_cast<float>(count), 5.0f,
+                               span * static_cast<float>(kDeviceRows) / static_cast<float>(count)},
+                              2.5f, kAccent);
+        }
     }
     if (sheet_drawn_ == Sheet::number && spec != nullptr)
     {

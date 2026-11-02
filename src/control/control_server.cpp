@@ -22,6 +22,17 @@ using namespace std::literals;
 
 namespace prospero {
 
+ControlServer::ControlServer(std::shared_ptr<safe::event_t<bool>> shutdown)
+    : shutdown_(std::move(shutdown)), modes_(platf::appdata() / "device_modes.txt") {
+    nvhttp::set_launch_listener([this](const nvhttp::launch_client_t &client) {
+        modes_.remember(client.uuid, format_mode(client.width, client.height, client.fps));
+    });
+}
+
+ControlServer::~ControlServer() {
+    nvhttp::set_launch_listener(nullptr);
+}
+
 std::string ControlServer::handle(const std::string &line) {
     std::istringstream in(line);
     std::string command;
@@ -64,6 +75,37 @@ std::string ControlServer::handle(const std::string &line) {
         }
         BOOST_LOG(info) << "Control: PIN submitted for a pending pairing"sv;
         return nvhttp::pin(id, pin, name) ? "OK paired" : "ERR pairing failed";
+    }
+    if (command == "DEVICES") {
+        const auto live = rtsp_stream::session_count() > 0 ? nvhttp::get_last_launch_client().uuid : std::string();
+        std::string out;
+        for (const auto &client : nvhttp::get_all_clients()) {
+            const std::string uuid = client.value("uuid", "");
+            const std::string mode = modes_.mode(uuid);
+            out += "OK " + uuid + (!live.empty() && uuid == live ? " 1 " : " 0 ") + (mode.empty() ? "-" : mode) + ' ' +
+                   client.value("name", "") + '\n';
+        }
+        return out + "END";
+    }
+    if (command == "RENAME") {
+        std::string uuid, name;
+        in >> uuid;
+        std::getline(in >> std::ws, name);  // the rest of the line, as it may hold spaces
+        if (uuid.empty() || name.empty()) return "ERR usage: RENAME <uuid> <name>";
+        if (!nvhttp::rename_client(uuid, name)) return "ERR no such device";
+        BOOST_LOG(info) << "Control: a paired device was renamed"sv;
+        return "OK renamed";
+    }
+    if (command == "UNPAIR") {
+        std::string uuid;
+        in >> uuid;
+        const std::string cert = nvhttp::get_cert_by_uuid(uuid);
+        if (cert.empty() || !nvhttp::unpair_client(uuid)) return "ERR no such device";
+        // Removing the pairing only stops new connections; a running stream of this device ends here.
+        rtsp_stream::terminate_sessions_by_cert(cert);
+        modes_.forget(uuid);
+        BOOST_LOG(info) << "Control: a paired device was removed"sv;
+        return "OK removed";
     }
     if (command == "REPORT") {
         if (!report_listening_) return "ERR report port not open";

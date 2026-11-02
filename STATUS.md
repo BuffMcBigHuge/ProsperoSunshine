@@ -350,6 +350,18 @@ schrieb alle 5 s Mittelwert, stärkste Sekunde und größtes Bild nach `host_dia
 - **Offen:** der Schalter mit Moonlight selbst statt dem Testclient. Der Quantisierer aus PR 8 läuft auf dieser Konsole nicht, weil 13.00
   ihn nicht verwendet.
 
+### Geräteliste in der App (2026-11-02, nicht veröffentlicht)
+
+Gemessen auf 13.00 mit einem eigens gekoppelten Testgerät und `stream_test.exe` (`pair.py --dir`), die acht vorhandenen Einträge blieben unberührt:
+
+- **Liste:** Die Kachel „Paired devices“ öffnet die Liste, neun Einträge lassen sich rollen. Läuft noch ein alter Host, sagt die Liste, dass er neu gestartet werden muss.
+- **Umbenennen:** `Moonlight 1` wurde zu `Moonlight 2`, die Liste und die Meldung zeigten es sofort, und der Host nannte das Gerät im Stream danach so.
+- **Infozeile:** Nach einem Stream stand dort `Last asked for 1920x1080@60`, die Datei `device_modes.txt` hatte den Eintrag. Während des Streams zeigte das aufgezeichnete Bild `Streaming now, 1920x1080@60`.
+- **Entfernen im laufenden Stream:** Die Rückfrage nannte das Ende des Streams. Nach Cross endete der Stream beim Client mit `terminated_by_host 1`, statt die vorgesehenen 60 s liefen rund 20 s. Das Gerät und sein Modus waren weg, `serverinfo` meldete `SUNSHINE_SERVER_FREE`, und `sunshine_state.json` war danach byte-gleich mit dem Stand vor dem Test.
+- **Ausgesperrt:** Dieselbe Identität bekam danach von `serverinfo` und `launch` den Status 401 („Certificate verification failed“).
+
+Nicht geprüft: das echte Moonlight und was es beim Rauswurf anzeigt, das Entfernen, während ein Spiel statt „PS5 Screen“ läuft, und ein tatsächlich unter 1080p angefragter Modus. Solange der Dialog „Who's using this controller?“ für das Pad des Streams offen ist, kommt der Tastendruck nicht in der App an.
+
 ### Name beim Koppeln (2026-11-02, nicht veröffentlicht)
 
 Moonlight für PC schickt beim Koppeln fest `devicename=roth` (`app/backend/nvpairingmanager.cpp` in moonlight-qt), der Host übernahm das. Gemessen auf

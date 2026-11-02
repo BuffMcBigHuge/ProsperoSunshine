@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Everything the app does to the host, on one worker thread so the frame loop never waits:
-//   - the host's control socket on 127.0.0.1:47995 (src/control/control_server.hpp): STATUS and
-//     PAIRINGS every two seconds, PIN for a pending pairing, QUIT to stop it, REPORT to have it offer
-//     the diagnostic report on the network (a title may not listen there itself);
+//   - the host's control socket on 127.0.0.1:47995 (src/control/control_server.hpp): STATUS, PAIRINGS
+//     and DEVICES every two seconds, PIN for a pending pairing, RENAME and UNPAIR for a paired device,
+//     QUIT to stop it, REPORT to have it offer the diagnostic report on the network (a title may not
+//     listen there itself);
 //   - starting the host: its ELF sent to the ELF loader on 127.0.0.1:9021;
 //   - /data/prosperosunshine/sunshine.conf (conf.hpp) and the Payload Manager's autoload list
 //     (autoload.hpp).
@@ -59,6 +60,8 @@ struct Snapshot
     std::string client_address;
     std::vector<Pairing> pairings;
     std::string poll_error;   // set when the socket is there but did not answer properly
+    bool devices_known = false;       // the running host answered DEVICES (an older one does not)
+    std::vector<diag::Device> devices;
     // Files.
     bool files_read = false;
     Values config;            // the keys of option_specs()
@@ -94,6 +97,8 @@ class Host
 
     // Requests; each is queued and done in order on the worker.
     void submit_pin(const std::string &id, const std::string &pin, const std::string &name);
+    void rename_device(const std::string &id, const std::string &name);
+    void remove_device(const std::string &id, const std::string &name); // name: for the message
     void start_host();
     void stop_host();
     void restart_host();
@@ -109,6 +114,8 @@ class Host
     enum class Kind
     {
         pin,
+        rename_device,
+        remove_device,
         start,
         stop,
         restart,
@@ -142,6 +149,8 @@ class Host
     std::string sync_slot();
 
     void do_pin(const Job &job);
+    void do_rename_device(const Job &job);
+    void do_remove_device(const Job &job);
     void do_start();
     void do_stop();
     void do_restart();

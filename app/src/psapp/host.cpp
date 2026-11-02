@@ -62,7 +62,7 @@ std::vector<std::string> paired_names(const std::string &json)
     std::size_t at = json.find("\"named_devices\"");
     if (at == std::string::npos)
         return names;
-    const std::size_t end = json.find(']', at);
+    const std::size_t end = json.rfind(']'); // the last one: a name may hold one too
     for (;;)
     {
         at = json.find("\"name\"", at);
@@ -149,6 +149,14 @@ void Host::push(Job job)
 void Host::submit_pin(const std::string &id, const std::string &pin, const std::string &name)
 {
     push({Kind::pin, id, pin, name, {}, false});
+}
+void Host::rename_device(const std::string &id, const std::string &name)
+{
+    push({Kind::rename_device, id, name, {}, {}, false});
+}
+void Host::remove_device(const std::string &id, const std::string &name)
+{
+    push({Kind::remove_device, id, name, {}, {}, false});
 }
 void Host::start_host()
 {
@@ -239,6 +247,12 @@ void Host::run()
             {
             case Kind::pin:
                 do_pin(job);
+                break;
+            case Kind::rename_device:
+                do_rename_device(job);
+                break;
+            case Kind::remove_device:
+                do_remove_device(job);
                 break;
             case Kind::start:
                 do_start();
@@ -427,6 +441,19 @@ void Host::poll()
     const diag::HostLog host_log = diag::parse_host_log(host_file);
     const std::uint32_t firmware = own_firmware_ != 0 ? own_firmware_ : host_log.firmware;
     const diag::Notice notice = diag::notice(firmware, host_log, running);
+    bool devices_known = false;
+    std::vector<diag::Device> devices;
+    if (running && error.empty())
+    {
+        const io::Exchange list = io::exchange(kControlPort, "DEVICES\n", is_end, 3000);
+        devices_known = !list.lines.empty() && list.lines.back() == "END";
+        for (const std::string &line : list.lines)
+        {
+            diag::Device device;
+            if (diag::parse_device_line(line, &device))
+                devices.push_back(device);
+        }
+    }
     // The host offers the report for some seconds after each of these.
     bool served = false;
     if (serve_ && running)
@@ -447,6 +474,8 @@ void Host::poll()
     state_.client_known = client_known;
     state_.pairings = pairings;
     state_.poll_error = error;
+    state_.devices_known = devices_known;
+    state_.devices = devices;
 }
 
 bool Host::wait_control(bool open, int timeout_ms)
@@ -525,6 +554,25 @@ void Host::do_pin(const Job &job)
     {
         finish("Pairing failed (" + answer + "). Check the PIN Moonlight shows.", false);
     }
+}
+
+void Host::do_rename_device(const Job &job)
+{
+    set_busy("Renaming...");
+    const io::Exchange reply = io::exchange(kControlPort, "RENAME " + job.a + " " + job.b + "\n", any_line, 5000);
+    const bool ok = reply.error.empty() && !reply.lines.empty() && reply.lines.front().rfind("OK", 0) == 0;
+    read_files();
+    finish(ok ? "Renamed it to " + job.b : "Could not rename the device", ok);
+}
+
+void Host::do_remove_device(const Job &job)
+{
+    set_busy("Removing " + job.b + "...");
+    // The host answers once a running stream of this device has ended.
+    const io::Exchange reply = io::exchange(kControlPort, "UNPAIR " + job.a + "\n", any_line, 20000);
+    const bool ok = reply.error.empty() && !reply.lines.empty() && reply.lines.front().rfind("OK", 0) == 0;
+    read_files();
+    finish(ok ? "Removed " + job.b + ". It has to pair again to stream." : "Could not remove " + job.b, ok);
 }
 
 void Host::do_start()

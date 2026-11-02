@@ -444,6 +444,51 @@ std::string pairing_label(const std::string &name)
     return name.empty() || name == "roth" ? "Moonlight" : name;
 }
 
+std::string clean_device_name(const std::string &text)
+{
+    std::string name;
+    for (const char c : text)
+    {
+        if (c != '"' && c != '\\' && static_cast<unsigned char>(c) >= 0x20)
+            name += c;
+    }
+    const std::size_t first = name.find_first_not_of(' ');
+    if (first == std::string::npos)
+        return {};
+    return name.substr(first, name.find_last_not_of(' ') - first + 1);
+}
+
+bool parse_device_line(const std::string &line, Device *device)
+{
+    if (line.rfind("OK ", 0) != 0)
+        return false;
+    const std::size_t id_end = line.find(' ', 3);
+    if (id_end == std::string::npos || id_end == 3 || id_end + 2 >= line.size() || line[id_end + 2] != ' ')
+        return false;
+    const std::size_t mode_end = line.find(' ', id_end + 3);
+    if (mode_end == std::string::npos || mode_end == id_end + 3)
+        return false;
+    device->id = line.substr(3, id_end - 3);
+    device->streaming = line[id_end + 1] == '1';
+    device->mode = line.substr(id_end + 3, mode_end - id_end - 3);
+    if (device->mode == "-")
+        device->mode.clear();
+    device->name = line.substr(mode_end + 1);
+    return true;
+}
+
+std::string device_label(const Device &device)
+{
+    return device.name.empty() ? "Unnamed device" : device.name;
+}
+
+std::string device_info(const Device &device)
+{
+    if (device.streaming)
+        return device.mode.empty() ? "Streaming now" : "Streaming now, " + device.mode;
+    return device.mode.empty() ? "No stream recorded yet" : "Last asked for " + device.mode;
+}
+
 std::string suggested_device_name(const std::string &name, const std::vector<std::string> &paired)
 {
     if (pairing_label(name) != "Moonlight")

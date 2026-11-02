@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- **Paired devices in the app:** the tile on the home page opens a list. Each device shows the mode it last asked for, like
+  `1280x720@60`, or that it is streaming now, and it can be renamed or removed, for example a friend's device that shouldn't
+  stream any more. Removing asks first and also ends that device's running stream. The list stays in the app, nothing of it goes
+  into the diagnostic report. The control socket has the new commands `DEVICES`, `RENAME <uuid> <name>` and `UNPAIR <uuid>`.
+
 ### Changed
 
 - Pairing asks for a name after the PIN, already filled in with "Moonlight 1", "Moonlight 2" and so on. Moonlight sends the same

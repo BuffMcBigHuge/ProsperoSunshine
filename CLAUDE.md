@@ -76,7 +76,7 @@ Toolchain: PS5 Payload SDK v0.45 in the Docker image `prosperosunshine-sdk:v0.45
 
 - The host is an ELF payload (ELF loader on port 9021); state lives in `/data/prosperosunshine/`.
   Control socket on TCP 47995, 127.0.0.1 only (the empty file `control_lan` there opens it to the LAN):
-  `STATUS`, `PAIRINGS`, `PIN [<id>] <pin> [name]`, `REPORT`, `AUTOLOAD [ON|OFF]`, `RELISTEN`, `QUIT` (one client at a time). `REPORT` makes the
+  `STATUS`, `PAIRINGS`, `PIN [<id>] <pin> [name]`, `DEVICES`, `RENAME <uuid> <name>`, `UNPAIR <uuid>`, `REPORT`, `AUTOLOAD [ON|OFF]`, `RELISTEN`, `QUIT` (one client at a time). `REPORT` makes the
   host answer on TCP 47996 for some seconds with `diagnostics.txt` (a title may not listen on the network).
   `RELISTEN` starts the host's services anew as after rest mode took its ports; `out/relisten_probe.elf` sends it.
 - Before touching the console, check `http://<console>:47989/serverinfo`: go on only at `SUNSHINE_SERVER_FREE`, someone may
