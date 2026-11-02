@@ -1,13 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.1.8 (2026-11-02)
 
 ### Added
 
-- `close_game_on_quit = enabled` in `sunshine.conf`, off by default: quitting in Moonlight (`/cancel`) closes the game the
-  stream started or found in front, through the system's own close as from the home screen. After the stream the game stays
-  listed as running while it is in front, as Sunshine on a PC keeps its app, so Moonlight offers Resume and Quit and asks to
-  quit it before starting another game. Only `/cancel` closes it, never a stream's end or the host's shutdown. Starting the same
+- **Quit closes the game**, a switch in the app's Settings (`close_game_on_quit = 1` in `sunshine.conf`), off by default: quitting
+  in Moonlight (`/cancel`) closes the game the stream started or found in front, through the system's own close as from the home
+  screen, and unsaved progress is lost. After the stream the game stays listed as running while it is in front, as Sunshine on a
+  PC keeps its app, so Moonlight offers Resume and Quit and asks to quit it before starting another game. Only `/cancel` closes it, never a stream's end or the host's shutdown. Starting the same
   game again right after waits until ShadowMountPlus has released it. Measured on 10.20 with Moonlight for PC, Android and
   iOS: resume, quit and switching games work, and a close took about 1 s. On 13.00 the same with a test client, not yet with
   Moonlight: a close took 0.9 s in GTA III and 2.3 to 3.1 s in the Mario 64 demo.
@@ -19,6 +19,9 @@
   frames) below 8 Mbit/s, 27/31 from 8, 24/28 from 12 and 21/25 from 20. Measured on 10.20 in GTA III, driving fast, HEVC
   10 bit at 1080p60: about 2, 2.4, 3 and 5.3 Mbit/s on average, with a busiest second of 3.1, 3.7, 5.1 and 10 Mbit/s. The
   encoder still doesn't hold the bitrate set in Moonlight, and busier games will send more.
+- The diagnostics report no longer names what you play: game titles and title IDs show as `<title>`. It also no longer holds the
+  console's local user ID, which the host's log line for the virtual pads gave away.
+- The app's Settings page has a new layout, to fit the new switch: four tiles above three.
 
 ### Fixed
 
@@ -30,6 +33,8 @@
 - Without `close_game_on_quit`, quitting a game from Moonlight for PC's app list, also by picking another game and confirming,
   sends nothing to the host: it reports no running game once the stream has ended, so Moonlight skips its `/cancel` and waits at
   "Quitting…". Other clients are untested.
+- The new QP on firmware 10.x is measured only on 10.20 and with HEVC. On 10.40 and with H.264 it is untested.
+- The 13.00 tests of the switch and of closing a game used a test client. Moonlight's own Resume and Quit menus were only tried on 10.20.
 
 ## 0.1.7 (2026-11-01)
 

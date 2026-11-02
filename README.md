@@ -5,7 +5,7 @@
 A native, Sunshine-compatible game-stream host for the PlayStation 5. Add your console to Moonlight and stream
 the PS5 screen, game audio and controller input over your LAN.
 
-> **Status: 0.1.7 ([changelog](CHANGELOG.md)).** Pairing, H.264, HEVC and HDR up to 4K at 30 or 60 fps, game audio and controller input work end to end
+> **Status: 0.1.8 ([changelog](CHANGELOG.md)).** Pairing, H.264, HEVC and HDR up to 4K at 30 or 60 fps, game audio and controller input work end to end
 > with Moonlight on PC, in the browser (Moonlight Web) and on iPhone. Sessions of 30 minutes and ten reconnects
 > were tested without errors on firmware 13.00. Firmware 10.20 was tested by a contributor at 1080p. Users report streams on
 > 13.60, not measured here. Not every client or game has been tried.
@@ -67,8 +67,9 @@ the game keeps running on the console. If another game is open, in front or behi
 (Moonlight reports error 409) and starts nothing: close the running game first, on the console or in a "PS5 Screen" stream,
 then pick the game again. Media apps aren't listed; start those through "PS5 Screen".
 
-**Closing the game from Moonlight:** with `close_game_on_quit = enabled` in `sunshine.conf`, the host behaves like Sunshine on
-a PC for the game the stream started, or the one already in front when you picked it. After the stream it stays listed as
+**Closing the game from Moonlight:** with **Quit closes the game** on in the app's **Settings**
+(`close_game_on_quit = 1` in `sunshine.conf`, off by default), the host behaves like Sunshine on a PC for the game the stream
+started, or the one already in front when you picked it. After the stream it stays listed as
 running while it is in front, so Moonlight offers to resume or quit it, and picking another game asks to quit it first.
 Quitting closes it as "Close Game" on the console does, and unsaved progress is lost. On Moonlight for PC, the stop button on
 the running game quits it; so does Ctrl+Alt+Shift+E during the stream, which doesn't ask and also closes Moonlight, or any end
@@ -141,8 +142,8 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   limits).
 - **Other firmware:** 13.00 and 10.20 are tested. On other versions capture is refused if the system-library lookups fail;
   if they succeed it runs, untested. The kernel log says which case applies. See [Testing other firmware](#testing-other-firmware).
-- **Diagnosis:** the app's **Diagnostics** page collects a report for a bug report, without addresses, device names or
-  ids. While the page is open and the host runs, a phone or PC in the same network can open it at
+- **Diagnosis:** the app's **Diagnostics** page collects a report for a bug report, without addresses, device names, ids or
+  game titles. While the page is open and the host runs, a phone or PC in the same network can open it at
   `http://<console-ip>:47996`; it is also saved as `/data/prosperosunshine/diagnostics.txt`. For more detail, set `min_log_level = debug` in
   `/data/prosperosunshine/sunshine.conf`; messages go to the kernel log and `sunshine.log`.
 
