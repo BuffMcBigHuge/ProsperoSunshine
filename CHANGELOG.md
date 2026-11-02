@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Pairing asks for a name after the PIN, already filled in with "Moonlight 1", "Moonlight 2" and so on. Moonlight sends the same
+  name from every device, `roth`, so every paired device used to show up as that. A client that sends its own name keeps it as the
+  suggestion. Devices already paired keep their names.
+
 ## 0.1.8 (2026-11-02)
 
 ### Added

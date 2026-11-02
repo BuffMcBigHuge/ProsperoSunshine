@@ -503,13 +503,7 @@ std::string Host::sync_slot()
 void Host::do_pin(const Job &job)
 {
     set_busy("Pairing: waiting for Moonlight...");
-    std::string name = job.c;
-    for (char &c : name)
-    {
-        if (c == ' ' || c == '\t')
-            c = '_';
-    }
-    const std::string request = "PIN " + job.a + " " + job.b + (name.empty() ? "" : " " + name) + "\n";
+    const std::string request = "PIN " + job.a + " " + job.b + (job.c.empty() ? "" : " " + job.c) + "\n";
     // The host answers once Moonlight finished its side of the handshake.
     const io::Exchange reply = io::exchange(kControlPort, request, any_line, 60000);
     if (!reply.error.empty())

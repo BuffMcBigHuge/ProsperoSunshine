@@ -171,6 +171,8 @@ class Screen
     std::string sheet_error_;
     std::string target_; // the pairing id or the option key
     std::string target_name_;
+    std::string pair_pin_;        // the PIN while the device's name is asked after it
+    std::string pair_suggestion_; // the name that takes when the field is left empty
     int choice_ = 0; // the focused row of a choice sheet (0: the default)
     long number_ = 0;
     bool number_default_ = false;

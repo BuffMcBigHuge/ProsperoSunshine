@@ -43,16 +43,22 @@ std::string ControlServer::handle(const std::string &line) {
         std::vector<std::string> args;
         for (std::string a; in >> a;) args.push_back(a);
         const auto pending = nvhttp::get_pending_pairings();
+        // The name is the rest of the line, as it may hold spaces.
+        const auto name_from = [&args](std::size_t first) {
+            std::string joined;
+            for (std::size_t i = first; i < args.size(); ++i) joined += (i > first ? " " : "") + args[i];
+            return joined;
+        };
         std::string id, pin, name;
         if (!args.empty() && args[0].size() <= 8) {  // PIN <pin> [name]: the only pending request
             if (pending.size() != 1) return "ERR pending=" + std::to_string(pending.size()) + ", use PIN <id> <pin>";
             id = pending.front().id;
             pin = args[0];
-            name = args.size() > 1 ? args[1] : pending.front().name;
+            name = args.size() > 1 ? name_from(1) : pending.front().name;
         } else if (args.size() >= 2) {
             id = args[0];
             pin = args[1];
-            name = args.size() > 2 ? args[2] : "moonlight";
+            name = args.size() > 2 ? name_from(2) : "moonlight";
         } else {
             return "ERR usage: PIN <pin> [name] | PIN <id> <pin> [name]";
         }

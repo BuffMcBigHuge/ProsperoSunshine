@@ -437,6 +437,14 @@ static void diag_tests()
     CHECK(diag::scrub("firmware=0x13000040 known=1", {}) == "firmware=0x13000040 known=1");
     CHECK(diag::scrub("host version=0.1.7 commit=3b912d6a firmware", {}) == "host version=0.1.7 commit=3b912d6a firmware");
     CHECK(diag::scrub("capture RUNNING outcome=timeout active=175,177", {}) == "capture RUNNING outcome=timeout active=175,177");
+    // Moonlight's placeholder name, and the name offered instead.
+    CHECK(diag::pairing_label("roth") == "Moonlight");
+    CHECK(diag::pairing_label("") == "Moonlight");
+    CHECK(diag::pairing_label("Living Room") == "Living Room");
+    CHECK(diag::suggested_device_name("roth", {}) == "Moonlight 1");
+    CHECK(diag::suggested_device_name("", {"roth", "Moonlight 1"}) == "Moonlight 2");
+    CHECK(diag::suggested_device_name("roth", {"Moonlight 1", "Moonlight 3"}) == "Moonlight 2");
+    CHECK(diag::suggested_device_name("Steam Deck", {"Steam Deck"}) == "Steam Deck");
     // What someone plays stays out; the app, the system's titles and "PS5 Screen" stay.
     CHECK(diag::scrub("Started PPSA99310", {}) == "Started <title>");
     CHECK(diag::scrub("Not starting PPSA03527: CUSA12345 is in front", {}) == "Not starting <title>: <title> is in front");

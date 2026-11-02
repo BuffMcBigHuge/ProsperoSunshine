@@ -439,6 +439,23 @@ std::string experimental_report(const HostLog &log, const std::vector<std::strin
     return out;
 }
 
+std::string pairing_label(const std::string &name)
+{
+    return name.empty() || name == "roth" ? "Moonlight" : name;
+}
+
+std::string suggested_device_name(const std::string &name, const std::vector<std::string> &paired)
+{
+    if (pairing_label(name) != "Moonlight")
+        return name;
+    for (int number = 1;; ++number)
+    {
+        const std::string candidate = "Moonlight " + std::to_string(number);
+        if (std::find(paired.begin(), paired.end(), candidate) == paired.end())
+            return candidate;
+    }
+}
+
 std::string scrub(const std::string &text, const std::vector<std::string> &names)
 {
     std::string out = text;

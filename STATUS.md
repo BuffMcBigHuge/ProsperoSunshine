@@ -350,6 +350,13 @@ schrieb alle 5 s Mittelwert, stärkste Sekunde und größtes Bild nach `host_dia
 - **Offen:** der Schalter mit Moonlight selbst statt dem Testclient. Der Quantisierer aus PR 8 läuft auf dieser Konsole nicht, weil 13.00
   ihn nicht verwendet.
 
+### Name beim Koppeln (2026-11-02, nicht veröffentlicht)
+
+Moonlight für PC schickt beim Koppeln fest `devicename=roth` (`app/backend/nvpairingmanager.cpp` in moonlight-qt), der Host übernahm das. Gemessen auf
+13.00 mit `pair.py --name roth --manual-pin`: Die Karte zeigte „Moonlight“, nach der PIN fragte die App nach dem Namen, vorausgefüllt mit „Moonlight 1“.
+Options bestätigte, gespeichert war `Moonlight 1` mit Leerzeichen, die App meldete „Paired with Moonlight 1“, das Koppeln lief durch. Nicht geprüft: Abbrechen im
+Namensschritt, ein selbst getippter Name und das echte Moonlight. Der Testeintrag wurde danach entfernt.
+
 ### Berichte von Testern zu 0.1.7 (2026-11-02, nicht selbst gemessen)
 
 - **13.60 (Issue 1):** Ein Nutzer meldet eine Stunde Spielen in 4K60 mit HDR und Controller. Der Diagnosebericht dazu fehlt noch.

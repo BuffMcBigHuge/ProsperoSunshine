@@ -51,7 +51,8 @@ old host keeps running.
 ## Pairing
 
 1. In Moonlight, pick the console, or add it by its IP address (`<console-ip>`), and start pairing. Moonlight shows a PIN.
-2. Enter the PIN in the ProsperoSunshine app on the PS5 (option A).
+2. Enter the PIN in the ProsperoSunshine app on the PS5 (option A). The app then asks for a name for the device, because Moonlight
+   sends the same one, `roth`, from every device. Press Options to keep the suggested name.
 3. Without the app, approve it through the control socket from the same machine, or from the LAN if you enabled it
    (see below): `printf 'PIN 1234\n' | nc <console-ip> 47995`.
 

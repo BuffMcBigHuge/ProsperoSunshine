@@ -95,6 +95,11 @@ struct Notice
 };
 Notice notice(std::uint32_t firmware, const HostLog &log, bool host_running);
 
+// Moonlight sends the same placeholder, "roth", from every device. What to call a device waiting to pair ...
+std::string pairing_label(const std::string &name);
+// ... and the name to offer for it: the client's own if it sent one, else the first free "Moonlight <n>".
+std::string suggested_device_name(const std::string &name, const std::vector<std::string> &paired);
+
 // The log with what could identify someone taken out: IPv4 addresses, `names` (paired devices and the
 // console's name) and long hex runs (client ids, keys). Other text stays.
 std::string scrub(const std::string &text, const std::vector<std::string> &names);

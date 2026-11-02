@@ -364,8 +364,8 @@ void Screen::handle_home(const hui::InputFrame &input, hui::ui::Feedback &feedba
             const Pairing &p = snap_.pairings[static_cast<std::size_t>(home_card_)];
             target_ = p.id;
             target_name_ = p.name;
-            open_sheet(Sheet::pin, "Pair " + (p.name.empty() ? std::string("Moonlight") : p.name),
-                       "Type the four digits Moonlight shows.", "");
+            pair_pin_.clear();
+            open_sheet(Sheet::pin, "Pair " + diag::pairing_label(p.name), "Type the four digits Moonlight shows.", "");
             feedback.play(hui::audio::Cue::modal_open);
         }
     }
@@ -696,6 +696,7 @@ void Screen::handle_sheet(const hui::InputFrame &input, hui::ui::Feedback &feedb
         sheet_error_.clear();
     if (event == hui::ui::Event::cancelled)
     {
+        pair_pin_.clear();
         feedback.play(hui::audio::Cue::modal_close);
         close_sheet();
         return;
@@ -710,7 +711,18 @@ void Screen::handle_sheet(const hui::InputFrame &input, hui::ui::Feedback &feedb
             feedback.play(hui::audio::Cue::error);
             return;
         }
-        host_.submit_pin(target_, buffer_, target_name_);
+        // Moonlight doesn't say which device it is, so the name is asked here, as Sunshine's web page does.
+        pair_pin_ = buffer_;
+        pair_suggestion_ = diag::suggested_device_name(target_name_, snap_.paired);
+        open_sheet(Sheet::text, "Name this device", "So you can tell it apart later. Options keeps this name.", pair_suggestion_);
+        keyboard_.style.max_length = 24;
+        feedback.play(hui::audio::Cue::select);
+        return;
+    }
+    if (!pair_pin_.empty())
+    {
+        host_.submit_pin(target_, pair_pin_, buffer_.empty() ? pair_suggestion_ : buffer_);
+        pair_pin_.clear();
         close_sheet();
         return;
     }
@@ -1114,7 +1126,7 @@ void Screen::draw_home(hui::gfx::DrawList &list, std::uint32_t glass) const
         glass_card(list, glass, r, 26.0f, std::max(f, 0.35f));
         list.circle(r.x + 68.0f, r.y + 70.0f, 36.0f, kAccent.with_alpha(0.18f));
         icons::draw(list, Icon::link, r.x + 68.0f, r.y + 70.0f, 34.0f, kAccent);
-        hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, p.name.empty() ? "Moonlight" : p.name, 32.0f, r.w - 150.0f),
+        hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, diag::pairing_label(p.name), 32.0f, r.w - 150.0f),
                       r.x + 126.0f, r.y + 66.0f, 32.0f, kInk);
         hui::ui::text(list, fonts_.regular, p.address.empty() ? "wants to pair" : "from " + p.address + " wants to pair",
                       r.x + 126.0f, r.y + 100.0f, 22.0f, kMuted);
@@ -1377,7 +1389,7 @@ void Screen::draw_sheet(hui::gfx::DrawList &list, std::uint32_t glass) const
 
     const Icon icon = sheet_drawn_ == Sheet::pin ? Icon::link
                       : spec != nullptr        ? kOptionIcons[std::min<std::size_t>(6, static_cast<std::size_t>(spec - option_specs().data()))]
-                                               : Icon::sliders;
+                                               : Icon::link; // the device's name when pairing
     icons::draw(list, icon, card.cx(), card.y + 62.0f, 40.0f, kAccent);
     hui::ui::text(list, fonts_.display, sheet_title_, card.cx(), card.y + 140.0f, 46.0f, kInk, Align::center);
     hui::ui::text(list, fonts_.regular, sheet_help_, card.cx(), card.y + 184.0f, 24.0f, kMuted, Align::center);
@@ -1410,7 +1422,8 @@ void Screen::draw_sheet(hui::gfx::DrawList &list, std::uint32_t glass) const
         list.bordered_rect(field, 22.0f, kClear, 3.0f, kAccent);
         const float w = hui::ui::text(list, fonts_.semibold, buffer_, field.x + 30.0f, field.y + 62.0f, 38.0f, kInk);
         if (buffer_.empty())
-            hui::ui::text(list, fonts_.regular, "Default (network name)", field.x + 30.0f, field.y + 62.0f, 32.0f, kFaint);
+            hui::ui::text(list, fonts_.regular, spec != nullptr ? std::string("Default (network name)") : pair_suggestion_,
+                          field.x + 30.0f, field.y + 62.0f, 32.0f, kFaint);
         if (std::fmod(time_, 1.0f) < 0.6f)
             list.rounded_rect({field.x + 34.0f + (buffer_.empty() ? 0.0f : w), field.y + 24.0f, 3.0f, 50.0f}, 1.5f, kAccent);
     }
