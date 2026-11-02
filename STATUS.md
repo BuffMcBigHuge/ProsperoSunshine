@@ -350,7 +350,11 @@ schrieb alle 5 s Mittelwert, stärkste Sekunde und größtes Bild nach `host_dia
 - **Offen:** der Schalter mit Moonlight selbst statt dem Testclient. Der Quantisierer aus PR 8 läuft auf dieser Konsole nicht, weil 13.00
   ihn nicht verwendet.
 
-### Geräteliste in der App (2026-11-02, nicht veröffentlicht)
+### Geräteliste in der App, Release 0.1.9 (2026-11-02)
+
+[v0.1.9](https://github.com/Darkatek7/ProsperoSunshine/releases/tag/v0.1.9) auf `af75da0f`, CI grün, Katalog-PR offen. Vor dem Release auf der Konsole installiert und neu registriert (`01.000.010`, in der App angezeigt), Host meldet 0.1.9 mit Commit `af75da0f`. Mario-64-Demo mit dem Testclient, je rund 20 s: H.264 1080p 1147 Bilder bei 59,94 fps, HEVC 1132 Bilder bei 59,93 fps, 0 Lücken, ffmpeg fehlerfrei. HEVC verlangte 4K und bekam 1080p, das System verweigert der Demo 4K wie bisher; 4K lief in diesem Test also nicht.
+
+Moonlight auf einem iPhone (Besitzer): Koppeln mit PIN und getipptem Namen `iPhone`. Der Eintrag ersetzte den alten mit demselben Zertifikat, es blieb bei acht Geräten. Der anschließende Stream (HEVC, „PS5 Screen“) verlangte `2556x1179@60`, lieferte 1080p, `device_modes.txt` hielt die Anfrage fest. Rund 57 s Stream, Ende durch den Client (`Ping Timeout`).
 
 Gemessen auf 13.00 mit einem eigens gekoppelten Testgerät und `stream_test.exe` (`pair.py --dir`), die acht vorhandenen Einträge blieben unberührt:
 
@@ -360,7 +364,7 @@ Gemessen auf 13.00 mit einem eigens gekoppelten Testgerät und `stream_test.exe`
 - **Entfernen im laufenden Stream:** Die Rückfrage nannte das Ende des Streams. Nach Cross endete der Stream beim Client mit `terminated_by_host 1`, statt die vorgesehenen 60 s liefen rund 20 s. Das Gerät und sein Modus waren weg, `serverinfo` meldete `SUNSHINE_SERVER_FREE`, und `sunshine_state.json` war danach byte-gleich mit dem Stand vor dem Test.
 - **Ausgesperrt:** Dieselbe Identität bekam danach von `serverinfo` und `launch` den Status 401 („Certificate verification failed“).
 
-Nicht geprüft: das echte Moonlight und was es beim Rauswurf anzeigt, das Entfernen, während ein Spiel statt „PS5 Screen“ läuft, und ein tatsächlich unter 1080p angefragter Modus. Solange der Dialog „Who's using this controller?“ für das Pad des Streams offen ist, kommt der Tastendruck nicht in der App an.
+Nicht geprüft: Umbenennen und Entfernen zusammen mit dem echten Moonlight und was es beim Rauswurf anzeigt, die Liste während eines echten Streams, das Entfernen, während ein Spiel statt „PS5 Screen“ läuft, und ein tatsächlich unter 1080p angefragter Modus. Solange der Dialog „Who's using this controller?“ für das Pad des Streams offen ist, kommt der Tastendruck nicht in der App an.
 
 ### Name beim Koppeln (2026-11-02, nicht veröffentlicht)
 
@@ -370,6 +374,8 @@ Options bestätigte, gespeichert war `Moonlight 1` mit Leerzeichen, die App meld
 Namensschritt, ein selbst getippter Name und das echte Moonlight. Der Testeintrag wurde danach entfernt.
 
 ### Berichte von Testern zu 0.1.7 (2026-11-02, nicht selbst gemessen)
+
+- **13.60, PS5 Pro, Nachtrag des zweiten Nutzers (Issue 1, ohne neuen Bericht):** Mit einem 4K-Fernseher statt des 1080p-Monitors und `min_log_level = none` meldet der Nutzer 4K HEVC HDR bei 150 Mbit/s ohne Knacken und Bitraten-Warnungen, DualSense am Laptop und adaptive Trigger in Astro Bot. Das passt zu `video out mode 0x10` als Ursache der 1080p und zum Verdacht auf das Logging; gemessen ist beides nicht.
 
 - **13.60 (Issue 1):** Ein Nutzer meldet eine Stunde Spielen in 4K60 mit HDR und Controller. Der Diagnosebericht dazu fehlt noch.
 - **13.60, PS5 Pro, zweiter Nutzer (Issue 1, mit Bericht):** HEVC 10 bit bei 1080p startet (`variant=minimal`, `rc=0`). 4K scheitert bei `OpenVideo` mit
