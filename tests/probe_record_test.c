@@ -48,6 +48,8 @@ int main(void)
                                     record_shift(), codec, resolution, timing, ten_bit, (uint32_t)atomic_load(&resource_id),
                                     0x13c, rates[r], rates[r] / 100 * 112, variants[v]);
                                 const size_t size = ps_probe_build_record(probe, sizeof probe, &l);
+                                // A host that sets 10.x's QP (0xc4/0xc8) picks it from the bitrate; the probe sets it per attempt.
+                                if (record_shift() < 0) memcpy(probe + 0xc4, host + 0xc4, 8);
                                 if (size != (size_t)(0x2e0 + record_shift()) || memcmp(host, probe, sizeof host)) {
                                     size_t at = 0;
                                     while (at < sizeof host && host[at] == probe[at]) at++;
