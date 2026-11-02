@@ -412,6 +412,23 @@ schrieb alle 5 s Mittelwert, stärkste Sekunde und größtes Bild nach `host_dia
 - **Offen:** der Schalter mit Moonlight selbst statt dem Testclient. Der Quantisierer aus PR 8 läuft auf dieser Konsole nicht, weil 13.00
   ihn nicht verwendet.
 
+### Streamen ohne Bildschirm (2026-11-02, 13.00, Testclient)
+
+Das HDMI-Kabel wurde bei laufender Konsole vom Besitzer gezogen, vorher lief 4K an einem Fernseher. Host 0.1.9, HEVC, 4K verlangt, `stream_test` mit `--no-script`:
+
+| Vordergrund | `video out mode` | Geliefert | Bilder | Dauer | ffmpeg |
+| --- | --- | --- | --- | --- | --- |
+| Mario-64-Demo | `0x144` | 1080p | 894 | 15 s | fehlerfrei |
+| Home, Demo im Hintergrund | `0x144` | 1080p | 894 | 15 s | fehlerfrei |
+| Home, kein Spiel offen | `0x13c` | 4K | 882 | 15 s | fehlerfrei |
+| GTA III, aus dem Stream gestartet | `0x13c` | 4K | 1712 | 30 s | fehlerfrei, Ton −24,9 dBFS |
+
+Kein Lauf wurde vom Host abgebrochen. Ein weiterer Lauf auf dem Home-Bildschirm zeigte im aufgezeichneten 4K-Bild die Oberfläche der Konsole. GTA III kam in den 30 s nur bis zu den Logos und schwarzen Ladebildern, vom eigentlichen Spiel ist also noch nichts geprüft.
+
+Damit folgt die Aufnahme zumindest nach dem Abziehen nicht dem angeschlossenen Bildschirm, sondern der zuletzt eingestellten Ausgabe, und die bleibt ohne Kabel bestehen. Bei `0x144` (4K bei 120 Hz) fehlt das Bit `4K_SCAN_IN`, und auch mit Kabel lieferte die Demo beim Test für 0.1.9 nur 1080p. Das stützt die Vermutung bei `Is4KRunnable: 4K NG(4K120)`.
+
+Nicht geprüft: Einschalten oder Aufwachen ohne Kabel, ausgeschalteter Fernseher mit Kabel, das echte Moonlight ohne Kabel, ein HDMI-Dummy-Stecker, und ob sich die Ausgabe per Software setzen lässt (`sceVideoOutSysConfigureOutputMode` steht im SDK, ungeprüft). Freie Auflösungen wie `2556x1179` gibt die Aufnahme mit ihren festen Modi nicht her.
+
 ### Geräteliste in der App, Release 0.1.9 (2026-11-02)
 
 [v0.1.9](https://github.com/Darkatek7/ProsperoSunshine/releases/tag/v0.1.9) auf `af75da0f`, CI grün, Katalog-PR gemergt; die Anzeige im Store und eine Installation daraus sind nicht geprüft. Vor dem Release auf der Konsole installiert und neu registriert (`01.000.010`, in der App angezeigt), Host meldet 0.1.9 mit Commit `af75da0f`. Mario-64-Demo mit dem Testclient, je rund 20 s: H.264 1080p 1147 Bilder bei 59,94 fps, HEVC 1132 Bilder bei 59,93 fps, 0 Lücken, ffmpeg fehlerfrei. HEVC verlangte 4K und bekam 1080p, das System verweigert der Demo 4K wie bisher; 4K lief in diesem Test also nicht.
