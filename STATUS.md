@@ -414,7 +414,7 @@ schrieb alle 5 s Mittelwert, stärkste Sekunde und größtes Bild nach `host_dia
 
 ### Geräteliste in der App, Release 0.1.9 (2026-11-02)
 
-[v0.1.9](https://github.com/Darkatek7/ProsperoSunshine/releases/tag/v0.1.9) auf `af75da0f`, CI grün, Katalog-PR offen. Vor dem Release auf der Konsole installiert und neu registriert (`01.000.010`, in der App angezeigt), Host meldet 0.1.9 mit Commit `af75da0f`. Mario-64-Demo mit dem Testclient, je rund 20 s: H.264 1080p 1147 Bilder bei 59,94 fps, HEVC 1132 Bilder bei 59,93 fps, 0 Lücken, ffmpeg fehlerfrei. HEVC verlangte 4K und bekam 1080p, das System verweigert der Demo 4K wie bisher; 4K lief in diesem Test also nicht.
+[v0.1.9](https://github.com/Darkatek7/ProsperoSunshine/releases/tag/v0.1.9) auf `af75da0f`, CI grün, Katalog-PR gemergt; die Anzeige im Store und eine Installation daraus sind nicht geprüft. Vor dem Release auf der Konsole installiert und neu registriert (`01.000.010`, in der App angezeigt), Host meldet 0.1.9 mit Commit `af75da0f`. Mario-64-Demo mit dem Testclient, je rund 20 s: H.264 1080p 1147 Bilder bei 59,94 fps, HEVC 1132 Bilder bei 59,93 fps, 0 Lücken, ffmpeg fehlerfrei. HEVC verlangte 4K und bekam 1080p, das System verweigert der Demo 4K wie bisher; 4K lief in diesem Test also nicht.
 
 Moonlight auf einem iPhone (Besitzer): Koppeln mit PIN und getipptem Namen `iPhone`. Der Eintrag ersetzte den alten mit demselben Zertifikat, es blieb bei acht Geräten. Der anschließende Stream (HEVC, „PS5 Screen“) verlangte `2556x1179@60`, lieferte 1080p, `device_modes.txt` hielt die Anfrage fest. Rund 57 s Stream, Ende durch den Client (`Ping Timeout`).
 
