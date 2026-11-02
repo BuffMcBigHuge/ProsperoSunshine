@@ -93,7 +93,7 @@ std::string Screen::value_text(int index) const
     const OptionSpec &spec = option_specs()[static_cast<std::size_t>(index)];
     if (switch_not_needed(index))
         return diag::experimental_no_effect(snap_.firmware, spec.key) ? ps_exp_switch_at(index - kFirstSwitch)->no_effect_word
-                                                                      : "Not needed: verified here";
+                                                                      : "Verified here"; // five tiles leave no room for more
     const auto it = edits_.find(spec.key);
     if (it == edits_.end() || !it->second)
         return spec.default_label;

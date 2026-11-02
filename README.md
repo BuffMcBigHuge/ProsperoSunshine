@@ -25,8 +25,8 @@ reverse-engineering notes: `docs/` (German).
 
 ## Requirements
 
-- PS5 firmware: **13.00 and 10.20 are tested** (10.20 at 1080p, where the encoder takes no bitrate; its picture quality follows
-  the bitrate set in Moonlight instead, and it sends well below it). Other versions are
+- PS5 firmware: **13.00 and 10.20 are tested** (10.20 from 360p to 1080p, where the encoder takes no bitrate; its picture quality
+  follows the bitrate set in Moonlight instead, and it sends well below it). Other versions are
   untested; the host refuses them only if its system-library lookups fail (`docs/firmware-porting.md`, German).
 - A homebrew environment with an **ELF loader** (for example one listening on port 9021). The app also needs
   [ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus), which registers titles from `/data/homebrew/`.
@@ -87,9 +87,12 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
 
 ## Known limits
 
-- On firmware 13.00, H.264 and HEVC stream at 1080p, 1440p or 4K, whichever the client asks for. Every other
-  firmware stays at 1080p unless you turn on the [experimental switch](#testing-other-firmware). A client asking for less than
-  1080p gets 1080p and scales it. The frame rate follows the client: 30 or 60 fps.
+- On firmware 13.00, H.264 and HEVC stream at 1080p, 1440p or 4K, whichever the client asks for. A client asking for less
+  than 1080p gets 1080p there and scales it (720p didn't start on 13.00). On 10.20 such a client gets whichever of 720p, 540p
+  and 360p is nearest to its request, so a weak client or Wi-Fi link has less to carry and decode: a PS Vita asking for 960x544
+  gets 960x540, a Steam Deck (1280x800) 1280x720, and a 1600x900 screen still 1080p. Every other firmware streams 1080p whatever
+  the request, and 10.20 does so for requests above 1080p, unless you turn on the
+  [experimental switches](#testing-other-firmware). The frame rate follows the client: 30 or 60 fps.
 - The console refuses 1440p and 4K capture in some titles (seen in a Mario 64 port and Teardown; GTA III works). The stream
   then runs at 1080p, also when such a title starts during a stream, and stays there until the next stream. The same should
   apply when the console's video output is smaller than the request; that is not tested yet.
@@ -151,22 +154,24 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
 
 ## Testing other firmware
 
-HEVC, HDR, 1440p and 4K stay locked on firmware where nobody could check them. If you have such a console, you can turn them
-on yourself and help find out. Nothing here has been seen working on an untested firmware yet, so expect it to fail.
+HEVC, HDR, 1440p and 4K, and the modes below 1080p stay locked on firmware where nobody could check them. If you have such a
+console, you can turn them on yourself and help find out. Nothing here has been seen working on an untested firmware yet, so
+expect it to fail.
 
 1. In the app, open **Settings**. Under **Experimental**, turn on what you want to try: HEVC (8 bit), HDR (HEVC 10 bit), 1440p
-   and 4K, or a bitrate cap of 150 instead of 50 Mbit/s. On firmware where a function is verified, its switch says it isn't needed. HDR
-   also offers HEVC. The bitrate switch has no effect on firmware 10.x, because the encoder takes no bitrate there, and says so.
+   and 4K, a bitrate cap of 150 instead of 50 Mbit/s, or 720p, 540p and 360p. On firmware where a function is verified, its switch
+   says it isn't needed. HDR also offers HEVC. The bitrate switch has no effect on firmware 10.x, because the encoder takes no
+   bitrate there, and says so. The modes below 1080p take the switch on 13.00 too, where 720p once failed to start.
 2. Choose **Save and restart host**.
-3. Start a stream in Moonlight with that setting, for example with HEVC chosen as the codec, 4K as the resolution, or a bitrate
-   above 50 Mbit/s. Check that the picture and sound are right.
+3. Start a stream in Moonlight with that setting, for example with HEVC chosen as the codec, 4K or 720p as the resolution, or a
+   bitrate above 50 Mbit/s. Check that the picture and sound are right.
 4. Open the app's **Diagnostics** page and post the report in a [GitHub issue](https://github.com/Darkatek7/ProsperoSunshine/issues),
    whether it worked or not. Add your Moonlight client and what you saw on the screen. The report has no addresses, device names
    or ids in it.
 
 **When it fails:** the host tries each function in more than one way. If every way fails, it turns that function off until it
-restarts and offers H.264, 1080p and 50 Mbit/s again. A high bitrate falls back to 50 Mbit/s and a larger mode to 1080p within the
-same stream. With HEVC or HDR the
+restarts and offers H.264, 1080p and 50 Mbit/s again. A high bitrate falls back to 50 Mbit/s and a larger or smaller mode to 1080p within
+the same stream; a smaller mode that already ran comes back with the next stream. With HEVC or HDR the
 stream that failed ends with an error, because the client set itself up for that codec: start it again and it runs with what
 the host still offers. If the client keeps asking for HEVC, choose H.264 in its settings. If the host itself goes down during a try,
 start it again; it then keeps that function off for that run. To try again, restart the host, and to stop testing, turn the

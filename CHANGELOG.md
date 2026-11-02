@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Modes below 1080p on firmware 10.20: a client asking for less than 1080p gets whichever of 1280x720, 960x540 and 640x360 is
+  nearest to its request, instead of 1080p to scale down, so weak clients and Wi-Fi links have less to carry and decode (a PS
+  Vita asking for 960x544 gets 960x540; 1600x900 still gets 1080p). Requests from 1080 lines up get exactly what they got
+  before, on every firmware. Measured on 10.20: all three start in H.264, HEVC and HEVC 10 bit at 30 and 60 fps; at the QP the
+  host sets for 16 Mbit/s, an IDR of the home screen cost about two thirds of 1080p's at 720p, 40 % at 540p and 20 % at 360p,
+  and Moonlight on an iPhone got each mode it asked for. If the system refuses one, the stream falls back to 1080p, as 1440p
+  and 4K do, so the client gets what it got before these modes rather than no stream. Elsewhere, 13.00 included, where 720p
+  once failed to start, the new Experimental switch `experimental_small_modes` offers them; there a mode that is refused before
+  its first picture also stays off until the host restarts.
+
 ## 0.1.9 (2026-11-02)
 
 ### Added

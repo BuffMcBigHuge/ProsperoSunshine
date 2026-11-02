@@ -4,8 +4,8 @@
 //
 // A switch counts only where the function isn't verified, and the bitrate's not on 10.x, where the record has no rate
 // fields. Each codec and bit depth tries its variants in order until one delivers a frame, and that one stays. When all
-// fail, a rate above 50 Mbit/s falls back to 50, then a mode above 1080p to 1080p, each in the same stream and with the
-// variants starting over. What was shown to be at fault is off until the host restarts. When nothing is left to try, the
+// fail, a rate above 50 Mbit/s falls back to 50, then a mode above or below 1080p to 1080p, each in the same stream and with
+// the variants starting over. What was shown to be at fault is off until the host restarts. When nothing is left to try, the
 // client's stream ends, because it set up its decoder for this codec, and its next stream gets what the host offers then.
 #ifndef PROSPERO_EXPERIMENTAL_H
 #define PROSPERO_EXPERIMENTAL_H
@@ -64,6 +64,13 @@ static inline int ps_exp_hevc_offered(const ps_experiment *e)
 static inline int ps_exp_hdr_offered(const ps_experiment *e) { return e->on[PS_EXP_HDR] && !e->failed[PS_EXP_HDR] && !e->failed[PS_EXP_HEVC]; }
 static inline int ps_exp_large_offered(const ps_experiment *e) { return e->on[PS_EXP_LARGE] && !e->failed[PS_EXP_LARGE]; }
 static inline int ps_exp_bitrate_offered(const ps_experiment *e) { return e->on[PS_EXP_BITRATE] && !e->failed[PS_EXP_BITRATE]; }
+static inline int ps_exp_small_offered(const ps_experiment *e) { return e->on[PS_EXP_SMALL] && !e->failed[PS_EXP_SMALL]; }
+
+// The switch a mode is on trial under: LARGE above 1080p, SMALL below, none at 1080p.
+static inline int ps_exp_mode_switch(uint32_t resolution)
+{
+    return resolution >= 5 ? PS_EXP_LARGE : resolution < 4 ? PS_EXP_SMALL : -1;
+}
 
 static inline int ps_exp_codec_on_trial(const ps_experiment *e, uint32_t codec, uint32_t ten_bit)
 {
@@ -82,7 +89,16 @@ static inline int ps_exp_unproven_codec(const ps_experiment *e, uint32_t codec, 
 }
 static inline int ps_exp_unproven_mode(const ps_experiment *e, uint32_t resolution)
 {
-    return resolution >= 5 && ps_exp_large_offered(e) && !e->confirmed[PS_EXP_LARGE];
+    const int i = ps_exp_mode_switch(resolution);
+    return i >= 0 && e->on[i] && !e->failed[i] && !e->confirmed[i];
+}
+
+// Whether a refused open of this mode may go on at 1080p in the same stream: every mode but 1080p itself. A larger one,
+// because titles refuse 4K; a smaller one, because 1080p is what every client got before the smaller modes, which beats no
+// stream. Only a switch on trial goes off for it (ps_exp_failed); a verified or proven mode is tried again next stream.
+static inline int ps_exp_mode_may_fall_back(uint32_t resolution)
+{
+    return resolution != 4;
 }
 
 static inline int ps_exp_unproven_rate(const ps_experiment *e, uint32_t average)
@@ -93,9 +109,11 @@ static inline int ps_exp_unproven_rate(const ps_experiment *e, uint32_t average)
 static inline void ps_exp_succeeded(ps_experiment *e, uint32_t codec, uint32_t ten_bit, uint32_t resolution, uint32_t average)
 {
     if (ps_exp_codec_on_trial(e, codec, ten_bit)) e->trial[ten_bit != 0].confirmed = 1;
-    if (resolution >= 5 && e->on[PS_EXP_LARGE]) e->confirmed[PS_EXP_LARGE] = 1;
-    if (e->pending[PS_EXP_LARGE] && resolution < 5) e->failed[PS_EXP_LARGE] = 1;
-    e->pending[PS_EXP_LARGE] = 0;
+    const int mode = ps_exp_mode_switch(resolution);
+    if (mode >= 0 && e->on[mode]) e->confirmed[mode] = 1;
+    if (e->pending[PS_EXP_LARGE] && mode != PS_EXP_LARGE) e->failed[PS_EXP_LARGE] = 1;
+    if (e->pending[PS_EXP_SMALL] && mode != PS_EXP_SMALL) e->failed[PS_EXP_SMALL] = 1;
+    e->pending[PS_EXP_LARGE] = e->pending[PS_EXP_SMALL] = 0;
     if (average > PS_EXP_SAFE_AVERAGE && e->on[PS_EXP_BITRATE]) e->confirmed[PS_EXP_BITRATE] = 1;
     if (e->pending[PS_EXP_BITRATE] && average <= PS_EXP_SAFE_AVERAGE) e->failed[PS_EXP_BITRATE] = 1;
     e->pending[PS_EXP_BITRATE] = 0;
@@ -103,9 +121,10 @@ static inline void ps_exp_succeeded(ps_experiment *e, uint32_t codec, uint32_t t
 
 // `attributable`: the failure came from the encoder's steps, not from the capture being in use or the system refusing the
 // resource, which says nothing about the function. `can_fall_back`: ps_capture_fall_back_mode would act.
-static inline enum ps_exp_next ps_exp_failed(ps_experiment *e, uint32_t codec, uint32_t ten_bit, uint32_t average, int attributable,
-                                             int can_fall_back)
+static inline enum ps_exp_next ps_exp_failed(ps_experiment *e, uint32_t codec, uint32_t ten_bit, uint32_t resolution, uint32_t average,
+                                             int attributable, int can_fall_back)
 {
+    const int mode = ps_exp_mode_switch(resolution);
     const int bits = ten_bit != 0;
     const int trial = attributable && ps_exp_unproven_codec(e, codec, ten_bit);
     if (trial && e->trial[bits].variant < e->last_variant) {
@@ -121,7 +140,7 @@ static inline enum ps_exp_next ps_exp_failed(ps_experiment *e, uint32_t codec, u
     e->pending[PS_EXP_BITRATE] = 0;
     if (can_fall_back) {
         if (trial) e->trial[bits].variant = PS_EXP_MINIMAL;
-        if (attributable && e->on[PS_EXP_LARGE] && !e->confirmed[PS_EXP_LARGE]) e->pending[PS_EXP_LARGE] = 1;
+        if (attributable && mode >= 0 && e->on[mode] && !e->confirmed[mode]) e->pending[mode] = 1;
         return PS_EXP_FALL_BACK;
     }
     if (trial) {
@@ -130,7 +149,7 @@ static inline enum ps_exp_next ps_exp_failed(ps_experiment *e, uint32_t codec, u
         else
             e->failed[PS_EXP_HEVC] = 1;
     }
-    e->pending[PS_EXP_LARGE] = 0;
+    e->pending[PS_EXP_LARGE] = e->pending[PS_EXP_SMALL] = 0;
     return PS_EXP_GIVE_UP;
 }
 

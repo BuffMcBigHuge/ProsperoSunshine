@@ -29,6 +29,8 @@ int ps_capture_hevc_verified(void);
 int ps_capture_large_modes_verified(void);
 // Whether opening above 50 Mbit/s was verified on this firmware.
 int ps_capture_high_bitrate_verified(void);
+// Whether 360p, 540p and 720p were verified on this firmware: 10.20 (13.00 refused 720p in mode_spike).
+int ps_capture_small_modes_verified(void);
 // The app's Experimental switches from sunshine.conf, read once when the host starts, one value per entry of
 // app/src/psapp/experimental_list.h; a switch counts only where its function isn't verified. `marker` is a file that names
 // an attempt under way. A marker left by a host that went down keeps that function off for this run.
@@ -38,9 +40,11 @@ int ps_capture_hevc_allowed(void);
 int ps_capture_hdr_allowed(void);
 int ps_capture_large_modes_allowed(void);
 int ps_capture_high_bitrate_allowed(void);
+int ps_capture_small_modes_allowed(void);
 // The resolution set for the next open. After the system refused the last open of a mode above 1080p (seen in a title,
 // the arbitrator logs "4K NG(4K120)"; other sources report OpenVideo refusing it when the console's output is smaller),
-// ps_capture_fall_back_mode sets 1080p and returns 1; otherwise it changes nothing.
+// or of one below it, ps_capture_fall_back_mode sets 1080p and returns 1; otherwise it changes nothing
+// (ps_exp_mode_may_fall_back).
 uint32_t ps_capture_video_resolution(void);
 int ps_capture_fall_back_mode(void);
 // Bitrate in the config of the next open, in bit/s. Default 6 Mbit/s and no peak. HEVC needs a peak. Raising

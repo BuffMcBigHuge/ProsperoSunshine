@@ -183,7 +183,7 @@ Stand: P8.1, P8.3, P8.4 und P8.5 live geprüft; P8.2 ebenfalls live geprüft. P8
 | --- | --- | --- | --- |
 | P9.1 | Steuer-Socket nur auf `127.0.0.1` (die App spricht lokal); LAN-Zugriff für Entwicklung nur per Schalterdatei | S | Vom PC aus abgewiesen, aus der App erreichbar |
 | P9.2 | Automatisches Finden in Moonlight (mDNS `_nvstream._tcp`) | M | Moonlight am PC/Handy listet die PS5 ohne IP-Eingabe |
-| P9.3 | Bildrate des Clients beachten (30 fps gehen); andere Auflösungen als 1080p startet Avcap2 in der jetzigen Konfiguration nicht (Spike `mode_spike`) | M | Client erhält die angeforderte Auflösung bzw. Bildrate, oder dokumentiert, warum nicht |
+| P9.3 | Bildrate des Clients beachten (30 fps gehen); andere Auflösungen als 1080p startet Avcap2 in der jetzigen Konfiguration auf 13.00 nicht (Spike `mode_spike`, dort 720p), auf 10.20 laufen 360p, 540p und 720p (`small_mode_probe`, STATUS.md) | M | Client erhält die angeforderte Auflösung bzw. Bildrate, oder dokumentiert, warum nicht |
 | P9.4 | Bild/Ton-Drift über 10 Minuten messen (`tools/moonlight/av_sync.py`) | S | Drift pro Minute im Toleranzbereich |
 | P9.5 | Firmware-Porting vorbereiten: ResourceArbitrator-Funktionen per NID statt fester Adressen, Anleitung `docs/firmware-porting.md` | M | NID-Suche findet auf 13.00 die bekannten Adressen |
 | P9.6 | Weitere Clients: Android, TV/Shield, Steam Deck (Moonlight Web, PC und iPhone laufen bereits) | S | Je ein Stream mit Bild, Ton und Eingabe |
@@ -199,7 +199,7 @@ Stand P9.5 (2026-10-29): erledigt für 13.00. Die vier ResourceArbitrator-Funkti
 
 Stand P9.2 (2026-10-29): Responder gebaut, Tests grün; mit `mdns_probe` live geprüft (PC sieht PTR/SRV/TXT/A von der Konsole, `tools/mdns_query.py`). Am 2026-10-30 auch im echten Host bestätigt; am 2026-10-31 meldete der Nutzer, dass Moonlight auf dem iPhone die PS5 von selbst listet. Stand P9.4 (2026-10-29): 10 Minuten, Ton relativ zu Bild −0,01 ms/min, also kein Drift; Klickton im Home-Menü diesmal nicht erkannt (0/380) und Bildreaktion Median 265 ms statt früher 23–25 ms. Neu gemessen (2026-10-31, `STATUS.md`): Die 23–25 ms waren keine Reaktion, der Detektor sprach auf die Schlüsselbilder an; `av_sync.py` überspringt sie jetzt. In der App liegt Taste → Bild im Median bei 57 ms, auf dem Home-Bildschirm bei 95 ms, Ton liegt ±10 ms um das Bild. Ein neuer 10-Minuten-Lauf am 2026-10-31 ergab Bild 96 ms (380/380), Ton 8,6 ms danach (221/380), kein Drift zwischen beiden. Die 265 ms kamen nicht wieder, P9.4 ist damit erledigt.
 
-Stand P9.3: nur die Bildrate wird beachtet, die Auflösung bleibt 1080p (Moonlight skaliert herunter). Stand P9.9 (2026-10-31): Select halten sendet PS, im Stream am Testclient gemessen und in Moonlight auf dem iPhone bestätigt. `back_button_timeout = -1` (PS-Taste aus) ist am 2026-10-31 live geprüft.
+Stand P9.3: die Bildrate wird beachtet; die Auflösung bleibt 1080p (Moonlight skaliert herunter), außer auf 10.20, wo eine Anfrage unter 1080p den nächstgelegenen von 720p, 540p und 360p bekommt. Stand P9.9 (2026-10-31): Select halten sendet PS, im Stream am Testclient gemessen und in Moonlight auf dem iPhone bestätigt. `back_button_timeout = -1` (PS-Taste aus) ist am 2026-10-31 live geprüft.
 
 Stand P9.8 (2026-10-30): behoben und live geprüft. Sunshine hielt Pads für ein späteres Fortsetzen, solange die App lief; jetzt endet „PS5 Screen“ mit dem letzten Client (Patch 0006). Lizenzen: Texte der SDK-Laufzeit liegen in `licenses/ps5-payload-sdk-runtime/` und werden von CI und App-Build mitgeliefert.
 
