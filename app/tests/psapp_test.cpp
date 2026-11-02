@@ -66,6 +66,19 @@ static void conf_tests()
     CHECK(validate(*find_option("wan_encryption_mode"), "3"));
     CHECK(!validate(*find_option("ping_timeout"), "2000"));
     CHECK(validate(*find_option("ping_timeout"), "100"));
+
+    // close_game_on_quit: off by default, the app writes 1, and Sunshine's other words for on show as on.
+    const OptionSpec *quit = find_option("close_game_on_quit");
+    CHECK(quit != nullptr);
+    CHECK(quit->kind == OptionKind::toggle);
+    CHECK(!validate(*quit, "1"));
+    CHECK(!option_value(Config::parse("port = 48000\n"), *quit));
+    for (const char *on : {"1", "enabled", "enable", "true", "yes", "on"})
+        CHECK(option_value(Config::parse(std::string("close_game_on_quit = ") + on + "\n"), *quit) == std::optional<std::string>("1"));
+    for (const char *off : {"0", "disabled", "false", "no", "off", "Enabled"})
+        CHECK(option_value(Config::parse(std::string("close_game_on_quit = ") + off + "\n"), *quit) == std::optional<std::string>("0"));
+    // Other options stay as they are in the file.
+    CHECK(option_value(Config::parse("experimental_hevc = on\n"), *find_option("experimental_hevc")) == std::optional<std::string>("on"));
 }
 
 static void autoload_tests()
@@ -424,6 +437,15 @@ static void diag_tests()
     CHECK(diag::scrub("firmware=0x13000040 known=1", {}) == "firmware=0x13000040 known=1");
     CHECK(diag::scrub("host version=0.1.7 commit=3b912d6a firmware", {}) == "host version=0.1.7 commit=3b912d6a firmware");
     CHECK(diag::scrub("capture RUNNING outcome=timeout active=175,177", {}) == "capture RUNNING outcome=timeout active=175,177");
+    // What someone plays stays out; the app, the system's titles and "PS5 Screen" stay.
+    CHECK(diag::scrub("Started PPSA99310", {}) == "Started <title>");
+    CHECK(diag::scrub("Not starting PPSA03527: CUSA12345 is in front", {}) == "Not starting <title>: <title> is in front");
+    CHECK(diag::scrub("/mnt/sandbox/PPSA99310_000 left", {}) == "/mnt/sandbox/<title>_000 left");
+    CHECK(diag::scrub("/data/homebrew/PPSA47989 and NPXS40000", {}) == "/data/homebrew/PPSA47989 and NPXS40000");
+    CHECK(diag::scrub("XPPSA99310 PPSA993101 PPSA9931", {}) == "XPPSA99310 PPSA993101 PPSA9931");
+    CHECK(diag::scrub("Info: Session app [Mario 64] marked running\nnext", {}) == "Info: Session app [<title>] marked running\nnext");
+    CHECK(diag::scrub("Session app [Game [Deluxe]] stopped", {}) == "Session app [<title>] stopped");
+    CHECK(diag::scrub("Session app [ PS5 Screen] stopped", {}) == "Session app [ PS5 Screen] stopped");
 
     experimental_tests();
     capture_line_tests();

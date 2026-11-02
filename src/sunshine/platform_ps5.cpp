@@ -432,7 +432,8 @@ void freeInput(input_raw_t *input) {
 input_t input() {
     auto *raw = new input_raw_t;
     raw->user = ps_pad_default_user();
-    BOOST_LOG(info) << "PS5 input: virtual pads for user "sv << std::hex << raw->user << std::dec;
+    // Not the user's id: this log goes into the report people post (app/src/psapp/diag.cpp).
+    BOOST_LOG(info) << (raw->user ? "PS5 input: virtual pads ready"sv : "PS5 input: no user for virtual pads"sv);
     raw->output_thread = std::jthread(poll_pad_output, raw);
     return input_t{raw};
 }

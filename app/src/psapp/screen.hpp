@@ -143,7 +143,7 @@ class Screen
     int home_action_ = 0;
     int home_card_ = 0;
     int tile_ = 0; // the option tiles, then the three actions under them
-    float tile_amount_[6 + PS_EXP_SWITCH_COUNT + 3] = {};
+    float tile_amount_[7 + PS_EXP_SWITCH_COUNT + 3] = {};
     float action_amount_[3] = {};
     float card_amount_[2] = {};
     float tab_x_ = -1.0f; // the selected tab's plate glides between tabs

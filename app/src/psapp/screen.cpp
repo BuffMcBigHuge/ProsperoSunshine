@@ -38,8 +38,10 @@ constexpr float kArmSeconds = 4.0f;
 constexpr int kReportVisible = 19; // lines of the report on screen
 constexpr float kReportLine = 26.0f;
 
-const Icon kOptionIcons[] = {Icon::tag, Icon::log, Icon::timer, Icon::lock, Icon::globe, Icon::plug};
-constexpr int kFirstSwitch = 6; // option_specs(): two rows of three, then a row with the Experimental switches
+const Icon kOptionIcons[] = {Icon::tag, Icon::log, Icon::timer, Icon::plug, Icon::lock, Icon::globe, Icon::sliders};
+// option_specs(): a row of four, a row of three, then a row with the Experimental switches
+constexpr int kFirstWide = 4;
+constexpr int kFirstSwitch = 7;
 constexpr int kTiles = kFirstSwitch + PS_EXP_SWITCH_COUNT;
 
 float approach(float value, float target, float dt, float speed)
@@ -111,8 +113,7 @@ std::string Screen::value_text(int index) const
 
 bool Screen::switch_not_needed(int index) const
 {
-    const OptionSpec &spec = option_specs()[static_cast<std::size_t>(index)];
-    return spec.kind == OptionKind::toggle && !diag::experimental_needed(snap_.firmware, spec.key);
+    return index >= kFirstSwitch && !diag::experimental_needed(snap_.firmware, option_specs()[static_cast<std::size_t>(index)].key);
 }
 
 int Screen::visible_pairings() const
@@ -147,8 +148,10 @@ Rect Screen::tile_rect(int index) const
         const float width = (1728.0f - 20.0f * static_cast<float>(PS_EXP_SWITCH_COUNT - 1)) / static_cast<float>(PS_EXP_SWITCH_COUNT);
         return {96.0f + static_cast<float>(index - kFirstSwitch) * (width + 20.0f), 594.0f, width, 124.0f};
     }
-    const int col = index % 3, row = index / 3;
-    return {96.0f + static_cast<float>(col) * 584.0f, 276.0f + static_cast<float>(row) * 138.0f, 560.0f, 124.0f};
+    if (index >= kFirstWide)
+        return {96.0f + static_cast<float>(index - kFirstWide) * 584.0f, 414.0f, 560.0f, 124.0f};
+    constexpr float kNarrow = (1728.0f - 3.0f * 24.0f) / 4.0f;
+    return {96.0f + static_cast<float>(index) * (kNarrow + 24.0f), 276.0f, kNarrow, 124.0f};
 }
 
 Rect Screen::settings_action_rect(int index) const
@@ -385,16 +388,18 @@ void Screen::handle_settings(const hui::InputFrame &input, hui::ui::Feedback &fe
         int next = tile_;
         if (tile_ < kTiles)
         {
-            const bool switches = tile_ >= kFirstSwitch;
-            const int col = switches ? tile_ - kFirstSwitch : tile_ % 3, row = switches ? 2 : tile_ / 3;
+            const bool switches = tile_ >= kFirstSwitch, wide = !switches && tile_ >= kFirstWide;
+            const int col = switches ? tile_ - kFirstSwitch : wide ? tile_ - kFirstWide : tile_;
+            // Up and down go to the nearest tile: a row of four has one of three under or over it, and the other way round.
+            const int to_wide = kFirstWide + std::min((col + 1) / 2, 2), to_four = col == 2 ? 3 : col;
             if (input.nav == Direction::left)
                 next = col > 0 ? tile_ - 1 : -1;
             else if (input.nav == Direction::right)
-                next = col < (switches ? PS_EXP_SWITCH_COUNT - 1 : 2) ? tile_ + 1 : -1;
+                next = col < (switches ? PS_EXP_SWITCH_COUNT - 1 : wide ? 2 : kFirstWide - 1) ? tile_ + 1 : -1;
             else if (input.nav == Direction::up)
-                next = switches ? 3 + std::min(col, 2) : row > 0 ? tile_ - 3 : -1;
+                next = switches ? to_wide : wide ? to_four : -1;
             else
-                next = switches ? kTiles + std::min(col, 2) : row == 0 ? tile_ + 3 : kFirstSwitch + col;
+                next = switches ? kTiles + std::min(col, 2) : wide ? kFirstSwitch + std::min(to_four, PS_EXP_SWITCH_COUNT - 1) : to_wide;
         }
         else
         {
@@ -1166,7 +1171,7 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
     list.pop_opacity();
 
     // The Experimental section's caption, in the gap above its row.
-    a = appear(7);
+    a = appear(8);
     list.push_opacity(a);
     list.rounded_rect({96.0f, 566.0f, 40.0f, 3.0f}, 1.5f, kAccent);
     const float caption = hui::ui::text(list, fonts_.semibold, "EXPERIMENTAL", 152.0f, 576.0f, 22.0f, kAccent, Align::left, 4.0f);
@@ -1199,11 +1204,12 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
             list.glow(base, 24.0f, 26.0f, kAccent.with_alpha(0.28f * f));
         glass_card(list, glass, base, 24.0f, f);
         // The switches' row is narrower: the same parts closer together, with the switch on the value's line.
-        const float text_x = base.x + (toggle ? 62.0f : 90.0f);
-        icons::draw(list, toggle ? Icon::sliders : kOptionIcons[i], base.x + (toggle ? 34.0f : 46.0f), base.cy(), toggle ? 30.0f : 34.0f,
+        const bool narrow = i >= kFirstSwitch;
+        const float text_x = base.x + (narrow ? 62.0f : 90.0f);
+        icons::draw(list, narrow ? Icon::sliders : kOptionIcons[i], base.x + (narrow ? 34.0f : 46.0f), base.cy(), narrow ? 30.0f : 34.0f,
                     inert ? kFaint : kAccent);
-        hui::ui::text(list, fonts_.semibold, spec.label, text_x, base.y + 52.0f, toggle ? 28.0f : 30.0f, inert ? kMuted : kInk);
-        hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, value_text(i), 25.0f, base.w - (inert ? 80.0f : 250.0f)), text_x,
+        hui::ui::text(list, fonts_.semibold, spec.label, text_x, base.y + 52.0f, narrow ? 28.0f : 30.0f, inert ? kMuted : kInk);
+        hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, value_text(i), 25.0f, base.w - (inert ? 80.0f : 230.0f)), text_x,
                       base.y + 94.0f, 25.0f, is_default || inert ? kMuted : mix(kInk, kAccent, 0.35f));
         if (toggle && !inert)
         {
@@ -1227,7 +1233,7 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
         list.pop_opacity();
     }
 
-    a = appear(10);
+    a = appear(12);
     list.push_opacity(a);
     list.push_transform(1.0f, 0.0f, 0.0f, 0.0f, 30.0f * (1.0f - a));
     const bool enabled = !busy();
@@ -1277,7 +1283,7 @@ void Screen::draw_diagnostics(hui::gfx::DrawList &list, std::uint32_t glass) con
     list.push_opacity(a);
     list.push_transform(1.0f, 0.0f, 0.0f, static_cast<float>(page_direction_) * 40.0f * (1.0f - a), 0.0f);
     const float tw = hui::ui::text(list, fonts_.display, "Diagnostics", 90.0f, 250.0f, 72.0f, kInk);
-    hui::ui::text(list, fonts_.regular, "For a bug report. No addresses, device names or ids in it.", 120.0f + tw, 248.0f, 24.0f,
+    hui::ui::text(list, fonts_.regular, "For a bug report. No addresses, device names, ids or game titles in it.", 120.0f + tw, 248.0f, 24.0f,
                   kMuted);
     list.pop_transform();
     list.pop_opacity();
@@ -1370,7 +1376,7 @@ void Screen::draw_sheet(hui::gfx::DrawList &list, std::uint32_t glass) const
     list.gradient_rect({card.x, card.y, card.w, 120.0f}, 34.0f, kAccent.with_alpha(0.14f), kAccent.with_alpha(0.0f));
 
     const Icon icon = sheet_drawn_ == Sheet::pin ? Icon::link
-                      : spec != nullptr        ? kOptionIcons[std::min<std::size_t>(5, static_cast<std::size_t>(spec - option_specs().data()))]
+                      : spec != nullptr        ? kOptionIcons[std::min<std::size_t>(6, static_cast<std::size_t>(spec - option_specs().data()))]
                                                : Icon::sliders;
     icons::draw(list, icon, card.cx(), card.y + 62.0f, 40.0f, kAccent);
     hui::ui::text(list, fonts_.display, sheet_title_, card.cx(), card.y + 140.0f, 46.0f, kInk, Align::center);

@@ -309,7 +309,7 @@ void Host::read_files()
     {
         const Config config = Config::parse(text);
         for (const OptionSpec &spec : option_specs())
-            values[spec.key] = config.get(spec.key);
+            values[spec.key] = option_value(config, spec);
     }
     else
     {
@@ -657,7 +657,7 @@ void Host::do_autoload(bool on)
 }
 
 // Everything someone else needs to tell why streaming fails here, fit to paste into a public issue:
-// no addresses, device names or ids (diag::scrub).
+// no addresses, device names, ids or game titles (diag::scrub).
 std::string Host::build_report()
 {
     const Snapshot snap = snapshot();

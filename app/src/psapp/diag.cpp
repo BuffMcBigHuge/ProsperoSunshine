@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string_view>
 
 namespace psapp::diag
 {
@@ -99,6 +100,46 @@ std::string without_long_hex(const std::string &text)
         if (end < text.size())
             out += text[end];
         i = end + 1;
+    }
+    return out;
+}
+
+// What someone plays isn't for a public issue: title IDs and the name in "Session app [...]". The settings app, the system's
+// own titles and "PS5 Screen" (a leading space, as nvhttp sorts it first) stay.
+std::string without_titles(const std::string &text)
+{
+    constexpr std::string_view kSession = "Session app [";
+    const auto is_upper = [](char c) { return c >= 'A' && c <= 'Z'; };
+    std::string out;
+    std::size_t i = 0;
+    while (i < text.size())
+    {
+        if (text.compare(i, kSession.size(), kSession) == 0)
+        {
+            const std::size_t from = i + kSession.size();
+            const std::size_t line_end = std::min(text.find('\n', from), text.size());
+            const std::size_t close = text.rfind(']', line_end);
+            if (close != std::string::npos && close >= from && text[from] != ' ')
+            {
+                out.append(kSession).append("<title>");
+                i = close;
+                continue;
+            }
+        }
+        const bool starts = i == 0 || !(is_upper(text[i - 1]) || is_digit(text[i - 1]));
+        if (starts && i + 9 <= text.size() && std::all_of(text.begin() + i, text.begin() + i + 4, is_upper) &&
+            std::all_of(text.begin() + i + 4, text.begin() + i + 9, is_digit) &&
+            (i + 9 == text.size() || !(is_upper(text[i + 9]) || is_digit(text[i + 9]))))
+        {
+            const std::string_view id(text.data() + i, 9);
+            if (id != "PPSA47989" && id.substr(0, 4) != "NPXS")
+            {
+                out += "<title>";
+                i += 9;
+                continue;
+            }
+        }
+        out += text[i++];
     }
     return out;
 }
@@ -408,7 +449,7 @@ std::string scrub(const std::string &text, const std::vector<std::string> &names
         for (std::size_t at = out.find(name); at != std::string::npos; at = out.find(name, at + 6))
             out.replace(at, name.size(), "<name>");
     }
-    return without_long_hex(without_addresses(out));
+    return without_titles(without_long_hex(without_addresses(out)));
 }
 
 std::string tail(const std::string &text, std::size_t count, std::size_t width)

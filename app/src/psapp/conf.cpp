@@ -53,15 +53,19 @@ const std::vector<OptionSpec> &option_specs()
         {"ping_timeout", "Ping timeout (ms)",
          "Ends a stream whose client went silent.",
          OptionKind::number, "2000 ms", {}, 500, 60000, 500, 2000},
+        {"port", "Base port",
+         "Moonlight's ports count from here.",
+         OptionKind::number, "47989", {}, 1025, 65514, 1, 47989},
         {"lan_encryption_mode", "Encryption on the LAN",
          "Encrypts the stream in the local network.", OptionKind::choice, "Off",
          kEncryption, 0, 0, 1, 0},
         {"wan_encryption_mode", "Encryption over the internet",
          "The same for clients outside it.", OptionKind::choice,
          "When supported", kEncryption, 0, 0, 1, 0},
-        {"port", "Base port",
-         "Moonlight's ports count from here.",
-         OptionKind::number, "47989", {}, 1025, 65514, 1, 47989},
+        // Sunshine reads this one (patch 0010), as it does the options above.
+        {"close_game_on_quit", "Quit closes the game",
+         "On: quitting in Moonlight also closes the game the stream started or found in front, and unsaved progress is lost.",
+         OptionKind::toggle, "Off", {}, 0, 0, 1, 0},
         };
         // The Experimental switches, which the host reads itself (src/sunshine/main_ps5.cpp), not Sunshine.
         for (int i = 0; i < PS_EXP_SWITCH_COUNT; ++i)
@@ -127,6 +131,19 @@ std::optional<std::string> validate(const OptionSpec &spec, std::string_view val
         return std::string("must be 0 or 1");
     }
     return std::string("unknown option");
+}
+
+std::optional<std::string> option_value(const Config &config, const OptionSpec &spec)
+{
+    std::optional<std::string> value = config.get(spec.key);
+    if (value && std::string_view(spec.key) == "close_game_on_quit")
+    {
+        // to_bool in Sunshine's src/config.cpp, which is case-sensitive.
+        const std::string &v = *value;
+        const bool on = v == "true" || v == "yes" || v == "enable" || v == "enabled" || v == "on" || v.find('1') != std::string::npos;
+        value = on ? "1" : "0";
+    }
+    return value;
 }
 
 Config Config::parse(std::string_view text)
