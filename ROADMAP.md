@@ -183,7 +183,7 @@ Stand: P8.1, P8.3, P8.4 und P8.5 live geprüft; P8.2 ebenfalls live geprüft. P8
 | --- | --- | --- | --- |
 | P9.1 | Steuer-Socket nur auf `127.0.0.1` (die App spricht lokal); LAN-Zugriff für Entwicklung nur per Schalterdatei | S | Vom PC aus abgewiesen, aus der App erreichbar |
 | P9.2 | Automatisches Finden in Moonlight (mDNS `_nvstream._tcp`) | M | Moonlight am PC/Handy listet die PS5 ohne IP-Eingabe |
-| P9.3 | Bildrate des Clients beachten (30 fps gehen); andere Auflösungen als 1080p startet Avcap2 in der jetzigen Konfiguration auf 13.00 nicht (Spike `mode_spike`, dort 720p), auf 10.20 laufen 360p, 540p und 720p (`small_mode_probe`, STATUS.md) | M | Client erhält die angeforderte Auflösung bzw. Bildrate, oder dokumentiert, warum nicht |
+| P9.3 | Bildrate des Clients beachten (30 fps gehen); auf 10.20 laufen 360p, 540p und 720p im Host (`small_mode_probe`, STATUS.md), auf 13.00 starten sie im Spike (`mode_spike`), der Host nutzt sie dort noch nicht | M | Client erhält die angeforderte Auflösung bzw. Bildrate, oder dokumentiert, warum nicht |
 | P9.4 | Bild/Ton-Drift über 10 Minuten messen (`tools/moonlight/av_sync.py`) | S | Drift pro Minute im Toleranzbereich |
 | P9.5 | Firmware-Porting vorbereiten: ResourceArbitrator-Funktionen per NID statt fester Adressen, Anleitung `docs/firmware-porting.md` | M | NID-Suche findet auf 13.00 die bekannten Adressen |
 | P9.6 | Weitere Clients: Android, TV/Shield, Steam Deck (Moonlight Web, PC und iPhone laufen bereits) | S | Je ein Stream mit Bild, Ton und Eingabe |

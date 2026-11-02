@@ -167,7 +167,7 @@ Live auf der Konsole geprüft mit dem aktuellen Host (Testclient vom PC):
 
 Noch offen:
 
-1. **Auflösung (P9.3, Meilenstein 0.4):** Unter 1080p startet Avcap2 auf 13.00 nicht (`src/mode_spike.cpp`: 360p, 540p, 720p scheitern, `sceAvcap2ChangeScanInResolution` lehnt ab mit `0x81950001`, `0x8195000A`); Moonlight skaliert 1080p selbst herunter. Auf 10.20 laufen 360p, 540p und 720p (unten, „Modi unter 1080p auf Firmware 10.20“). Darüber gehen H.264 und HEVC (siehe „1440p und 4K“ oben). Offen: 4K im aktiven Spielbetrieb (nicht ohne Eingaben und Spielstände messbar), 4K mit anderen Clients als Moonlight für PC.
+1. **Auflösung (P9.3, Meilenstein 0.4):** Der Host liefert unter 1080p auf 13.00 noch 1080p, Moonlight skaliert selbst herunter. Avcap2 selbst startet die kleinen Modi dort inzwischen („Modi unter 1080p (2026-11-02, 13.00 …)“ unten); der alte `mode_spike`, an dem 720p scheiterte, ist überholt, und `sceAvcap2ChangeScanInResolution` lehnte früher ab mit `0x81950001`, `0x8195000A`. Auf 10.20 laufen 360p, 540p und 720p im Host (unten, „Modi unter 1080p auf Firmware 10.20“). Darüber gehen H.264 und HEVC (siehe „1440p und 4K“ oben). Offen: 4K im aktiven Spielbetrieb (nicht ohne Eingaben und Spielstände messbar), 4K mit anderen Clients als Moonlight für PC.
 2. **Mehrere Controller am selben Nutzer:** Die Oberfläche der Konsole nimmt Eingaben von allen an, die App aber nur von einem. Beobachtet mit dem RemoteEye-Test-Pad: War es zuerst verbunden, ignorierte die App das Stream-Pad (44 Drücke, keine Bildänderung); nach `ps5_detach` reagierte sie auf alle 44. Das passt zu P9.8 in umgekehrter Reihenfolge. Mit einem echten DualSense verhielt es sich anders (Nutzertest, iPhone, 2026-10-31): Er trennte sich beim Verbinden, die Moonlight-Steuerung ging sofort, auch in Mario 64. Wieder eingeschaltet während des Streams reagierte nur Moonlight, nach Stream-Ende arbeitete der DualSense normal. Im Klog meldet die Konsole beim Anmelden des Stream-Pads `DEVICE_REMOVED` für den DualSense; im Host-Code gibt es dafür keinen Aufruf, der Grund liegt also auf Konsolenseite und ist unbekannt. Für den Stream ist das kein Hindernis, daher bleibt es bei der Beschreibung in der README.
 3. **Payload-Manager-Fenster:** Ein offenes Fenster des Payload Managers liegt über Apps und nimmt Eingaben an sich, auch wenn es nicht reagiert. In dem Zustand lässt es sich nur am echten Controller schließen. Beim Fernsteuern vorher prüfen.
 4. **Eigene Werkzeuge vom PC:** `PIN`/`QUIT` und `pair.py status` über den Steuer-Socket gehen vom PC aus nur noch mit der leeren Datei `/data/prosperosunshine/control_lan` (danach Host neu starten). Sonst geht der Host-Neustart über die App.
@@ -411,6 +411,22 @@ schrieb alle 5 s Mittelwert, stärkste Sekunde und größtes Bild nach `host_dia
   Spiel 6 s: 332 Bilder bei 3840x2160, längste Lücke 19 ms. Keine fehlenden Bilder, alles fehlerfrei dekodiert.
 - **Offen:** der Schalter mit Moonlight selbst statt dem Testclient. Der Quantisierer aus PR 8 läuft auf dieser Konsole nicht, weil 13.00
   ihn nicht verwendet.
+
+### Modi unter 1080p (2026-11-02, 13.00, Spike, im Host noch nicht genutzt)
+
+Remote Play ordnet 640x360, 960x540 und 1280x720 die Modi 1, 2 und 3 zu (`SceRemotePlay 0x6f8d5`). Gemessen mit `src/mode_spike.cpp` auf dem Home-Bildschirm ohne HDMI-Kabel (`video out mode 0x13c`), RA-Profil 180, 60 fps, 3 Mbit/s, je 3 s: Alle drei Modi starten mit H.264 und HEVC, 179 oder 180 Bilder, `ffprobe` nennt die verlangte Größe, ffmpeg dekodierte die geprüften Aufnahmen fehlerfrei (H.264 alle drei, HEVC je Modus den höchsten startenden Wert, bei 360p auch `0x4000`).
+
+Die frühere Aussage „unter 1080p startet Avcap2 nicht“ gilt damit auf 13.00 nicht mehr. Warum der alte Spike scheiterte, ist nicht geklärt; der Datensatz ist seitdem gewachsen.
+
+HEVC braucht einen kleineren Wert in `cfg+0x10c`: Mit dem Wert für 1080p, `0x60000`, meldet `Start` in allen drei Modi `0x80c78000`.
+
+| Modus | geprüft, startet | geprüft, startet nicht |
+| --- | --- | --- |
+| 3 (720p) | `0x10000` bis `0x40000` | `0x60000` |
+| 2 (540p) | `0x8000` bis `0x20000` | `0x30000`, `0x60000` |
+| 1 (360p) | `0x4000` bis `0x20000` | `0x60000` |
+
+Nicht geprüft: ein echter Stream mit Client, ein laufendes Spiel, HDR, 30 fps, höhere Bitraten, und andere Firmware als 13.00.
 
 ### Streamen ohne Bildschirm (2026-11-02, 13.00, Testclient)
 
