@@ -1,19 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The firmware probe: in one run of a few minutes, everything that porting the host to firmware 10.20 had to find out,
-// for a firmware nobody has measured yet (docs/firmware-probe.md). Run it with no game starting or ending, since that
-// takes the capture away. A running host is asked to quit first and is started again at the end (host_control.hpp: the
-// installed one, or the ELF named in /data/prosperosunshine/host_restart.next).
-// Nothing personal goes into the files: the probe reads no MAC or IP address, account or user name, console ID, serial or
-// the host's sunshine.conf (it holds the name the user gave the host), and masks anything shaped like an IPv4 or MAC
-// address anyway, so the report can be posted as it is.
+// for a firmware nobody has measured yet (docs/firmware-probe.md). It runs only when the user sends it to the ELF loader,
+// never while the host streams (it stops right away then), and uploads nothing: the user reads the report and decides
+// what to share. Run it with no game starting or ending, since that takes the capture away. A running host is asked to
+// quit first and is started again at the end (host_control.hpp: the installed one, or the ELF named in
+// /data/prosperosunshine/host_restart.next).
+// Nothing personal goes into the text files: the probe reads no MAC or IP address, account or user name, console ID,
+// serial or the host's sunshine.conf (it holds the name the user gave the host), says "a game or app" or "the home
+// screen" rather than which title is in front, and masks anything shaped like an IPv4 or MAC address anyway, so the
+// report can be posted as it is.
+// Before each call that may hang the console, a line goes to detail.log (on disk before the call) and to klog, so a
+// hang still shows where it happened.
 // Results in /data/prosperosunshine/firmware_probe/:
-//   report.txt    findings, with the codes behind them, and what the host would need on this firmware
+//   report.txt    findings, with the codes behind them, and what the host would need on this firmware (rewritten at
+//                 each phase, so a run that never ended still leaves what it found)
 //   detail.log    one line per attempt, and the records as hex
 //   capture.log   the capture steps from capture.c (the last 128 KiB)
 //   progress.txt  the phase running now, then "done"
-//   *.h264 *.h265 audio_*  short samples, to decode on a PC: what the screen shows and the console plays during the run, so
-//                 they may show the user's avatar and name on the home screen. A file
-//                 /data/prosperosunshine/firmware_probe.no_samples leaves them out, for a run whose files are all text.
+//   samples/      only when the user opts in with an empty file /data/prosperosunshine/firmware_probe.samples (used up
+//                 by that run): short video and audio samples to decode on a PC. They hold what the screen shows and
+//                 the console plays during the run, the user's avatar and name on the home screen included, so they
+//                 stay on the console and out of public issues, and go to a developer only when one asks for them.
 // A one-line file /data/prosperosunshine/firmware_probe.phases with phase names separated by spaces runs only those.
 #include "host_control.hpp"
 #include "probe_scrub.hpp"
@@ -47,12 +54,14 @@ namespace {
 
 using steady = std::chrono::steady_clock;
 const char *const kDir = "/data/prosperosunshine/firmware_probe";
+const char *const kSamples = "/data/prosperosunshine/firmware_probe/samples";
+const char *const kSamplesOptIn = "/data/prosperosunshine/firmware_probe.samples";
 const steady::time_point kStart = steady::now();
 FILE *detail;
 std::string report;
 std::string phases_wanted;
 double tsc_per_second;
-bool keep_samples = true;  // false with /data/prosperosunshine/firmware_probe.no_samples
+bool keep_samples;  // the user opted in with kSamplesOptIn
 
 long elapsed_ms() { return static_cast<long>(std::chrono::duration_cast<std::chrono::milliseconds>(steady::now() - kStart).count()); }
 
@@ -86,6 +95,22 @@ void out(const char *format, ...) {
     va_end(args);
 }
 
+// Before a call that may hang the console: a line in detail.log that is on disk before the call, and in klog.
+void before(const char *format, ...) {
+    static char text[512];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(text, sizeof text, format, args);
+    va_end(args);
+    const std::string line = probe::scrub(text);
+    if (detail) {
+        fprintf(detail, "[%6ld] -> %s\n", elapsed_ms(), line.c_str());
+        fflush(detail);
+        fsync(fileno(detail));
+    }
+    klog_printf("ProsperoSunshine: firmware_probe -> %s\n", line.c_str());
+}
+
 void write_file(const char *name, const std::string &text) {
     const std::string path = std::string(kDir) + "/" + name;
     if (FILE *f = fopen(path.c_str(), "w")) {
@@ -100,6 +125,9 @@ void progress(const char *phase) {
     char text[128];
     snprintf(text, sizeof text, "%s %ld ms\n", phase, elapsed_ms());
     write_file("progress.txt", text);
+    // What the run found so far, in case it never ends.
+    write_file("report.txt", report + "\n(unfinished: the run was in phase " + phase +
+                                 "; the last line of detail.log is the last call it made)\n");
     note("== phase %s", phase);
     klog_printf("ProsperoSunshine: firmware_probe phase %s\n", phase);
 }
@@ -135,12 +163,16 @@ uint64_t get64(const uint8_t *p, size_t at) {
 
 // --- The host and the console --------------------------------------------------------------------------------------
 
+// The title ID in front, "" on the home screen. Only compared, never written: the report says in_front() instead.
 std::string title_in_front() {
     char title[16] = {};
     const int app = sceLncUtilGetAppIdOfRunningBigApp();
-    if (app <= 0 || sceLncUtilGetAppTitleId(static_cast<uint32_t>(app), title)) return "none";
+    if (app <= 0 || sceLncUtilGetAppTitleId(static_cast<uint32_t>(app), title)) return "";
     return title;
 }
+
+const char *in_front(const std::string &title) { return title.empty() ? "the home screen" : "a game or app"; }
+std::string title_at_start;
 
 uint32_t module_handle(const char *name) {
     uint32_t handle = 0;
@@ -254,6 +286,7 @@ Result run(const Try &t) {
     ps_capture_set_open_attempts(t.attempts);
     ps_capture *s = nullptr;
     int waited = 0;
+    if (!capture_taken) before("%s", t.label.c_str());
     for (;;) {
         r.rc = capture_taken ? PS_CAPTURE_BUSY : ps_capture_open(&s);
         if (r.rc != PS_CAPTURE_BUSY || capture_taken || waited >= kBusyWaitSeconds) break;
@@ -285,7 +318,7 @@ Result run(const Try &t) {
     const bool hevc = t.codec == 1;
     FILE *f = nullptr;
     if (t.save && keep_samples) {
-        const std::string path = std::string(kDir) + "/" + t.save;
+        const std::string path = std::string(kSamples) + "/" + t.save;
         f = fopen(path.c_str(), "wb");
     }
     r.header_bytes = ps_capture_headers(s, buffer.data(), buffer.size());
@@ -303,6 +336,7 @@ Result run(const Try &t) {
         if (t.bitrate_at_ms && !bitrate_done && ms >= t.bitrate_at_ms) {
             bitrate_done = true;
             const uint32_t average = t.bitrate_to ? t.bitrate_to : t.average, peak = t.bitrate_to ? t.bitrate_to / 10 * 11 : t.peak;
+            before("%s: SetVideoBitrate %u/%u", t.label.c_str(), average, peak);
             r.bitrate_rc = ps_capture_set_bitrate(s, average, peak);
             note("%s: SetVideoBitrate %u/%u rc=%d after %d frames", t.label.c_str(), average, peak, r.bitrate_rc, r.frames);
         }
@@ -462,7 +496,7 @@ void phase_environment() {
 #ifndef FIRMWARE_PROBE_COMMIT
 #define FIRMWARE_PROBE_COMMIT ""
 #endif
-    out("probe: version 1, built from %s", FIRMWARE_PROBE_COMMIT[0] ? FIRMWARE_PROBE_COMMIT : "a local tree");
+    out("probe: version 2, built from %s", FIRMWARE_PROBE_COMMIT[0] ? FIRMWARE_PROBE_COMMIT : "a local tree");
     const uint32_t fw = kernel_get_fw_version();
     out("firmware %#x (%x.%02x)", fw, fw >> 24, (fw >> 16) & 0xff);
     // System software version as the system reports it: {u64 size, char string[0x1c], u32 version} (as on the PS4).
@@ -470,6 +504,7 @@ void phase_environment() {
         uint8_t info[0x100] = {};
         const uint64_t size = 0x28;
         memcpy(info, &size, sizeof size);
+        before("sceKernelGetSystemSwVersion");
         const int rc = reinterpret_cast<int (*)(void *)>(sw)(info);
         char text[0x1d] = {};
         memcpy(text, info + 8, 0x1c);
@@ -483,11 +518,14 @@ void phase_environment() {
     out("ProsperoSunshine app: %s", app.empty() ? "not found under */homebrew/PPSA47989" : (app + " (" + where + ")").c_str());
     const std::string host = first_line("/data/prosperosunshine/host_diag.log");
     out("last host started (host_diag.log): %s", host.empty() ? "none" : host.c_str());
-    if (const intptr_t trinity = libkernel_symbol("sceKernelIsTrinityMode"))
+    if (const intptr_t trinity = libkernel_symbol("sceKernelIsTrinityMode")) {
+        before("sceKernelIsTrinityMode");
         out("console: sceKernelIsTrinityMode() = %d (1 = PS5 Pro)", reinterpret_cast<int (*)()>(trinity)());
-    else
+    } else {
         out("console: sceKernelIsTrinityMode not exported");
-    out("title in front at start: %s", title_in_front().c_str());
+    }
+    title_at_start = title_in_front();
+    out("in front at start: %s", in_front(title_at_start));
 
     // TSC against the steady clock over 200 ms, as video_ps5.cpp calibrates it.
     const steady::time_point c0 = steady::now();
@@ -578,17 +616,19 @@ void phase_host() {
     hook.rewrite = false;
     hook.words.clear();
     ps_capture *s = nullptr;
+    before("audio: video session to open it on");
     if (ps_capture_open(&s)) {
         out("audio: no video session to open it on");
         return;
     }
     for (const uint32_t encoder : {0u, 2u}) {
+        before("audio %s: OpenAudio", encoder ? "Opus" : "PCM");
         const int rc = ps_capture_audio_open_ex(s, encoder, encoder ? 96000 : 0, 0, 2, 180, 0);
         if (rc) {
             out("audio %s: OpenAudio %#x", encoder ? "Opus" : "PCM", static_cast<unsigned>(rc));
             continue;
         }
-        const std::string path = std::string(kDir) + (encoder ? "/audio_opus.bin" : "/audio_pcm_f32le_2ch.raw");
+        const std::string path = std::string(kSamples) + (encoder ? "/audio_opus.bin" : "/audio_pcm_f32le_2ch.raw");
         FILE *f = keep_samples ? fopen(path.c_str(), "wb") : nullptr;
         uint8_t header[0x10];
         int packets = 0, smallest = 1 << 30, biggest = 0, error = 0;
@@ -692,11 +732,13 @@ void phase_symbols() {
         if (missing) out("  missing:%s", missing_names.c_str());
         if (const intptr_t cap = kernel_dynlib_dlsym(-1, av, "sceAvcap2GetVideoEncoderCapability")) {
             uint32_t value = 0;
+            before("sceAvcap2GetVideoEncoderCapability");
             const int rc = reinterpret_cast<int (*)(uint32_t *)>(cap)(&value);
             out("sceAvcap2GetVideoEncoderCapability rc=%#x value=%#x", static_cast<unsigned>(rc), value);
         }
         if (const intptr_t mode = kernel_dynlib_dlsym(-1, av, "sceAvcap2GetVideoOutMode")) {
             int value = 0;
+            before("sceAvcap2GetVideoOutMode");
             const int rc = reinterpret_cast<int (*)(int *)>(mode)(&value);
             out("sceAvcap2GetVideoOutMode outside a session rc=%#x value=%#x (inside one the host read %#x; bits: 4 HDR, 8 4K scan-in, 0x10 60 Hz, 0x20 1440p, 0x100 4K)",
                 static_cast<unsigned>(rc), static_cast<unsigned>(value), video_out_mode);
@@ -706,6 +748,7 @@ void phase_symbols() {
     }
     if (const uint32_t ra = module_handle("libSceResourceArbitrator.sprx")) {
         ps_ra_functions f{};
+        before("ResourceArbitrator: resolve");
         const int rc = ps_ra_resolve(ra, &f);
         out("ResourceArbitrator: resolve %s, firmware %s; by NID register=%#x unregister=%#x request=%#x list=%#x; used %#x %#x %#x %#x",
             rc ? "REFUSED" : "ok", f.known_firmware ? "known" : "not in the table", f.nid[PS_RA_REGISTER], f.nid[PS_RA_UNREGISTER],
@@ -713,6 +756,7 @@ void phase_symbols() {
             f.offset[PS_RA_LIST]);
         if (!rc && f.base) {
             int32_t active[32] = {};
+            before("ResourceArbitrator: list");
             const int list_rc = reinterpret_cast<int (*)(int32_t *)>(f.base + f.offset[PS_RA_LIST])(active);
             std::string ids;
             for (const int32_t id : active)
@@ -1036,25 +1080,45 @@ int main() {
         std::ifstream in("/data/prosperosunshine/firmware_probe.phases");
         std::getline(in, phases_wanted);
     }
-    keep_samples = !std::ifstream("/data/prosperosunshine/firmware_probe.no_samples").good();
-    if (!keep_samples)  // nor those of an earlier run
-        for (const char *name : {"h264_1080p60.h264", "hevc8_1080p60.h265", "hevc10_1080p60.h265", "hevc8_remoteplay_fields.h265",
-                                 "audio_pcm_f32le_2ch.raw", "audio_opus.bin"})
-            unlink((std::string(kDir) + "/" + name).c_str());
+    klog_printf("ProsperoSunshine: firmware_probe start\n");
+    out("ProsperoSunshine firmware probe (docs/firmware-probe.md)%s%s", phases_wanted.empty() ? "" : ", phases: ", phases_wanted.c_str());
+    // Never during a stream: the probe stops the host, and with it the user's stream. Asked again right before that.
+    const auto stream_running = [] {
+        before("host: STATUS");
+        if (!host_control::streaming()) return false;
+        out("stopped here: the host is streaming; end the stream and run the probe again");
+        write_file("report.txt", report);
+        write_file("progress.txt", "done (a stream was running)\n");
+        if (detail) fclose(detail);
+        return true;
+    };
+    if (stream_running()) return 1;
+    // Samples only when the user asked for them, and for this run alone; an earlier run's go either way.
+    keep_samples = std::ifstream(kSamplesOptIn).good();
+    unlink(kSamplesOptIn);
+    for (const char *name : {"h264_1080p60.h264", "hevc8_1080p60.h265", "hevc10_1080p60.h265", "hevc8_remoteplay_fields.h265",
+                             "audio_pcm_f32le_2ch.raw", "audio_opus.bin"}) {
+        unlink((std::string(kSamples) + "/" + name).c_str());
+        unlink((std::string(kDir) + "/" + name).c_str());  // where the probe's version 1 saved them
+    }
+    if (keep_samples) mkdir(kSamples, 0777);
+    else rmdir(kSamples);
+    out("samples: %s", keep_samples ? "video and audio of the run in firmware_probe/samples/ (asked for with firmware_probe.samples). "
+                                      "They show the screen and may show the user's name: keep them out of public issues, and "
+                                      "send them only to a developer who asks for them"
+                                    : "none (an empty file /data/prosperosunshine/firmware_probe.samples asks for them, for one "
+                                      "run): every file of this run is text");
     char header[128];
     snprintf(header, sizeof header, "ProsperoSunshine: firmware_probe capture steps, firmware=%#x", kernel_get_fw_version());
     ps_diag_open((std::string(kDir) + "/capture.log").c_str(), header);
-    klog_printf("ProsperoSunshine: firmware_probe start\n");
-    out("ProsperoSunshine firmware probe (docs/firmware-probe.md)%s%s", phases_wanted.empty() ? "" : ", phases: ", phases_wanted.c_str());
-    out("samples: %s", keep_samples ? "video and audio of the run saved (they show the screen and may show the user's name); "
-                                      "firmware_probe.no_samples leaves them out"
-                                    : "none (firmware_probe.no_samples): every file of this run is text");
 
     phase_environment();
     host_shift = ps_capture_record_shift();  // also when the host phase is skipped
     // The capture is one process's at a time, and a running host holds it while it streams: stop it over its control port.
+    if (stream_running()) return 1;
     const bool host_was_running = host_control::running();
     std::string host_detail;
+    if (host_was_running) before("host: QUIT");
     const bool stopped = host_control::stop(host_detail);
     out("host: %s", host_detail.c_str());
     if (!stopped) {
@@ -1081,14 +1145,16 @@ int main() {
     ps_capture_set_open_attempts(0);
     summary();
     out("");
-    out("title in front at the end: %s (a title that started or ended during the run makes captures fail with 0x81950009)",
-        title_in_front().c_str());
+    const std::string title_at_end = title_in_front();
+    out("in front at the end: %s, %s (a title that starts or ends during the run makes captures fail with 0x81950009)",
+        in_front(title_at_end), title_at_end == title_at_start ? "the same as at the start" : "NOT the same as at the start");
     // Start the host again if one ran, or if host_restart.next names one to start.
     const std::string next = host_control::next_elf();
     std::ifstream asked(host_control::kNextFile);
     if (next.empty()) {
         out("host: not started again (host_restart.next says none)");
     } else if (host_was_running || asked.good()) {
+        before("host: start %s", next.c_str());
         const bool up = host_control::start(next, host_detail);
         out("host: %s%s", host_detail.c_str(), up ? "" : "; start it in the app");
     } else {

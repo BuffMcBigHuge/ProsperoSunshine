@@ -53,6 +53,31 @@ inline bool wait_port(uint16_t port, bool open, int seconds) {
 
 inline bool running() { return listening(kStreamPort) || listening(kControlPort); }
 
+// The host's answer to STATUS on its control socket, "" if it doesn't answer.
+inline std::string status() {
+    const int fd = loopback(kControlPort);
+    if (fd < 0) return "";
+    const char line[] = "STATUS\n";
+    char reply[256] = {};
+    if (write(fd, line, sizeof line - 1) == static_cast<ssize_t>(sizeof line - 1)) {
+        timeval tv{2, 0};
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+        const ssize_t n = read(fd, reply, sizeof reply - 1);
+        if (n > 0) reply[n] = 0;
+    }
+    close(fd);
+    return reply;
+}
+
+// STATUS carries the client's address while a stream runs, and "address= client=" while none does.
+inline bool streaming_in(const std::string &status) {
+    const size_t at = status.find(" address=");
+    return at != std::string::npos && at + 9 < status.size() && status[at + 9] != ' ' && status[at + 9] != '\n' &&
+           status[at + 9] != '\r';
+}
+
+inline bool streaming() { return streaming_in(status()); }
+
 // Asks a running host to quit and waits for its stream port to close. True if no host runs afterwards.
 inline bool stop(std::string &detail) {
     if (!running()) {
