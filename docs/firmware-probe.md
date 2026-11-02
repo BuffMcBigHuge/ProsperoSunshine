@@ -38,7 +38,7 @@ es hing.
 
 Der Bericht ist dafür gedacht, ihn so, wie er ist, in einem Issue zu posten:
 
-- **Drin:** Firmware (Nummer und Systemversion), ob es eine Pro ist (`sceKernelIsTrinityMode`), die Version der App
+- **Drin:** Firmware (Nummer und Systemversion), ob es eine Pro ist (`sceKernelHasTrinityMode`; `sceKernelIsTrinityMode` sagt nur, ob der Pro-Modus gerade an ist, und folgt dem Titel im Vordergrund), die Version der App
   und des zuletzt gestarteten Hosts, ob ein Spiel oder eine App oder der Startbildschirm im Vordergrund ist (am Anfang
   und am Ende, und ob sich das geändert hat), die Ergebnisse jeder Phase.
 - **Nicht drin:** welcher Titel im Vordergrund ist (die Title-ID wird nur verglichen, nie geschrieben), MAC- und

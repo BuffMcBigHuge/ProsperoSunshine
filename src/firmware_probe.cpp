@@ -518,11 +518,16 @@ void phase_environment() {
     out("ProsperoSunshine app: %s", app.empty() ? "not found under */homebrew/PPSA47989" : (app + " (" + where + ")").c_str());
     const std::string host = first_line("/data/prosperosunshine/host_diag.log");
     out("last host started (host_diag.log): %s", host.empty() ? "none" : host.c_str());
-    if (const intptr_t trinity = libkernel_symbol("sceKernelIsTrinityMode")) {
-        before("sceKernelIsTrinityMode");
-        out("console: sceKernelIsTrinityMode() = %d (1 = PS5 Pro)", reinterpret_cast<int (*)()>(trinity)());
-    } else {
-        out("console: sceKernelIsTrinityMode not exported");
+    // Has: the console is a Pro. Is: the Pro mode is on now; on a Pro with 10.20 it read 1 on the home screen and 0 with
+    // a game in front.
+    for (const auto &[name, meaning] : {std::pair{"sceKernelHasTrinityMode", "1 = PS5 Pro"},
+                                        std::pair{"sceKernelIsTrinityMode", "1 = the Pro mode is on now; it follows the title in front"}}) {
+        if (const intptr_t f = libkernel_symbol(name)) {
+            before("%s", name);
+            out("console: %s() = %d (%s)", name, reinterpret_cast<int (*)()>(f)(), meaning);
+        } else {
+            out("console: %s not exported", name);
+        }
     }
     title_at_start = title_in_front();
     out("in front at start: %s", in_front(title_at_start));
