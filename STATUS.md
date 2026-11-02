@@ -333,6 +333,29 @@ schrieb alle 5 s Mittelwert, stärkste Sekunde und größtes Bild nach `host_dia
 - **Offen:** H.264 auf 10.x mit diesen Werten (gleicher Quantisierer, mehr Bits erwartet; alle Clients wählten HEVC) und andere
   10.x-Versionen.
 
+### Schalter und Bericht, Stand 0.1.8 (2026-11-02, nicht veröffentlicht)
+
+Gemessen auf der eigenen Konsole mit 13.00 und dem Testclient `stream_test`, Build `6ee70fa5` bzw. der Stand direkt davor.
+
+- **Schalter „Quit closes the game“ in den Settings:** Einschalten mit „Save and restart host“ schrieb `close_game_on_quit = 1`,
+  der Host meldete `close_game_on_quit=1`. Mario 64 aus dem Stream, danach `/cancel`: „Closed PPSA99310 in 2814 ms“, kein Spielordner
+  mehr in `/mnt/sandbox`. Ausschalten entfernte den Schlüssel, die Datei war wieder leer. Ein von Hand gesetztes `enabled` zeigt die App
+  als an; das ist nur im Unit-Test geprüft.
+- **Bericht:** Nach dieser Sitzung enthielt `diagnostics.txt` weder den Namen noch die Title-ID von Mario (`Session app [<title>]`,
+  `Closed <title> in 2814 ms`) noch die lokale Benutzer-ID; „PS5 Screen“ blieb lesbar.
+- **Abschluss mit `6ee70fa5`, Einstellung aus:** H.264 1080p in Mario 10 s: 554 Bilder, längste Lücke 20 ms, Ton −19,5 dBFS. HEVC und HDR in
+  Mario bei 4K-Anfrage: das System lehnte den großen Modus ab, 1080p wie bei manchen Titeln bekannt, je längste Lücke 20 ms. HDR 4K ohne
+  Spiel 6 s: 332 Bilder bei 3840x2160, längste Lücke 19 ms. Keine fehlenden Bilder, alles fehlerfrei dekodiert.
+- **Offen:** der Schalter mit Moonlight selbst statt dem Testclient. Der Quantisierer aus PR 8 läuft auf dieser Konsole nicht, weil 13.00
+  ihn nicht verwendet.
+
+### Berichte von Testern zu 0.1.7 (2026-11-02, nicht selbst gemessen)
+
+- **13.60 (Issue 1):** Ein Nutzer meldet eine Stunde Spielen in 4K60 mit HDR und Controller. Der Diagnosebericht dazu fehlt noch.
+- **10.40 (Issue 2):** Der Bericht zeigt, dass die Aufnahme jetzt öffnet und HEVC startet (`variant=minimal`, `rc=0`). Der Nutzer nennt das Bild
+  „choppy“ und sah bei H.264 und mit nur 1440p/4K einen weißen Bildschirm. Client und Ursache sind nicht geklärt; von den weißen Läufen gibt es
+  keinen Bericht.
+
 ## Bauen und testen
 
 ```powershell
