@@ -61,7 +61,18 @@ static_assert(prospero::capture_mode_of(3).height == 720);
 static_assert(prospero::capture_mode_of(2).height == 540);
 static_assert(prospero::capture_mode_of(1).width == 640);
 
+// Modes below 1080p have a highest rate, per frame; from 1080p on the host's own limit of 150 Mbit/s comes first.
+static_assert(prospero::max_average_of(prospero::mode_360p, false) == 30'000'000u);
+static_assert(prospero::max_average_of(prospero::mode_360p, true) == 15'000'000u);
+static_assert(prospero::max_average_of(prospero::mode_540p, false) == 60'000'000u);
+static_assert(prospero::max_average_of(prospero::mode_540p, true) == 30'000'000u);
+static_assert(prospero::max_average_of(prospero::mode_720p, false) == 120'000'000u);
+static_assert(prospero::max_average_of(prospero::mode_720p, true) == 60'000'000u);
+static_assert(prospero::max_average_of(prospero::mode_1080p, false) > 150'000'000u);
+static_assert(prospero::max_average_of(prospero::mode_1080p, true) > 150'000'000u);
+static_assert(prospero::max_average_of(prospero::mode_2160p, true) > 150'000'000u);
+
 int main() {
-    std::puts("PASS: capture mode (1440p, 2160p, the nearest below 1080p where offered, else a 1080p floor)");
+    std::puts("PASS: capture mode (1440p, 2160p, the nearest below 1080p where offered, else a 1080p floor, a rate cap below 1080p)");
     return 0;
 }

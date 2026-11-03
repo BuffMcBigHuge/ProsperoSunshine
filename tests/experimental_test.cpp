@@ -37,8 +37,8 @@ int main() {
             // capture.c finds a name in a list of names by searching for it.
             assert(!std::strstr(info->name, ps_exp_switch_at(j)->name) && !std::strstr(ps_exp_switch_at(j)->name, info->name));
         }
-        // 13.00 has everything verified but the modes below 1080p; a switch that can do nothing somewhere says why.
-        assert(!ps_exp_counts(i, fw1300) || i == PS_EXP_SMALL);
+        // 13.00 has everything verified; a switch that can do nothing somewhere says why.
+        assert(!ps_exp_counts(i, fw1300));
         assert(ps_exp_counts(i, fw1360));
         if (info->no_effect(fw1040)) assert(*info->no_effect_word && *info->no_effect_help);
     }
@@ -197,11 +197,11 @@ int main() {
     ps_exp_succeeded(&e, 0, 0, 6, PS_EXP_SAFE_AVERAGE);
     assert(!ps_exp_bitrate_offered(&e) && ps_exp_large_offered(&e));
 
-    // Modes below 1080p: verified on 10.20, a switch elsewhere, also on 13.00, where mode_spike saw 720p refused.
-    assert(ps_exp_small_verified(fw1020) && !ps_exp_small_verified(fw1300) && !ps_exp_small_verified(fw1040));
-    assert(!ps_exp_counts(PS_EXP_SMALL, fw1020) && ps_exp_counts(PS_EXP_SMALL, fw1300) && ps_exp_counts(PS_EXP_SMALL, fw1040));
+    // Modes below 1080p: verified on 10.20 and 13.00, a switch elsewhere.
+    assert(ps_exp_small_verified(fw1020) && ps_exp_small_verified(fw1300) && !ps_exp_small_verified(fw1040));
+    assert(!ps_exp_counts(PS_EXP_SMALL, fw1020) && !ps_exp_counts(PS_EXP_SMALL, fw1300) && ps_exp_counts(PS_EXP_SMALL, fw1040));
     assert(ps_exp_counts(PS_EXP_SMALL, fw1240) && ps_exp_counts(PS_EXP_SMALL, fw1360));
-    assert(!make(fw1020, 0, 0, 0, 0, 1).on[PS_EXP_SMALL] && make(fw1300, 0, 0, 0, 0, 1).on[PS_EXP_SMALL]);
+    assert(!make(fw1020, 0, 0, 0, 0, 1).on[PS_EXP_SMALL] && !make(fw1300, 0, 0, 0, 0, 1).on[PS_EXP_SMALL]);
     e = make(fw1040, 0, 0, 0, 0, 1);
     assert(ps_exp_small_offered(&e) && !ps_exp_large_offered(&e));
     assert(ps_exp_unproven_mode(&e, 1) && ps_exp_unproven_mode(&e, 3) && !ps_exp_unproven_mode(&e, 4) && !ps_exp_unproven_mode(&e, 6));

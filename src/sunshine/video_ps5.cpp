@@ -81,8 +81,8 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     auto touch_port_event = mail->event<input::touch_port_t>(mail::touch_port);
     auto hdr_event = mail->event<hdr_info_t>(mail::hdr);
 
-    // Avcap2 encodes at 30 or 60 fps. On 13.00 720p did not start (mode_spike); on 10.20 360p, 540p and 720p
-    // do (STATUS.md), so a client that asks for less gets less to receive and decode.
+    // Avcap2 encodes at 30 or 60 fps. On 13.00 and 10.20 360p, 540p and 720p start as well (STATUS.md), so a client that
+    // asks for less gets less to receive and decode.
     const bool hevc = config.videoFormat == 1;
     const bool low_rate = config.framerate > 0 && config.framerate <= 30;
     const auto mode =
@@ -127,7 +127,7 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     // Above 50 Mbit/s is measured on firmware 13.00 only (docs/re/hevc.md); elsewhere it takes a switch in the app.
     const uint32_t default_average = 6'000'000, max_average = ps_capture_high_bitrate_allowed() ? 150'000'000 : 50'000'000;
     const uint32_t requested = config.bitrate > 0 ? static_cast<uint32_t>(config.bitrate) * 1000u : default_average;
-    const uint32_t average = std::min(requested, max_average);
+    const uint32_t average = std::min({requested, max_average, prospero::max_average_of(mode, low_rate)});
     ps_capture_set_opening_bitrate(average, average / 100 * (hevc ? 110 : 112));
     ps_capture_set_codec(hevc ? 1 : 0);
     ps_capture_set_ten_bit(hdr);

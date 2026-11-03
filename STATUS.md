@@ -167,7 +167,7 @@ Live auf der Konsole geprüft mit dem aktuellen Host (Testclient vom PC):
 
 Noch offen:
 
-1. **Auflösung (P9.3, Meilenstein 0.4):** Der Host liefert unter 1080p auf 13.00 noch 1080p, Moonlight skaliert selbst herunter. Avcap2 selbst startet die kleinen Modi dort inzwischen („Modi unter 1080p (2026-11-02, 13.00 …)“ unten); der alte `mode_spike`, an dem 720p scheiterte, ist überholt, und `sceAvcap2ChangeScanInResolution` lehnte früher ab mit `0x81950001`, `0x8195000A`. Auf 10.20 laufen 360p, 540p und 720p im Host (unten, „Modi unter 1080p auf Firmware 10.20“). Darüber gehen H.264 und HEVC (siehe „1440p und 4K“ oben). Offen: 4K im aktiven Spielbetrieb (nicht ohne Eingaben und Spielstände messbar), 4K mit anderen Clients als Moonlight für PC.
+1. **Auflösung (P9.3, Meilenstein 0.4):** Unter 1080p liefert der Host auf 13.00 und 10.20 den nächstgelegenen von 720p, 540p und 360p (unten, „Modi unter 1080p (2026-11-02, 13.00)“ und „Modi unter 1080p auf Firmware 10.20“), freie Größen gibt es nicht, der Client skaliert den Rest. Darüber gehen H.264 und HEVC (siehe „1440p und 4K“ oben). Offen: 4K im aktiven Spielbetrieb (nicht ohne Eingaben und Spielstände messbar), 4K mit anderen Clients als Moonlight für PC.
 2. **Mehrere Controller am selben Nutzer:** Die Oberfläche der Konsole nimmt Eingaben von allen an, die App aber nur von einem. Beobachtet mit dem RemoteEye-Test-Pad: War es zuerst verbunden, ignorierte die App das Stream-Pad (44 Drücke, keine Bildänderung); nach `ps5_detach` reagierte sie auf alle 44. Das passt zu P9.8 in umgekehrter Reihenfolge. Mit einem echten DualSense verhielt es sich anders (Nutzertest, iPhone, 2026-10-31): Er trennte sich beim Verbinden, die Moonlight-Steuerung ging sofort, auch in Mario 64. Wieder eingeschaltet während des Streams reagierte nur Moonlight, nach Stream-Ende arbeitete der DualSense normal. Im Klog meldet die Konsole beim Anmelden des Stream-Pads `DEVICE_REMOVED` für den DualSense; im Host-Code gibt es dafür keinen Aufruf, der Grund liegt also auf Konsolenseite und ist unbekannt. Für den Stream ist das kein Hindernis, daher bleibt es bei der Beschreibung in der README.
 3. **Payload-Manager-Fenster:** Ein offenes Fenster des Payload Managers liegt über Apps und nimmt Eingaben an sich, auch wenn es nicht reagiert. In dem Zustand lässt es sich nur am echten Controller schließen. Beim Fernsteuern vorher prüfen.
 4. **Eigene Werkzeuge vom PC:** `PIN`/`QUIT` und `pair.py status` über den Steuer-Socket gehen vom PC aus nur noch mit der leeren Datei `/data/prosperosunshine/control_lan` (danach Host neu starten). Sonst geht der Host-Neustart über die App.
@@ -266,8 +266,8 @@ IDR angefordert, 16 Mbit/s verlangt. Auf 10.x setzt der Host dabei den Quantisie
   fps. `OpenVideo` und `Start` geben 0 zurück, Profil 180, Zweck 2, 90 bzw. 179–181 Bilder. Die gespeicherten Streams decodiert
   PyAV (FFmpeg) auf dem PC ohne Fehler in genau diesen Größen, HEVC 10 Bit als `yuv420p10le`. Ein zweiter, unabhängiger Lauf
   am selben Tag (eine eigene Sonde, die alle Modi nacheinander öffnet) sah dieselben Modi Bilder liefern, mit denselben Slices.
-  Das ist anders als auf 13.00, wo `mode_spike` 720p60 H.264 nicht öffnen konnte (oben unter „Noch offen“; 540p und 360p hat
-  es dort nur über `sceAvcap2ChangeScanInResolution` versucht).
+  Auf 13.00 scheiterte im alten `mode_spike` 720p60 H.264; der neue Spike und der Host öffnen dort inzwischen alle drei
+  (unten, „Modi unter 1080p (2026-11-02, 13.00)“).
 - **Bildgrößen bei 60 fps** (IDR im Mittel, andere Bilder im Mittel, Slices je Bild; der Startbildschirm bewegt sich kaum, die
   Werte vergleichen die Modi untereinander, nicht mit einem Spiel):
 
@@ -412,7 +412,9 @@ schrieb alle 5 s Mittelwert, stärkste Sekunde und größtes Bild nach `host_dia
 - **Offen:** der Schalter mit Moonlight selbst statt dem Testclient. Der Quantisierer aus PR 8 läuft auf dieser Konsole nicht, weil 13.00
   ihn nicht verwendet.
 
-### Modi unter 1080p (2026-11-02, 13.00, Spike, im Host noch nicht genutzt)
+### Modi unter 1080p (2026-11-02, 13.00)
+
+Die Messungen „Im Host“ bis „Mit Deckel“ liefen auf einer eigenen Variante vor dem Merge von PR 9 (#9, Modi unter 1080p auf 10.20): Sie wählte den größten Modus, der die Anfrage nicht übersteigt, prüfte unter 1080p immer das erste Bild und brauchte keinen Schalter. HEVC-Budgets, Bitrate-Deckel und die fünf Wiederholungen von `OpenVideo` unter 1080p sind dieselben wie im gemergten Stand, der den nächstgelegenen Modus wählt und 13.00 mit 10.20 als verifiziert führt.
 
 Remote Play ordnet 640x360, 960x540 und 1280x720 die Modi 1, 2 und 3 zu (`SceRemotePlay 0x6f8d5`). Gemessen mit `src/mode_spike.cpp` auf dem Home-Bildschirm ohne HDMI-Kabel (`video out mode 0x13c`), RA-Profil 180, 60 fps, 3 Mbit/s, je 3 s: Alle drei Modi starten mit H.264 und HEVC, 179 oder 180 Bilder, `ffprobe` nennt die verlangte Größe, ffmpeg dekodierte die geprüften Aufnahmen fehlerfrei (H.264 alle drei, HEVC je Modus den höchsten startenden Wert, bei 360p auch `0x4000`).
 
@@ -426,7 +428,51 @@ HEVC braucht einen kleineren Wert in `cfg+0x10c`: Mit dem Wert für 1080p, `0x60
 | 2 (540p) | `0x8000` bis `0x20000` | `0x30000`, `0x60000` |
 | 1 (360p) | `0x4000` bis `0x20000` | `0x60000` |
 
-Nicht geprüft: ein echter Stream mit Client, ein laufendes Spiel, HDR, 30 fps, höhere Bitraten, und andere Firmware als 13.00.
+**Im Host (Testbuild vor 0.2.0, `stream_test`, `ffprobe` und ffmpeg auf der Aufnahme).** Der Host nimmt den größten Modus, der die Anfrage nicht übersteigt, und setzt je Modus den höchsten startenden Wert von `cfg+0x10c`.
+
+Home-Bildschirm ohne HDMI-Kabel (`0x13c`), je 10 s, 19 Läufe: H.264 und HEVC 8 Bit in 1280x720, 960x540 und 640x360, HEVC 10 Bit (HDR) in denselben drei, 30 fps mit H.264 540p und HEVC 360p, dazu 1080p und `2556x1178` zum Vergleich (beide 1080p). Alle 59,9 oder 29,97 fps, keine fehlenden Bilder, längste Lücke 20 ms (35 ms bei 30 fps), fehlerfrei dekodiert, `ffprobe` nennt die erwartete Größe. `960x544` lieferte 960x540, `854x480` lieferte 640x360. H.264 720p, HEVC 720p und HEVC 360p starteten auch mit 39 Mbit/s; dieser Bildschirm ist dafür zu ruhig, tatsächlich flossen höchstens 3,4 Mbit/s.
+
+Mario-64-Demo, gestartet aus dem Stream, ohne HDMI-Kabel, je 35 s:
+
+| Verlangt | Geliefert | Bitrate Host | gemessen | Bilder |
+| --- | --- | --- | --- | --- |
+| H.264 1280x720 | 1280x720 | 7,3 Mbit/s | 3,7 Mbit/s | 2096 |
+| H.264 640x360 | 640x360 | 2,0 Mbit/s | 1,3 Mbit/s | 2096 |
+| H.264 960x544 | 960x540 | 23 Mbit/s | 7,4 Mbit/s | 2096 |
+| HEVC 1280x720 | 1280x720 | 23 Mbit/s | 6,1 Mbit/s | 2094 |
+| HEVC 960x540 | 960x540 | 3,4 Mbit/s | 3,0 Mbit/s | 2093 |
+| HDR 960x540 | 960x540 | 7,3 Mbit/s | 4,3 Mbit/s | 2094 |
+
+Alle 59,94 fps, keine fehlenden Bilder, längste Lücke 23 ms, fehlerfrei dekodiert. Je ein Bild aus H.264 360p, HEVC 540p und HEVC 720p angesehen: vollständig und scharf.
+
+**Rückfall:** Testbuild mit dem abgelehnten Wert `0x60000` bei 720p, mit HDMI-Kabel, HEVC, 720p verlangt: Warnung `mode refused by the system, delivering 1920x1080` 0,2 s nach der Anfrage, derselbe Stream lief mit 1920x1080 weiter (707 Bilder in 12 s, keine fehlenden, fehlerfrei dekodiert). Die Streams danach mit H.264 720p und HEVC 540p bekamen wieder ihren Modus. Ein offenes Spiel, das einen kleinen Modus ablehnt, oder ein Modus, der startet und kein Bild liefert, wurde nur im Unit-Test geprüft (`capture_open_test`).
+
+**Release-Build 0.2.0 (`c5dd1fae`), HDMI-Kabel wieder eingesteckt, Fernseher als Ausgabe (`0x13c`, in Mario `0x144`):** Auf dem Home-Bildschirm H.264 720p, HEVC `960x544` (geliefert 960x540), H.264 und HEVC 1080p und HEVC 4K je 10 s, alle mit 59,9 fps, ohne fehlende Bilder, längste Lücke 19 ms, fehlerfrei dekodiert. Also gehen auch 1080p und 4K weiter wie bisher.
+
+Zwei Ausreißer, beide nicht wiederholbar:
+
+- **Ein Fehlstart von 13 Spielstarts.** H.264 360p, Mario aus dem Stream gestartet: `PS5 capture failed to start: -1`, der Client beendete mit Code 4. `GetVideoOutMode` meldete mindestens 3,3 s lang 0 (sonst 580 bis 820 ms) und `OpenVideo` `0x81950008`, auch beim Versuch mit 1080p im selben Öffnen. Ein Stream, der gleich 1080p verlangt hätte, wäre also ebenso gescheitert; am kleinen Modus lag es nicht. Warum die Ausgabe dieses Mal länger brauchte, ist nicht geklärt. Ohne HDMI-Kabel kam das in sechs Spielstarts nicht vor, das ist aber zu wenig für einen Zusammenhang. Der direkte Vergleich danach, abwechselnd je fünfmal 1080p und 360p in Mario für je 6 s, lief zehnmal ohne fehlende Bilder.
+- **Ein fehlendes Bild.** HDR 360p, Home-Bildschirm: Bild 18 fehlte, längste Lücke 494 ms, ein IDR mehr, sonst fehlerfrei. Vier Wiederholungen mit HDR 360p liefen ohne fehlendes Bild. Ob das Netz oder die Konsole schuld war, zeigt die Messung nicht.
+
+**Echtes Moonlight (Besitzer, Build `c5dd1fae`, vor dem Bitrate-Deckel):** `640x360@120` verlangt, 60 fps geliefert, 90 s HEVC HDR mit 2 Mbit/s in 360p. Drei Entzüge (`0x81950009`, nach 1,6 s, 2,5 s und 0,4 s wieder da), der Besitzer hatte dabei ein Spiel gestartet und beendet. Ein Lauf von 120 s mit dem Testclient ohne Spiel blieb frei davon: 7189 Bilder, keine fehlenden, längste Lücke 19 ms. Mit 150 Mbit/s am Client (beim Host 119) meldete `Start` `0x80c78000`, der Stream lief in 1080p weiter.
+
+**Bitrate-Grenze (Testclient, Home-Bildschirm, je 4 s, Größe per `ffprobe`).** Zu viele Bits je Bild, und `Start` scheitert. Gefunden über den Rückfall auf 1080p:
+
+| Modus | fps | läuft bis | scheitert ab |
+| --- | --- | --- | --- |
+| H.264 360p | 60 | 29 Mbit/s | 39 Mbit/s |
+| H.264 360p | 30 | 15 Mbit/s | 20 Mbit/s |
+| HEVC 360p | 60 | 63 Mbit/s | 79 Mbit/s |
+| HEVC 360p | 30 | 31 Mbit/s | 39 Mbit/s |
+| HEVC HDR 360p | 60 | 63 Mbit/s | 119 Mbit/s (dazwischen nicht geprüft) |
+| HEVC 540p | 60 | 63 Mbit/s (mehr nicht geprüft) | – |
+| H.264 und HEVC 720p | 60 | 119 Mbit/s (mehr nicht geprüft) | – |
+
+Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.264 gar nicht setzt. Warum 360p sie erreicht und 720p nicht, ist nicht geklärt. Der Host deckelt deshalb das Mittel: 360p 30 Mbit/s, 540p 60, 720p 120, bei 30 fps je die Hälfte. Mehr verlangt der Client vergebens, der Modus bleibt.
+
+**Mit Deckel (Build `b98ef0be`, HDMI-Kabel steckt, Client verlangt 200 Mbit/s, beim Host 159):** H.264 360p mit 60 und 30 fps, HEVC 360p, HDR 360p mit 30 fps, H.264 540p und 720p auf dem Home-Bildschirm je 6 s; in Mario je 25 s H.264 360p mit 60 und 30 fps und HEVC 360p. Alle im verlangten Modus, ohne Rückfall, keine fehlenden Bilder, längste Lücke 24 ms (37 ms bei 30 fps), fehlerfrei dekodiert. In Mario flossen dabei tatsächlich bis 7,1 Mbit/s, den Deckel selbst hat also kein Bildinhalt erreicht. Zuvor (`ba86e148`, 360p noch 60 Mbit/s) liefen je 5 s alle drei Modi mit H.264, HEVC und HDR bei 60 und 30 fps; nur H.264 360p fiel dort zurück, was zum tieferen Deckel führte. H.264 1080p und HEVC 4K blieben auf `b98ef0be` unverändert (keine fehlenden Bilder, fehlerfrei dekodiert).
+
+Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, andere Firmware als 13.00, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita.
 
 ### Streamen ohne Bildschirm (2026-11-02, 13.00, Testclient)
 
@@ -440,6 +486,8 @@ Das HDMI-Kabel wurde bei laufender Konsole vom Besitzer gezogen, vorher lief 4K 
 | GTA III, aus dem Stream gestartet | `0x13c` | 4K | 1712 | 30 s | fehlerfrei, Ton −24,9 dBFS |
 
 Kein Lauf wurde vom Host abgebrochen. Ein weiterer Lauf auf dem Home-Bildschirm zeigte im aufgezeichneten 4K-Bild die Oberfläche der Konsole. GTA III kam in den 30 s nur bis zu den Logos und schwarzen Ladebildern, vom eigentlichen Spiel ist also noch nichts geprüft.
+
+Wieder eingesteckt bei laufender Konsole (Testclient, 0.2.0): `video out mode` blieb auf dem Home-Bildschirm `0x13c`, die Streams liefen weiter, auch 4K („Modi unter 1080p“).
 
 Damit folgt die Aufnahme zumindest nach dem Abziehen nicht dem angeschlossenen Bildschirm, sondern der zuletzt eingestellten Ausgabe, und die bleibt ohne Kabel bestehen. Bei `0x144` (4K bei 120 Hz) fehlt das Bit `4K_SCAN_IN`, und auch mit Kabel lieferte die Demo beim Test für 0.1.9 nur 1080p. Das stützt die Vermutung bei `Is4KRunnable: 4K NG(4K120)`.
 

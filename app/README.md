@@ -85,7 +85,7 @@ it only when it starts, so use **Save and restart host** (or Restart host later)
 | HDR (HEVC 10 bit) | `experimental_hdr` | 1 on | off |
 | 1440p and 4K | `experimental_large_modes` | 1 on | off |
 | Up to 150 Mbit/s | `experimental_high_bitrate` | 1 on | off (cap 50 Mbit/s; 150 on firmware 13.00 anyway) |
-| Below 1080p | `experimental_small_modes` | 1 on | off (1080p for smaller requests; on firmware 10.20 those modes anyway) |
+| Below 1080p | `experimental_small_modes` | 1 on | off (1080p for smaller requests; on firmware 13.00 and 10.20 those modes anyway) |
 
 The names, ranges and defaults are Sunshine's (`src/config.cpp` at a679b059), except for the `experimental_` keys, which the host
 reads itself. Every other line of the file, comments included, is kept as it is. Sunshine uses the first line of a key; when the app
@@ -94,8 +94,8 @@ sets a key that appears more than once, it keeps the first line's place and remo
 The third row, **Experimental**, is for testers on firmware where a function isn't verified. Its tiles come from one list,
 `app/src/psapp/experimental_list.h`, which also holds the keys, the names and where each function is verified, for the app and the host
 alike. Cross flips a switch; off removes the
-key. As with the other settings, **Save and restart host** applies it. Where a function is verified (on 13.00 all but the modes below
-1080p; on 10.20 HEVC, HDR and those modes) its tile says "Verified here", doesn't react, and the host ignores the key. The bitrate tile
+key. As with the other settings, **Save and restart host** applies it. Where a function is verified (on 13.00 all of them;
+on 10.20 HEVC, HDR and those modes) its tile says "Verified here", doesn't react, and the host ignores the key. The bitrate tile
 says "No effect on 10.x" on any firmware 10.x and behaves the same, because the encoder keeps its own rate there. HDR also offers HEVC, because it is HEVC at 10 bit. `hevc_mode = 1` in
 the file beats the HEVC and HDR switches. What testers do and post is in the main README, under
 [Testing other firmware](../README.md#testing-other-firmware); what the host does is in `docs/firmware-porting.md` (German). A

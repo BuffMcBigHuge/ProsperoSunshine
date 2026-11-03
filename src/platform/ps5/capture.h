@@ -29,7 +29,7 @@ int ps_capture_hevc_verified(void);
 int ps_capture_large_modes_verified(void);
 // Whether opening above 50 Mbit/s was verified on this firmware.
 int ps_capture_high_bitrate_verified(void);
-// Whether 360p, 540p and 720p were verified on this firmware: 10.20 (13.00 refused 720p in mode_spike).
+// Whether 360p, 540p and 720p were verified on this firmware: 10.20 and 13.00.
 int ps_capture_small_modes_verified(void);
 // The app's Experimental switches from sunshine.conf, read once when the host starts, one value per entry of
 // app/src/psapp/experimental_list.h; a switch counts only where its function isn't verified. `marker` is a file that names

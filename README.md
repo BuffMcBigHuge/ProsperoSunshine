@@ -87,10 +87,10 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
 
 ## Known limits
 
-- On firmware 13.00, H.264 and HEVC stream at 1080p, 1440p or 4K, whichever the client asks for. A client asking for less
-  than 1080p gets 1080p there and scales it (720p didn't start on 13.00). On 10.20 such a client gets whichever of 720p, 540p
-  and 360p is nearest to its request, so a weak client or Wi-Fi link has less to carry and decode: a PS Vita asking for 960x544
-  gets 960x540, a Steam Deck (1280x800) 1280x720, and a 1600x900 screen still 1080p. Every other firmware streams 1080p whatever
+- On firmware 13.00, H.264 and HEVC stream at 1080p, 1440p or 4K, whichever the client asks for. On 13.00 and 10.20 a
+  client asking for less than 1080p gets whichever of 720p, 540p and 360p is nearest to its request, so a weak client or Wi-Fi link has less to carry and decode: a PS Vita asking for 960x544
+  gets 960x540, a Steam Deck (1280x800) 1280x720, and a 1600x900 screen still 1080p. These modes run at up to 30 Mbit/s (360p), 60 (540p) or 120 (720p), half of that at 30 fps,
+  however much the client asks for, because 13.00 won't start them with more. Every other firmware streams 1080p whatever
   the request, and 10.20 does so for requests above 1080p, unless you turn on the
   [experimental switches](#testing-other-firmware). The frame rate follows the client: 30 or 60 fps.
 - The console refuses 1440p and 4K capture in some titles (seen in a Mario 64 port and Teardown; GTA III works). The stream
@@ -161,7 +161,7 @@ expect it to fail.
 1. In the app, open **Settings**. Under **Experimental**, turn on what you want to try: HEVC (8 bit), HDR (HEVC 10 bit), 1440p
    and 4K, a bitrate cap of 150 instead of 50 Mbit/s, or 720p, 540p and 360p. On firmware where a function is verified, its switch
    says it isn't needed. HDR also offers HEVC. The bitrate switch has no effect on firmware 10.x, because the encoder takes no
-   bitrate there, and says so. The modes below 1080p take the switch on 13.00 too, where 720p once failed to start.
+   bitrate there, and says so.
 2. Choose **Save and restart host**.
 3. Start a stream in Moonlight with that setting, for example with HEVC chosen as the codec, 4K or 720p as the resolution, or a
    bitrate above 50 Mbit/s. Check that the picture and sound are right.

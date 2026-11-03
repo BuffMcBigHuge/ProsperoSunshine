@@ -272,16 +272,23 @@ int main(void)
     assert(open_and_close() == 0);
     assert(fake_opens == 2 && ps_capture_video_resolution() == 4 && record_u32(0x18) == 4);
     assert(!logged("experimental") && ps_capture_small_modes_allowed());
-    // 13.00 refused 720p in mode_spike: there they take the switch, with the same fallback.
+    // 13.00 has them verified too, with the same fallback.
     setup_small(0x13000040u, 0, 0, 3);
-    assert(!ps_capture_small_modes_allowed());
-    setup_small(0x13000040u, 1, 0, 3);
     assert(ps_capture_small_modes_allowed());
     fake_decide = small_fails;
     assert(open_and_close() == 0);
-    assert(fake_opens == 2 && ps_capture_video_resolution() == 4 && logged("experimental disabled feature=small\n"));
+    assert(fake_opens == 2 && ps_capture_video_resolution() == 4 && !logged("experimental") && ps_capture_small_modes_allowed());
+    // HEVC there needs a smaller frame budget per mode, the largest measured to start; 1080p keeps its own.
+    {
+        static const struct { uint32_t resolution, budget; } budgets[] = {{3, 0x40000}, {2, 0x20000}, {1, 0x20000}, {4, 0x60000}};
+        for (size_t i = 0; i < sizeof budgets / sizeof budgets[0]; i++) {
+            setup_small(0x13000040u, 0, 1, budgets[i].resolution);
+            assert(open_and_close() == 0);
+            assert(fake_opens == 1 && record_u32(0x18) == budgets[i].resolution && record_u32(0x10c) == budgets[i].budget);
+        }
+    }
 
-    // From 1080p up the switch changes nothing: the same record, one open, no first-frame check, also where it counts (13.00).
+    // From 1080p up the switch changes nothing: the same record, one open, no first-frame check, also where it counts (10.40).
     {
         static const uint32_t firmwares[] = {0x13000040u, 0x10200006u, 0x10400000u};
         for (size_t f = 0; f < sizeof firmwares / sizeof firmwares[0]; f++)

@@ -149,7 +149,7 @@ Die übrigen Firmware-Abfragen im Code sind keine Sperren: `record_shift` legt d
 | HDR (HEVC 10 Bit) | `experimental_hdr = 1` | 13.00, 10.20 |
 | 1440p und 4K | `experimental_large_modes = 1` | 13.00 |
 | Bis 150 Mbit/s statt 50 | `experimental_high_bitrate = 1` | 13.00; wirkungslos auf allen 10.x |
-| Unter 1080p (720p, 540p, 360p) | `experimental_small_modes = 1` | 10.20 (auf 13.00 zählt er: `mode_spike` sah dort 720p scheitern, 540p und 360p hat es nicht direkt geöffnet) |
+| Unter 1080p (720p, 540p, 360p) | `experimental_small_modes = 1` | 10.20 und 13.00 (auf 13.00 mit eigenem HEVC-Budget und Bitrate-Deckel je Modus, `STATUS.md`) |
 
 Der Host liest die Schlüssel beim Start selbst (`main_ps5.cpp`), Sunshine kennt sie nicht. Die Regeln stehen in `src/platform/ps5/experimental.h`, `ps_capture_hevc_verified`, `ps_capture_large_modes_verified`, `ps_capture_high_bitrate_verified` und `ps_capture_small_modes_verified` bleiben unverändert das, was gemessen ist; der Host fragt jetzt `ps_capture_hevc_allowed`, `ps_capture_hdr_allowed`, `ps_capture_large_modes_allowed`, `ps_capture_high_bitrate_allowed` und `ps_capture_small_modes_allowed`. HDR bietet HEVC mit an, weil Moonlight Main 10 nur zusammen mit HEVC bekommt. `hevc_mode = 1` schlägt die Schalter.
 

@@ -291,8 +291,8 @@ static void configure(uint8_t *p, uint32_t mode, int variant)
         // Bytes a frame may cost before the encoder skips frames to catch up. Remote Play's one frame's share of the peak
         // lost a frame per IDR. These are the largest values measured to start; above them, Start returns 0x80c78000
         // (docs/re/hevc.md).
-        const uint32_t resolution = atomic_load(&video_resolution);
-        u32(p, 0x10c, resolution >= 6 ? 0x100000 : resolution == 5 ? 0xc0000 : 0x60000);
+        static const uint32_t budgets[] = {0, 0x20000, 0x20000, 0x40000, 0x60000, 0xc0000, 0x100000};
+        u32(p, 0x10c, budgets[atomic_load(&video_resolution)]);
         p[0x128] = 1;
         u32(p, 0x12c, 0x19);
         u64(p, 0x188, 0x10);
@@ -534,9 +534,9 @@ int ps_capture_open(ps_capture **out)
     step = "OpenVideo";
     // The service refuses while it doesn't list our resource as active. Seen on firmware 10.40, which may just need a
     // moment; stay below the 2 s a client waits for the stream (Initial Ping Timeout). A larger mode gets the same code
-    // when the console's output is too small for it, and needs the time left for the open at 1080p. It also answers this when
-    // the output's mode changed since it was read, as while a title comes up, so that is read anew.
-    const int repeats = atomic_load(&video_resolution) >= 5 ? 5 : 25;
+    // when the console's output is too small for it, and needs the time left for the open at 1080p, as does a smaller one.
+    // It also answers this when the output's mode changed since it was read, as while a title comes up, so that is read anew.
+    const int repeats = atomic_load(&video_resolution) != 4 ? 5 : 25;
     for (int attempt = 0;; attempt++) {
         rc = open_video(&s->handle, config, 0);
         if (rc != RESOURCE_NOT_ACTIVE || attempt == repeats || atomic_load(&revoked)) {
