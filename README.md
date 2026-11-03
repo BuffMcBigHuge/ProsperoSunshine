@@ -139,8 +139,9 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   switched off at the power button; the cause is unknown. To be safe, turn the console off instead.
 - Adaptive triggers work with Moonlight on a PC and a DualSense; other clients ignore them. Only Teardown has been tested. If a stream
   ends during an effect, the trigger stays stiff until you connect again, because Moonlight doesn't reset it.
-- Waking the console from Moonlight did not work in the one try, from a PC in the same network. The host gives paired clients the
-  console's MAC address, but the console stayed in rest mode.
+- Moonlight can't wake the console. It wakes a host with a Wake-on-LAN packet, and the PS5 ignores those: it only wakes for
+  Remote Play's own wake message. The host can't help either, because the console stops it in rest mode. To wake the console
+  from your phone, use a Remote Play client that can wake it, such as chiaki-ng, then start Moonlight.
 - Starting or quitting a game briefly takes the capture resource away: video and audio pause for about 2 seconds
   and then resume on their own.
 - After a hard network drop, held controller input is released after about 2 seconds.

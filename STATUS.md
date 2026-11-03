@@ -476,6 +476,23 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### Wecken aus Moonlight (2026-11-03, 13.00, GitHub-Issue 10)
+
+Frage: Läuft ein Payload im Ruhemodus weiter, sodass der Host Moonlights Wake-on-LAN-Paket empfangen und die Konsole wecken
+könnte? Gemessen mit `src/rest_probe.cpp` (lauscht auf UDP 9 und 7, schreibt alle 10 s eine Zeile, meldet Sprünge der Uhr).
+
+- **Wach:** Magic Packets vom PC an die Adresse der Konsole, an die Broadcast-Adresse des Netzes und an 255.255.255.255, je auf Port 9 und 7, kamen
+  alle an und wurden als Magic Packet für die MAC der Konsole erkannt.
+- **Ruhemodus (mit Freigabe des Besitzers, `ps5_rest`, Homescreen, kein Spiel, kein Stream):** Die Probe tickte noch rund
+  20 s, dann nichts mehr. Nach 40 und 60 s gingen dieselben Magic Packets raus; die Konsole antwortete auf Ping und blieb im
+  Ruhemodus, ELF-Loader, FTP und klogsrv waren zu. Nach `ps5_wake` (11 s) meldete die Probe eine Lücke von 91 s, und keins der
+  Pakete kam an, auch nicht nachträglich. Der Host antwortete danach wieder auf `serverinfo`.
+
+Ergebnis: Payloads stehen im Ruhemodus still. Der Host kann die Konsole also nicht auf Moonlights Paket hin wecken, und die
+Konsole selbst reagiert nur auf das `WAKEUP` von Remote Play (mit Registrierungsschlüssel, wie `ps5_wake`). Wecken geht nur
+von außen, etwa mit einem Remote-Play-Client wie chiaki-ng oder einem Relais, das Moonlights Paket in dieses `WAKEUP`
+übersetzt.
+
 ### Zweiter Spieler von einem anderen Gerät (2026-11-03, 13.00, nicht veröffentlicht)
 
 Ein Stream von einem anderen Gerät wird nicht mehr abgelehnt, er hängt sich an den laufenden: Der erste Stream hält die
@@ -500,9 +517,14 @@ Stream muss denselben Codec und denselben Dynamikumfang verlangen. Ab dem zweite
 - `pair.py` schickt den PIN jetzt nebenher: Der `PIN`-Befehl antwortet erst, wenn das ganze Koppeln fertig ist, und lief
   vorher nach 10 s ins Leere („Invalid uniqueid“).
 
+- **HEVC:** Dasselbe mit `--hevc` für beide (A 45 s, B 25 s): beide 59,94 fps, ohne fehlende Bildnummern, fehlerfrei als
+  HEVC dekodiert, beide mit Spielton.
+- **Übernahme:** A lief 20 s, B kam nach 10 s dazu und lief 40 s. Als A ging, meldete der Host 7 ms später „the stream holding
+  the capture ended, this one takes it over“, die Aufnahme stand 4 ms danach, der Ton kam nach gut 100 ms wieder („channel
+  reopened“). B: 2275 Bilder ohne fehlende Bildnummer, längste Pause zwischen zwei Bildern 31 ms, fehlerfrei dekodiert.
+
 Nicht geprüft: ein Spiel für zwei Spieler (keins installiert), also ob ein Spiel den Gast als zweiten Spieler annimmt; das
-echte Moonlight; über das Internet; HEVC und HDR mit zwei Streams; die Übernahme der Aufnahme durch einen angehängten Stream,
-wenn der erste endet; drei oder vier Spieler; Firmware 10.20.
+echte Moonlight; über das Internet; HDR mit zwei Streams; drei oder vier Spieler; Firmware 10.20.
 
 ### Neuer Stream vom selben Gerät löst den alten ab (2026-11-03, 13.00)
 
