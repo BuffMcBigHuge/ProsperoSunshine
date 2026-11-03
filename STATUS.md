@@ -476,6 +476,34 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### Zweiter Spieler von einem anderen Gerät (2026-11-03, 13.00, nicht veröffentlicht)
+
+Ein Stream von einem anderen Gerät wird nicht mehr abgelehnt, er hängt sich an den laufenden: Der erste Stream hält die
+Aufnahme und gibt jedes Bild an alle Streams weiter, das Mikrofon, das den Audiokanal geöffnet hat, jedes Audiopaket. Der neue
+Stream muss denselben Codec und denselben Dynamikumfang verlangen. Ab dem zweiten Pad öffnet der Host das Pad ohne Nutzer
+(`PS_PAD_NO_USER`), und die Konsole fragt, wer es benutzt (GitHub-Issue 11).
+
+- **Probe `src/pad_user_probe.cpp`:** Ein Pad für Nutzer 0xFFFFFFFF meldet das System als DualSense ohne Nutzer und öffnet
+  die Nutzerauswahl nur für dieses Gerät (Systemlog `SpecificDevice`; Screenshot: „Who's using this controller?“ mit „Add
+  User“ und dem angemeldeten Nutzer).
+- **Zwei Testclients** mit zwei gekoppelten Identitäten (`CLIENT_DIR=out/moonlight-client2 OUT_TAG=2` für `run_smoke.sh`),
+  Mario 64 vorn: A streamte 50 s, B kam nach 14 s per `/resume` dazu und lief 25 s. Hostlog: „another device joined the
+  running stream (2 streams)“, „sharing the channel another stream reads“, „virtual pad 1 attached, the console asks who uses
+  it“. Beide 1080p H.264 mit 59,94 fps, ohne fehlende Bildnummern und fehlerfrei dekodiert, beide mit Spielton (−16,8 und
+  −16,1 dBFS). Im Bild von B stand die Abfrage über dem Spiel.
+- **Gast:** Mit dem Pad von B Links, Kreuz („Add User“), dann „Quick Play“ unter „Play as a One-Time Guest“ (die Lizenz hat
+  der Besitzer gelesen und freigegeben). Danach zeigte das Bild oben rechts „Guest1“ mit Controller, und
+  `sceUserServiceGetLoginUserIdList` lieferte zwei angemeldete Nutzer. In allen drei Läufen hatten beide Streams keine
+  Lücken.
+- Das Pad eines Geräts, das gegangen ist, bleibt bis zum Ende der Sitzung: Sunshine hält die Pads eines Clients für ein
+  Wiederverbinden. Im Lauf ging Pad 1 erst mit dem Ende von A.
+- `pair.py` schickt den PIN jetzt nebenher: Der `PIN`-Befehl antwortet erst, wenn das ganze Koppeln fertig ist, und lief
+  vorher nach 10 s ins Leere („Invalid uniqueid“).
+
+Nicht geprüft: ein Spiel für zwei Spieler (keins installiert), also ob ein Spiel den Gast als zweiten Spieler annimmt; das
+echte Moonlight; über das Internet; HEVC und HDR mit zwei Streams; die Übernahme der Aufnahme durch einen angehängten Stream,
+wenn der erste endet; drei oder vier Spieler; Firmware 10.20.
+
 ### Neuer Stream vom selben Gerät löst den alten ab (2026-11-03, 13.00)
 
 Moonlight Web von außerhalb, hinter einem Proxy mit SSL-Inspection (Besitzer): Mehrere Versuche hingen alle gleich. Der Stream

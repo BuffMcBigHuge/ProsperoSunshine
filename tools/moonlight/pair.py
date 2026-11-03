@@ -238,8 +238,17 @@ def do_pair(host, ident, pin, name, auto_pin=True, verbose=True, host_pin=None, 
                 break
             time.sleep(0.3)
         v("[1] control PAIRINGS -> %r" % pend)
-        resp = host.control("PIN %s %s" % (host_pin or pin, name))
-        v("[1] control PIN -> %r" % resp.strip())
+        # PIN answers only when the whole handshake has finished, so it runs beside the steps below.
+        pin_result = {}
+
+        def submit_pin():
+            try:
+                pin_result["resp"] = host.control("PIN %s %s" % (host_pin or pin, name), timeout=60)
+            except Exception as e:  # noqa
+                pin_result["resp"] = "error: %r" % (e,)
+            v("[1] control PIN -> %r" % pin_result["resp"].strip())
+
+        threading.Thread(target=submit_pin, daemon=True).start()
     else:
         v("[1] waiting for the PIN %s to be entered on the host ..." % pin)
     th.join(120)

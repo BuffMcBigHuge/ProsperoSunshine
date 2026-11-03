@@ -21,11 +21,13 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <condition_variable>
 #include <cstring>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 #include <thread>
 #include <boost/asio/ip/address.hpp>
 
@@ -210,6 +212,18 @@ private:
 // there yet as the stream starts, the audio channel is gone; the microphone then delivers paced
 // silence and reopens its channel on the current session every half second, so the stream itself
 // never ends because of audio.
+//
+// The console has one audio channel. With several streams (a second player), the microphone that opened it reads it
+// and hands every packet to all microphones; the others only wait for theirs. When the reading one goes, the next to
+// notice opens the channel anew.
+class avcap_mic;
+struct audio_hub {
+    std::mutex mutex;
+    std::condition_variable arrived;
+    std::vector<avcap_mic *> mics;
+    avcap_mic *reader = nullptr;
+};
+
 class avcap_mic final : public mic_t {
 public:
     static std::unique_ptr<mic_t> open(int channels, std::uint32_t sample_rate, std::uint32_t frame_size) {
@@ -219,19 +233,34 @@ public:
         auto mic = std::unique_ptr<avcap_mic>(new avcap_mic(std::move(shared), channels, sample_rate, frame_size));
         // A title started with the stream can hold the capture for a moment. Returning no microphone here left the
         // whole stream silent: Sunshine only asks for a new one after a reinit, which the silent fallback never sends.
-        if (!mic->shared_ || !mic->open_channel()) mic->retry_at_ = std::chrono::steady_clock::now() + 500ms;
+        if (mic->another_reads()) BOOST_LOG(info) << "PS5 audio: sharing the channel another stream reads"sv;
+        else if (!mic->shared_ || !mic->open_channel()) mic->retry_at_ = std::chrono::steady_clock::now() + 500ms;
         return mic;
     }
 
     ~avcap_mic() override {
         if (open_) close_channel();
+        std::lock_guard lock(hub_.mutex);
+        std::erase(hub_.mics, this);
     }
 
     capture_e sample(std::vector<float> &frame_buffer) override {
         const size_t needed = static_cast<size_t>(frame_size_) * 2;
         const auto start = std::chrono::steady_clock::now();
-        while (pending_.size() < needed) {
-            if (open_ && generation_ != shared_->generation()) open_ = false;  // session was reopened
+        for (;;) {
+            bool follower = false;
+            {
+                std::unique_lock lock(hub_.mutex);
+                follower = hub_.reader && hub_.reader != this;
+                if (follower) hub_.arrived.wait_for(lock, 100ms, [&] { return pending_.size() >= needed; });
+                if (pending_.size() >= needed) return take(frame_buffer, needed);
+            }
+            // A reader that sends nothing for a while is treated like a lost channel: silence, and a new try later.
+            if (follower) {
+                if (std::chrono::steady_clock::now() - start > 500ms) return silence(frame_buffer);
+                continue;
+            }
+            if (open_ && generation_ != shared_->generation()) set_open(false);  // session was reopened
             if (!open_) return silence(frame_buffer);
             const int rc = shared_->with_session(
                 [&](ps_capture *s) { return ps_capture_audio_read(s, packet_.data(), packet_.size(), header_); });
@@ -249,9 +278,51 @@ public:
                 std::this_thread::sleep_for(1ms);
                 continue;
             }
-            const auto *samples = reinterpret_cast<const float *>(packet_.data());
-            pending_.insert(pending_.end(), samples, samples + rc / sizeof(float));
+            hand_out(reinterpret_cast<const float *>(packet_.data()), static_cast<size_t>(rc) / sizeof(float));
         }
+    }
+
+private:
+    avcap_mic(std::shared_ptr<prospero::SharedCapture> shared, int channels, std::uint32_t sample_rate,
+              std::uint32_t frame_size)
+        : shared_(std::move(shared)), channels_(channels), frame_size_(frame_size),
+          period_(std::chrono::nanoseconds(1'000'000'000LL * frame_size / sample_rate)), packet_(0xC000) {
+        std::lock_guard lock(hub_.mutex);
+        hub_.mics.push_back(this);
+    }
+
+    bool another_reads() {
+        std::lock_guard lock(hub_.mutex);
+        return hub_.reader && hub_.reader != this;
+    }
+
+    void set_open(bool open) {
+        open_ = open;
+        std::lock_guard lock(hub_.mutex);
+        if (open) {
+            hub_.reader = this;
+            pending_.clear();
+        } else if (hub_.reader == this) {
+            hub_.reader = nullptr;
+            hub_.arrived.notify_all();
+        }
+    }
+
+    // Every microphone gets the packet. One that falls behind keeps the last 200 ms, so its stream doesn't lag.
+    void hand_out(const float *samples, size_t count) {
+        constexpr size_t most = 48000 * 2 / 5;
+        std::lock_guard lock(hub_.mutex);
+        for (avcap_mic *mic : hub_.mics) {
+            mic->pending_.insert(mic->pending_.end(), samples, samples + count);
+            if (mic->pending_.size() > most)
+                mic->pending_.erase(mic->pending_.begin(),
+                                    mic->pending_.begin() + static_cast<std::ptrdiff_t>(mic->pending_.size() - most));
+        }
+        hub_.arrived.notify_all();
+    }
+
+    // Caller holds hub_.mutex.
+    capture_e take(std::vector<float> &frame_buffer, size_t needed) {
         next_ = std::chrono::steady_clock::now();
         // Stereo from the console; any further requested channels stay silent.
         frame_buffer.assign(static_cast<size_t>(frame_size_) * channels_, 0.0f);
@@ -261,12 +332,6 @@ public:
         pending_.erase(pending_.begin(), pending_.begin() + static_cast<std::ptrdiff_t>(needed));
         return capture_e::ok;
     }
-
-private:
-    avcap_mic(std::shared_ptr<prospero::SharedCapture> shared, int channels, std::uint32_t sample_rate,
-              std::uint32_t frame_size)
-        : shared_(std::move(shared)), channels_(channels), frame_size_(frame_size),
-          period_(std::chrono::nanoseconds(1'000'000'000LL * frame_size / sample_rate)), packet_(0xC000) {}
 
     bool open_channel() {
         // The generation is read under the lock that opens the channel. Read before it, a reopen in between (a game
@@ -281,9 +346,8 @@ private:
             BOOST_LOG(warning) << "PS5 audio: OpenAudio failed: "sv << rc;
             return false;
         }
-        open_ = true;
         generation_ = generation;
-        pending_.clear();
+        set_open(true);
         return true;
     }
 
@@ -291,16 +355,21 @@ private:
         // After a reopen the channel died with the old session; closing would hit the new one. Checked under the lock,
         // so a reopen can't slip in between.
         shared_->exclusive([&](ps_capture *s) { return generation_ == shared_->generation() ? ps_capture_audio_close(s) : 0; });
-        open_ = false;
+        set_open(false);
     }
 
     capture_e silence(std::vector<float> &frame_buffer) {
-        if (std::chrono::steady_clock::now() >= retry_at_) {
+        if (std::chrono::steady_clock::now() >= retry_at_ && !another_reads()) {
             // Only the session video opened: if video failed too, the stream is ending, and opening one here would hold
             // up its teardown.
             if (!shared_) shared_ = prospero::SharedCapture::attach();
             if (shared_ && open_channel()) BOOST_LOG(info) << "PS5 audio: channel reopened"sv;
             retry_at_ = std::chrono::steady_clock::now() + 500ms;
+        }
+        {
+            // What arrives during the silence would only play late.
+            std::lock_guard lock(hub_.mutex);
+            pending_.clear();
         }
         next_ = std::max(next_ + period_, std::chrono::steady_clock::now() - period_);
         std::this_thread::sleep_until(next_);
@@ -308,13 +377,14 @@ private:
         return capture_e::ok;
     }
 
+    static inline audio_hub hub_;
     std::shared_ptr<prospero::SharedCapture> shared_;
     int channels_;
     std::uint32_t frame_size_;
     std::chrono::nanoseconds period_;
     std::vector<uint8_t> packet_;
     uint8_t header_[0x10] = {};
-    std::vector<float> pending_;
+    std::vector<float> pending_;  // guarded by hub_.mutex
     bool open_ = false;
     unsigned generation_ = 0;
     std::chrono::steady_clock::time_point next_ = std::chrono::steady_clock::now();
@@ -489,13 +559,17 @@ int alloc_gamepad(input_t &input, const gamepad_id_t &id, const gamepad_arrival_
     input->client_index[id.globalIndex] = id.clientRelativeIndex;
     auto *&pad = input->pads[id.globalIndex];
     if (!pad) {
-        const int rc = ps_pad_open(input->user, &pad);
+        // The first pad plays as the console's user. Every further one, from a second client or a second controller on
+        // the same client, is another player: the system asks who uses it, and they pick a user or a guest.
+        const bool first = id.globalIndex == 0;
+        const int rc = ps_pad_open(first ? input->user : PS_PAD_NO_USER, &pad);
         if (rc) {
             BOOST_LOG(error) << "PS5 virtual pad "sv << id.globalIndex << " failed: "sv << rc;
             pad = nullptr;
             return -1;
         }
-        BOOST_LOG(info) << "PS5 virtual pad "sv << id.globalIndex << " attached"sv;
+        BOOST_LOG(info) << "PS5 virtual pad "sv << id.globalIndex << " attached"sv
+                        << (first ? ""sv : ", the console asks who uses it"sv);
     }
     request_motion(*input, id.globalIndex);
     return 0;

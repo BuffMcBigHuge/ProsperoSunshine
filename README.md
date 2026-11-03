@@ -108,8 +108,12 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   test client on wired LAN and a noise image at 4K, not yet with Moonlight or in a game. Games may stay well below what you set.
   With H.264, extreme images can exceed the setting: full-screen random noise reached about 140 Mbit/s at 4K and 35 Mbit/s at
   1080p, whatever was set.
-- One streaming session at a time. A new stream from the same device replaces its old one; one from another device is turned
-  away while a stream runs. More than one Moonlight controller is untested.
+- A second device can join a running stream as another player. It gets the same picture and sound, in the codec and
+  dynamic range the first stream opened; a device that asks for another is turned away. Its controller is new to the
+  console, which asks "Who's using this controller?": pick a user, or Add User and then Quick Play for a guest. Every
+  controller after the first is asked this way, also a second one on the same client. The console sends one copy of the
+  stream per player, so a friend over the internet doubles its upload. A new stream from the same device replaces its old
+  one. Tested on 13.00 with the test client and a guest; a game for two players is untested.
 - Without `close_game_on_quit`, Moonlight for PC can still offer to quit a game from its app list, also when you pick another
   game, but that sends nothing to the host: it reports no running game once the stream has ended, so Moonlight skips its quit
   request and waits at "Quitting…". Close the game on the console instead. Other clients are untested.

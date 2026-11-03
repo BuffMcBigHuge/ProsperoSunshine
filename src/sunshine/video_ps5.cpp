@@ -12,11 +12,15 @@
 #include "src/stream.h"
 #include "src/video.h"
 #include <x86intrin.h>
+#include <algorithm>
 #include <condition_variable>
 #include <cstring>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 using namespace std::literals;
 
@@ -63,6 +67,42 @@ void update_offers() {
     const int hevc_mode = config::video.hevc_mode;
     active_hevc_mode = hevc_mode == 1 || !ps_capture_hevc_allowed() ? 1 : hevc_mode == 2 || !ps_capture_hdr_allowed() ? 2 : 3;
     last_encoder_probe_supported_dynamic_range_for_codec[1] = active_hevc_mode == 3;
+}
+
+// A stream that joined the one holding the capture (a second player). It lives on its own capture thread and is only
+// touched under the owner's mutex.
+struct joined_stream {
+    stream::session_t *session;
+    std::string cert;
+    safe::mail_raw_t::event_t<bool> shutdown;
+    int64_t next_index;
+    bool keyframe_seen = false;  // its frames start at an IDR
+};
+
+// One encoder channel for every stream. The first stream opens it, reads the frames and hands each one to the streams
+// that joined since; a second session reading the same Avcap2 ring would starve the first.
+struct {
+    std::mutex mutex;
+    std::condition_variable changed;  // the capture was let go, or a joined stream left
+    bool streaming = false;
+    std::string cert;
+    safe::mail_raw_t::event_t<bool> shutdown;
+    int video_format = 0;
+    bool hdr = false;
+    prospero::CaptureMode delivered{};
+    std::vector<joined_stream *> joined;
+    bool keyframe_wanted = false;  // a joined stream asked for one
+} owner;
+
+// Whether a stream from this device runs, holding the capture or joined. Caller holds owner.mutex.
+bool streams_from(const std::string &cert) {
+    if (cert.empty()) return false;
+    if (owner.streaming && owner.cert == cert) return true;
+    return std::any_of(owner.joined.begin(), owner.joined.end(), [&](const joined_stream *j) { return j->cert == cert; });
+}
+
+std::string_view stream_kind(int video_format, bool hdr) {
+    return video_format == 1 ? (hdr ? "HEVC HDR"sv : "HEVC"sv) : "H.264"sv;
 }
 }
 
@@ -114,43 +154,74 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
             BOOST_LOG(warning) << "PS5 capture: "sv << (delivered_height > delivered.height ? "larger"sv : "smaller"sv)
                                << " mode refused by the system, delivering "sv << delivered.width << 'x' << delivered.height;
         announce_mode(delivered);
+        std::lock_guard lock(owner.mutex);
+        owner.delivered = delivered;  // for the streams that join
     };
 
-    // One encoder channel, one stream: a second session would read frames from the same Avcap2 ring and starve the
-    // first. A new stream from the device that holds the capture ends the old one and takes over: a client that
-    // retries, like Moonlight Web when its browser didn't get the picture, would otherwise wait until the old
-    // session timed out. A new stream from another device is ended instead.
-    static struct {
-        std::mutex mutex;
-        std::condition_variable released;
-        bool streaming = false;
-        std::string cert;
-        safe::mail_raw_t::event_t<bool> shutdown;
-    } owner;
+    // A new stream from a device that streams already ends its old one and takes its place: a client that retries, like
+    // Moonlight Web when its browser didn't get the picture, would otherwise wait until the old session timed out.
+    // A stream from another device joins the running one (a second player) and gets its picture: same codec and dynamic
+    // range, since there is one encoder. When the stream holding the capture ends, a joined one takes it over.
     const std::string cert = channel_data ? stream::session::client_cert(*channel_data) : std::string{};
-    {
-        std::unique_lock lock(owner.mutex);
-        if (owner.streaming && !cert.empty() && cert == owner.cert) {
-            BOOST_LOG(info) << "PS5 capture: the same device started a new stream, ending its old one"sv;
-            owner.shutdown->raise(true);
-            owner.released.wait_for(lock, 5s, [] { return !owner.streaming; });
-        }
-        if (owner.streaming) {
-            BOOST_LOG(warning) << "PS5 capture busy with another session; ending the new one"sv;
+    int64_t next_index = 0;  // per stream, across a takeover of the capture
+    std::unique_lock lock(owner.mutex);
+    if (streams_from(cert)) {
+        BOOST_LOG(info) << "PS5 capture: the same device started a new stream, ending its old one"sv;
+        if (owner.streaming && owner.cert == cert) owner.shutdown->raise(true);
+        for (auto *j : owner.joined)
+            if (j->cert == cert) j->shutdown->raise(true);
+        owner.changed.wait_for(lock, 5s, [&] { return !streams_from(cert); });
+        if (streams_from(cert)) {
+            BOOST_LOG(warning) << "PS5 capture: the old stream did not end; ending the new one"sv;
             shutdown_event->raise(true);
             return;
         }
-        owner.streaming = true;
-        owner.cert = cert;
-        owner.shutdown = shutdown_event;
     }
+    while (owner.streaming) {
+        if (owner.video_format != config.videoFormat || owner.hdr != hdr) {
+            BOOST_LOG(warning) << "PS5 capture busy with a "sv << stream_kind(owner.video_format, owner.hdr)
+                               << " stream; this device asked for "sv << stream_kind(config.videoFormat, hdr)
+                               << ", ending its stream"sv;
+            shutdown_event->raise(true);
+            return;
+        }
+        joined_stream me{channel_data, cert, shutdown_event, next_index};
+        owner.joined.push_back(&me);
+        owner.keyframe_wanted = true;
+        BOOST_LOG(info) << "PS5 capture: another device joined the running stream ("sv << owner.joined.size() + 1
+                        << " streams)"sv;
+        if (owner.delivered.height != mode.height)
+            BOOST_LOG(info) << "PS5 capture: the running stream delivers "sv << owner.delivered.width << 'x'
+                            << owner.delivered.height;
+        while (!shutdown_event->peek() && owner.streaming) {
+            announce_mode(owner.delivered);
+            if (idr_events->peek()) {
+                idr_events->pop();
+                owner.keyframe_wanted = true;
+            }
+            owner.changed.wait_for(lock, 20ms);
+        }
+        std::erase(owner.joined, &me);
+        next_index = me.next_index;
+        owner.changed.notify_all();
+        if (shutdown_event->peek()) return;
+        BOOST_LOG(info) << "PS5 capture: the stream holding the capture ended, this one takes it over"sv;
+    }
+    owner.streaming = true;
+    owner.cert = cert;
+    owner.shutdown = shutdown_event;
+    owner.video_format = config.videoFormat;
+    owner.hdr = hdr;
+    owner.delivered = mode;
+    owner.keyframe_wanted = false;
+    lock.unlock();
     const auto release = util::fail_guard([] {
         {
             std::lock_guard lock(owner.mutex);
             owner.streaming = false;
             owner.shutdown.reset();
         }
-        owner.released.notify_all();
+        owner.changed.notify_all();
     });
 
     // config.bitrate is in kbit/s. The channel opens with its bitrate in the config: raising it later above the
@@ -178,15 +249,29 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     // The audio thread may have opened the channel earlier, and the next periodic IDR can be ten seconds away.
     if (session.request_keyframe())
         BOOST_LOG(warning) << "PS5 capture: first keyframe request failed"sv;
+    // Every IDR is a large frame for every stream, so requests that come before the last one was served count once.
+    std::optional<std::chrono::steady_clock::time_point> keyframe_requested;
+    const auto request_keyframe = [&] {
+        const auto now = std::chrono::steady_clock::now();
+        if (keyframe_requested && now - *keyframe_requested < 200ms) return;
+        keyframe_requested = now;
+        if (session.request_keyframe())
+            BOOST_LOG(warning) << "PS5 capture: keyframe request failed, next periodic IDR within ten seconds"sv;
+    };
     prospero::EncodedFrame frame;
     prospero::CaptureSession::Descriptor desc{};
     // Moonlight asks for an IDR after loss; Avcap2 delivers one within 2-3 frames (R1).
     while (!shutdown_event->peek()) {
+        bool keyframe = false;
         if (idr_events->peek()) {
             idr_events->pop();
-            if (session.request_keyframe())
-                BOOST_LOG(warning) << "PS5 capture: keyframe request failed, next periodic IDR within ten seconds"sv;
+            keyframe = true;
         }
+        {
+            std::lock_guard lock(owner.mutex);
+            keyframe |= std::exchange(owner.keyframe_wanted, false);
+        }
+        if (keyframe) request_keyframe();
         const auto status = session.read(frame, 100ms, {}, &desc);
         if (status == prospero::CaptureStatus::timeout) continue;
         if (status != prospero::CaptureStatus::frame) {
@@ -214,10 +299,22 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
             check_fallback();
             continue;
         }
-        auto packet = std::make_unique<packet_raw_generic>(std::move(frame.bytes), static_cast<int64_t>(frame.index),
-                                                           frame.idr);
+        if (frame.idr) keyframe_requested.reset();
+        const auto timestamp = capture_time(desc, frame.read_time, hevc);
+        {
+            std::lock_guard lock(owner.mutex);
+            for (auto *j : owner.joined) {
+                if (!j->keyframe_seen && !frame.idr) continue;
+                j->keyframe_seen = true;
+                auto copy = std::make_unique<packet_raw_generic>(std::vector<uint8_t>(frame.bytes), j->next_index++, frame.idr);
+                copy->channel_data = j->session;
+                copy->frame_timestamp = timestamp;
+                packets->raise(std::move(copy));
+            }
+        }
+        auto packet = std::make_unique<packet_raw_generic>(std::move(frame.bytes), next_index++, frame.idr);
         packet->channel_data = channel_data;
-        packet->frame_timestamp = capture_time(desc, frame.read_time, hevc);
+        packet->frame_timestamp = timestamp;
         packets->raise(std::move(packet));
         frame.bytes = {};
     }

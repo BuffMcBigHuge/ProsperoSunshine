@@ -47,6 +47,9 @@ typedef struct ps_pad ps_pad;
 
 // The signed-in user owning the first home folder, or 0 if none could be found.
 uint32_t ps_pad_default_user(void);
+// A pad for no user: the system asks "Who's using this controller?" on it, offering the signed-in users and Add User
+// (a guest, for one). Seen on 13.00.
+#define PS_PAD_NO_USER 0xFFFFFFFFu
 // Adds a DualSense-type virtual controller for user_id. Returns 0 or a negative error/errno.
 // A new controller makes the system ask "Who's using this controller?" once.
 int ps_pad_open(uint32_t user_id, ps_pad **out);
