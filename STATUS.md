@@ -522,6 +522,11 @@ Stream muss denselben Codec und denselben Dynamikumfang verlangen. Ab dem zweite
 - **Übernahme:** A lief 20 s, B kam nach 10 s dazu und lief 40 s. Als A ging, meldete der Host 7 ms später „the stream holding
   the capture ended, this one takes it over“, die Aufnahme stand 4 ms danach, der Ton kam nach gut 100 ms wieder („channel
   reopened“). B: 2275 Bilder ohne fehlende Bildnummer, längste Pause zwischen zwei Bildern 31 ms, fehlerfrei dekodiert.
+- **Beenden mit zwei Spielern:** Vorher beendete ein `/cancel` von B auch den Stream von A (A: „terminated by host“), mit
+  `close_game_on_quit` hätte es das Spiel geschlossen. Seit Patch `0012-quit-with-another-player` endet nur der Stream des
+  Geräts, das beendet, solange ein anderes Gerät streamt. Gemessen: A 35 s, B nach 10 s für 15 s mit `/cancel` am Ende.
+  Hostlog: „Quit from one device while another streams: ending only its stream“, Pad 1 sofort entfernt; A lief die vollen
+  35 s ohne fehlende Bildnummer weiter, die App endete erst mit A.
 
 Nicht geprüft: ein Spiel für zwei Spieler (keins installiert), also ob ein Spiel den Gast als zweiten Spieler annimmt; das
 echte Moonlight; über das Internet; HDR mit zwei Streams; drei oder vier Spieler; Firmware 10.20.

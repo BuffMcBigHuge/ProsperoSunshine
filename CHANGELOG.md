@@ -8,8 +8,10 @@
   one and gets the same picture and sound, in the codec and dynamic range the first stream opened. Its controller is new to
   the console, which asks "Who's using this controller?", so the friend picks a user or plays as a guest (Add User, Quick
   Play). Every controller after the first is asked this way. When the stream holding the capture ends, a joined one takes it
-  over. Measured on 13.00 with two test clients at once, with H.264 and HEVC, a guest signed in through the second one; a
-  game for two players isn't tested yet ([#11](https://github.com/Darkatek7/ProsperoSunshine/issues/11)).
+  over. While another device streams, quitting the app in Moonlight ends only your own stream, so a friend who leaves
+  doesn't close your game; the last one to quit ends the app as before. Measured on 13.00 with two test clients at once,
+  with H.264 and HEVC, a guest signed in through the second one; a game for two players isn't tested yet
+  ([#11](https://github.com/Darkatek7/ProsperoSunshine/issues/11)).
 
 ### Changed
 

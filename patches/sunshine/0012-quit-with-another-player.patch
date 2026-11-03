@@ -1,0 +1,78 @@
+ProsperoSunshine: quitting while another device streams ends only the quitting device's stream
+
+With a second player, /cancel from either device ended every session and the app, and with close_game_on_quit also the
+game the others were playing. While a session of another client runs, /cancel now ends only the sessions (and the kept
+gamepads) of the client that sent it. The last client to quit ends the app as before.
+
+--- a/src/nvhttp.cpp
++++ b/src/nvhttp.cpp
+@@ -1651,6 +1651,16 @@
+     tree.put("root.cancel", 1);
+     tree.put("root.<xmlattr>.status_code", 200);
+ 
++#ifdef __SCE__
++    // A second player: while another device streams, quitting ends only this device's stream, so the app and the game
++    // stay for the others. The last one to quit ends the app as before.
++    if (!last_verified_client_cert.empty() && rtsp_stream::session_count_except_cert(last_verified_client_cert) > 0) {
++      BOOST_LOG(info) << "Quit from one device while another streams: ending only its stream"sv;
++      rtsp_stream::terminate_sessions_by_cert(last_verified_client_cert);
++      return;
++    }
++#endif
++
+     rtsp_stream::terminate_sessions();
+ 
+     if (proc::proc.running() > 0) {
+--- a/src/rtsp.cpp
++++ b/src/rtsp.cpp
+@@ -652,6 +652,22 @@
+     }
+ 
+     /**
++     * @brief Count the sessions of other clients.
++     * @param cert Certificate of the client to leave out.
++     * @return Number of sessions whose client certificate differs.
++     */
++    int count_except_cert(std::string_view cert) {
++      auto lg = _session_slots.lock();
++      int count = 0;
++      for (const auto &slot : *_session_slots) {
++        if (stream::session::client_cert(*slot) != cert) {
++          ++count;
++        }
++      }
++      return count;
++    }
++
++    /**
+      * @brief Removes the provided session from the set of sessions.
+      * @param session The session to remove.
+      */
+@@ -742,6 +758,10 @@
+     input::terminate_gamepads(cert);
+   }
+ 
++  int session_count_except_cert(std::string_view cert) {
++    return server.count_except_cert(cert);
++  }
++
+   /**
+    * @brief Send the serialized response over the active socket.
+    *
+--- a/src/rtsp.h
++++ b/src/rtsp.h
+@@ -132,6 +132,14 @@
+   void terminate_sessions_by_cert(std::string_view cert);
+ 
+   /**
++   * @brief Count the active sessions of other clients.
++   *
++   * @param cert Certificate of the client to leave out.
++   * @return Number of sessions whose client certificate differs.
++   */
++  int session_count_except_cert(std::string_view cert);
++
++  /**
+    * @brief Runs the RTSP server loop.
+    */
+   void start();
