@@ -5,6 +5,7 @@
 #   tools/moonlight/run_smoke.sh [host] [duration_s] [extra pair.py launch args, e.g. --corever]
 #   STREAM_ARGS="--bitrate 20000" passes extra options to stream_test.
 #   VIDEO_FORMAT=hevc checks the output as HEVC (with STREAM_ARGS="--hevc").
+#   NO_CANCEL=1 skips the /cancel at the end.
 #   DOCKER_ARGS="--cap-add NET_ADMIN" and PRE_CMD="<shell>" run the client container with extra
 #   rights and a setup command first, e.g. to inject packet loss (see loss_test.sh).
 #   The client is the Windows program from build_windows.sh if it is built, so that Docker's network doesn't falsify the
@@ -52,7 +53,8 @@ run_client() {
 run_client 2>&1 | tee "$OUTDIR/stream_test.log"
 RC=${PIPESTATUS[0]}
 echo "stream_test exit code: $RC"
-"${PY[@]}" tools/moonlight/pair.py --host "$HOST" cancel
+# NO_CANCEL=1 leaves the session app running, for a second client that resumes it.
+[ -n "${NO_CANCEL:-}" ] || "${PY[@]}" tools/moonlight/pair.py --host "$HOST" cancel
 if [ -s out/moonlight-test.h264 ]; then
   dock "cd /repo && ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=codec_name,profile,width,height,avg_frame_rate,r_frame_rate,nb_read_frames -of default=nw=1 -f ${VIDEO_FORMAT:-h264} out/moonlight-test.h264; echo '--- ffmpeg full decode (-xerror):'; ffmpeg -v error -xerror -f ${VIDEO_FORMAT:-h264} -i out/moonlight-test.h264 -f null - && echo DECODE_OK"
 fi

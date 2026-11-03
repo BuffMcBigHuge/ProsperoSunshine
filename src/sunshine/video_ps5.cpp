@@ -8,9 +8,14 @@
 #include "src/globals.h"
 #include "src/input.h"
 #include "src/logging.h"
+#include "src/rtsp.h"
+#include "src/stream.h"
 #include "src/video.h"
 #include <x86intrin.h>
+#include <condition_variable>
 #include <cstring>
+#include <mutex>
+#include <string>
 #include <thread>
 
 using namespace std::literals;
@@ -111,16 +116,42 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
         announce_mode(delivered);
     };
 
-    // One encoder channel, one stream: a second session would read frames from the same Avcap2 ring
-    // and starve the first. It is ended here; a reconnecting client gets through once the old
-    // session has timed out (ping_timeout).
-    static std::atomic_bool streaming{false};
-    if (streaming.exchange(true)) {
-        BOOST_LOG(warning) << "PS5 capture busy with another session; ending the new one"sv;
-        shutdown_event->raise(true);
-        return;
+    // One encoder channel, one stream: a second session would read frames from the same Avcap2 ring and starve the
+    // first. A new stream from the device that holds the capture ends the old one and takes over: a client that
+    // retries, like Moonlight Web when its browser didn't get the picture, would otherwise wait until the old
+    // session timed out. A new stream from another device is ended instead.
+    static struct {
+        std::mutex mutex;
+        std::condition_variable released;
+        bool streaming = false;
+        std::string cert;
+        safe::mail_raw_t::event_t<bool> shutdown;
+    } owner;
+    const std::string cert = channel_data ? stream::session::client_cert(*channel_data) : std::string{};
+    {
+        std::unique_lock lock(owner.mutex);
+        if (owner.streaming && !cert.empty() && cert == owner.cert) {
+            BOOST_LOG(info) << "PS5 capture: the same device started a new stream, ending its old one"sv;
+            owner.shutdown->raise(true);
+            owner.released.wait_for(lock, 5s, [] { return !owner.streaming; });
+        }
+        if (owner.streaming) {
+            BOOST_LOG(warning) << "PS5 capture busy with another session; ending the new one"sv;
+            shutdown_event->raise(true);
+            return;
+        }
+        owner.streaming = true;
+        owner.cert = cert;
+        owner.shutdown = shutdown_event;
     }
-    const auto release = util::fail_guard([] { streaming = false; });
+    const auto release = util::fail_guard([] {
+        {
+            std::lock_guard lock(owner.mutex);
+            owner.streaming = false;
+            owner.shutdown.reset();
+        }
+        owner.released.notify_all();
+    });
 
     // config.bitrate is in kbit/s. The channel opens with its bitrate in the config: raising it later above the
     // opening value stops the encoder (docs/re/hevc.md). Peak as Remote Play: H.264 average * 1.12, HEVC * 1.10.

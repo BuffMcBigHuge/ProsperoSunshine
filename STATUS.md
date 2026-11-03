@@ -476,7 +476,23 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
-### Tastatur und Maus (2026-11-03, 13.00, nicht veröffentlicht)
+### Neuer Stream vom selben Gerät löst den alten ab (2026-11-03, 13.00)
+
+Moonlight Web von außerhalb, hinter einem Proxy mit SSL-Inspection (Besitzer): Mehrere Versuche hingen alle gleich. Der Stream
+startete auf der PS5, aber kein Controller kam an. Nach rund 17 s startete Moonlight Web neu, und der Host lehnte das ab, weil
+der erste Stream die Aufnahme noch hielt („capture busy“). Der erste endete erst 30 bis 50 s später. Seitdem beendet der Host
+den alten Stream, wenn dasselbe Gerät (dasselbe Zertifikat) einen neuen startet. Ein anderes Gerät wird weiter abgelehnt.
+
+- **Testclient:** Stream A lief, nach 8 s startete dieselbe Identität per `/resume` Stream B (`NO_CANCEL=1` für A, sonst hätte
+  As `/cancel` die App beendet). Der Host beendete A, B hatte die Aufnahme 12 ms nach seinem Start, lief 15 s mit 899 Bildern,
+  ohne Lücken und fehlerfrei dekodiert.
+- **Moonlight Web, Besitzer:** Erster Versuch hing, 16 s später übernahm der zweite („ending its old one“). In ihm wurden
+  Tastatur und Maus angelegt, der Besitzer meldet, dass alles funktionierte.
+
+Nicht geprüft: zwei Geräte, die sich abwechselnd verdrängen wollen (das zweite wird abgelehnt), und ob Moonlight Web hinter
+dem Proxy immer beim zweiten Versuch durchkommt.
+
+### Tastatur und Maus (2026-11-03, 13.00, Release 0.2.1)
 
 Moonlight-Tastatur und -Maus gehen auf eine virtuelle Tastatur und Maus der Konsole (`docs/re/keyboard-mouse.md`). Gemessen
 mit `src/kbm_probe.cpp` und mit dem Host über `stream_test.exe --kbm-seq`, der Tasten als Windows-Tastencodes schickt wie
@@ -502,8 +518,10 @@ Moonlight für PC.
   nicht an. Ein zweiter virtueller Controller neben dem des Streams öffnete „Who's using this controller?“.
 - Unit-Test `keyboard_map_test`: Tastencodes, Modifier, ASCII-Zeichen, gehaltene Tasten, Maustasten und Radschritte.
 
+Danach mit Moonlight Web vom Besitzer benutzt: Tastatur und Maus wurden im Stream angelegt (Hostlog).
+
 Nicht geprüft: Rad und horizontales Rad, rechte, mittlere und Seitentasten, Strg, Alt und die Windows-Taste, absolute
-Mausposition (Moonlight im Remote-Desktop-Modus), das echte Moonlight, mehrere Clients gleichzeitig und Firmware 10.20.
+Mausposition (Moonlight im Remote-Desktop-Modus), mehrere Clients gleichzeitig und Firmware 10.20.
 
 ### Streamen ohne Bildschirm (2026-11-02, 13.00, Testclient)
 
