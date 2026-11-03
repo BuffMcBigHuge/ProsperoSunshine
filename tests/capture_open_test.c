@@ -25,6 +25,8 @@ static void setup(uint32_t firmware, int hevc, int hdr, int large, uint32_t code
     fake_firmware = firmware;
     fake_decide = NULL;
     fake_opens = 0;
+    fake_output = 0x13c;
+    ps_capture_set_reopening(0);
     fake_log[0] = 0;
     unlink(marker);
     set_switches(hevc, hdr, large, 0);
@@ -104,6 +106,12 @@ static int small_fails(const char *step, const uint8_t *record)
     uint32_t resolution;
     memcpy(&resolution, record + 0x18, sizeof resolution);
     return !strcmp(step, "OpenVideo") && resolution < 4 ? INVALID : 0;
+}
+// While the output has no mode OpenVideo refuses every mode, as the service does while a title starts or closes.
+static int refused_without_output(const char *step, const uint8_t *record)
+{
+    (void)record;
+    return !strcmp(step, "OpenVideo") && !fake_output ? RESOURCE_NOT_ACTIVE : 0;
 }
 static uint32_t record_u32(size_t at)
 {
@@ -272,6 +280,36 @@ int main(void)
     assert(open_and_close() == 0);
     assert(fake_opens == 2 && ps_capture_video_resolution() == 4 && record_u32(0x18) == 4);
     assert(!logged("experimental") && ps_capture_small_modes_allowed());
+    // A reopen while the output has no mode, as while a title starts or closes: below 1080p it keeps the mode, and the
+    // next reopen, once the title's mode is there, gets it.
+    setup_small(0x10200006u, 0, 0, 2);
+    fake_output = 0;
+    fake_decide = refused_without_output;
+    ps_capture_set_reopening(1);
+    assert(open_and_close() != 0);
+    assert(fake_opens == 6 && ps_capture_video_resolution() == 2 && logged("output not settled"));
+    fake_output = 0x44;
+    fake_opens = 0;
+    assert(open_and_close() == 0);
+    assert(fake_opens == 1 && record_u32(0x18) == 2);
+    // The first open of a stream falls back as before, and so does a reopen whose output is settled.
+    setup_small(0x10200006u, 0, 0, 2);
+    fake_output = 0;
+    fake_decide = refused_without_output;
+    assert(open_and_close() != 0);
+    assert(ps_capture_video_resolution() == 4 && !logged("output not settled"));
+    setup_small(0x10200006u, 0, 0, 2);
+    fake_decide = small_fails;
+    ps_capture_set_reopening(1);
+    assert(open_and_close() == 0);
+    assert(fake_opens == 2 && ps_capture_video_resolution() == 4 && !logged("output not settled"));
+    // From 1080p up a reopen falls back as before.
+    setup(0x13000040u, 1, 0, 0, 1, 0, 6);
+    fake_output = 0;
+    fake_decide = refused_without_output;
+    ps_capture_set_reopening(1);
+    assert(open_and_close() != 0);
+    assert(ps_capture_video_resolution() == 4 && !logged("output not settled"));
     // 13.00 has them verified too, with the same fallback.
     setup_small(0x13000040u, 0, 0, 3);
     assert(ps_capture_small_modes_allowed());

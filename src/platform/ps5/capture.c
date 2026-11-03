@@ -58,6 +58,8 @@ static atomic_int granted;
 static atomic_int revoked;
 static atomic_int refused;
 static atomic_int refused_value;  // data[0] of the answer that refused
+// The last open was refused while the output had no mode or changed it; the next opens reopen a running stream's capture.
+static atomic_int unsettled, reopening;
 static int resource_event(int id, int event, const uint8_t *data)
 {
     if (id == atomic_load(&session_resource) && event == 1 && data) {
@@ -392,6 +394,7 @@ int ps_capture_open(ps_capture **out)
     *out = NULL;
     atomic_store(&failure_rc, 0);
     atomic_store(&reached_encoder, 0);
+    atomic_store(&unsettled, 0);
     atomic_store(&failure_step, "in use");
     if (atomic_flag_test_and_set(&owned)) return PS_CAPTURE_BUSY;
     ps_capture *s = calloc(1, sizeof *s);
@@ -537,6 +540,7 @@ int ps_capture_open(ps_capture **out)
     // when the console's output is too small for it, and needs the time left for the open at 1080p, as does a smaller one.
     // It also answers this when the output's mode changed since it was read, as while a title comes up, so that is read anew.
     const int repeats = atomic_load(&video_resolution) != 4 ? 5 : 25;
+    int changed = 0;
     for (int attempt = 0;; attempt++) {
         rc = open_video(&s->handle, config, 0);
         if (rc != RESOURCE_NOT_ACTIVE || attempt == repeats || atomic_load(&revoked)) {
@@ -547,9 +551,11 @@ int ps_capture_open(ps_capture **out)
         const int before = output;
         if (mode(&output) == 0 && output != before) {
             LOG("video out mode now %#x\n", output);
+            changed = 1;
             u32(config, 0x2a0 + record_shift(), (uint32_t)output);
         }
     }
+    atomic_store(&unsettled, rc && (changed || !output));
     atomic_store(&last_open_rc, rc);
     atomic_store(&failure_rc, rc);
     LOG("OpenVideo rc=%#x\n", rc);
@@ -734,6 +740,13 @@ int ps_capture_open_or_fall_back(ps_capture **out)
             atomic_store(&opening_average, PS_EXP_SAFE_AVERAGE);
             continue;
         }
+        // A title starting or closing leaves the output without a mode for up to about 2 s (10.20), longer than the opens
+        // above wait. A refusal then says nothing about a mode below 1080p, which the client may need: a reopen in a
+        // running stream fails instead of falling back, and its loop tries the same mode again.
+        if (next == PS_EXP_FALL_BACK && atomic_load(&reopening) && atomic_load(&unsettled) && resolution < 4) {
+            LOG("output not settled: resolution %u kept for the next reopen\n", resolution);
+            return rc;
+        }
         if (next == PS_EXP_FALL_BACK && ps_capture_fall_back_mode()) continue;
         // Audio may open next, for the stream that is about to end: not with what just failed.
         if (after.failed[PS_EXP_HEVC] != before.failed[PS_EXP_HEVC] || after.failed[PS_EXP_HDR] != before.failed[PS_EXP_HDR]) {
@@ -743,6 +756,8 @@ int ps_capture_open_or_fall_back(ps_capture **out)
         return rc;
     }
 }
+
+void ps_capture_set_reopening(int on) { atomic_store(&reopening, on != 0); }
 
 int ps_capture_change_scan_in(ps_capture *s, uint32_t resolution)
 {

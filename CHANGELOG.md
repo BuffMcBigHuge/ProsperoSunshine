@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Starting or closing a game no longer drops a stream below 1080p to 1080p.** On 10.20 the console's output has no mode
+  for 1.6 to 2.1 s while a title that sets its own output (Black Myth: Wukong) starts or closes, and the capture refuses
+  every mode until it has one. A reopen gave up after about 1.2 s and stayed at 1080p for the rest of the stream, which a
+  PS Vita can't show: its picture froze while the controls kept working. Now a reopen in a running stream keeps a mode
+  below 1080p while the output isn't settled, for up to 6 s, and each reopen asks for the client's mode again. A mode the
+  system really refuses still falls back to 1080p. The first open of a stream and everything from 1080p up stay as they
+  were. Measured on 10.20 with a PS Vita and with Moonlight for Windows at 960x544, 1080p and 4K.
+
 ## 0.2.2 (2026-11-03)
 
 ### Added

@@ -72,7 +72,9 @@ static int fake_load(const char *name, size_t args, const void *argp, uint32_t f
     return 0;
 }
 static int fake_void(void) { return 0; }
-static int fake_mode(int *mode) { *mode = 0x13c; return 0; }
+// The output's mode; 0 = none, as while a title starts or closes.
+static int fake_output = 0x13c;
+static int fake_mode(int *mode) { *mode = fake_output; return 0; }
 static int fake_open_video(intptr_t *handle, const void *config, uint8_t flag)
 {
     (void)flag;
