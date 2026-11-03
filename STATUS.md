@@ -493,7 +493,7 @@ Konsole selbst reagiert nur auf das `WAKEUP` von Remote Play (mit Registrierungs
 von außen, etwa mit einem Remote-Play-Client wie chiaki-ng oder einem Relais, das Moonlights Paket in dieses `WAKEUP`
 übersetzt.
 
-### Zweiter Spieler von einem anderen Gerät (2026-11-03, 13.00, nicht veröffentlicht)
+### Zweiter Spieler von einem anderen Gerät (2026-11-03, 13.00, Release 0.2.2)
 
 Ein Stream von einem anderen Gerät wird nicht mehr abgelehnt, er hängt sich an den laufenden: Der erste Stream hält die
 Aufnahme und gibt jedes Bild an alle Streams weiter, das Mikrofon, das den Audiokanal geöffnet hat, jedes Audiopaket. Der neue

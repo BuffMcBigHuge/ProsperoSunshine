@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.2 (2026-11-03)
 
 ### Added
 
@@ -8,8 +8,16 @@
   one and gets the same picture and sound, in the codec and dynamic range the first stream opened. Its controller is new to
   the console, which asks "Who's using this controller?", so the friend picks a user or plays as a guest (Add User, Quick
   Play). Every controller after the first is asked this way. When the stream holding the capture ends, a joined one takes it
-  over. Measured on 13.00 with two test clients at once, a guest signed in through the second one; a game for two players
-  isn't tested yet ([#11](https://github.com/Darkatek7/ProsperoSunshine/issues/11)).
+  over. Measured on 13.00 with two test clients at once, with H.264 and HEVC, a guest signed in through the second one; a
+  game for two players isn't tested yet ([#11](https://github.com/Darkatek7/ProsperoSunshine/issues/11)).
+
+### Changed
+
+- **A second controller on the same client is another player too.** Until now every controller played as the console's
+  user. Now only the first does, and the console asks who uses each further one.
+- **Waking from Moonlight is documented as not possible.** The PS5 ignores Wake-on-LAN packets, and the console stops the
+  host in rest mode, so it can't wake the console either. A Remote Play client such as chiaki-ng can
+  ([#10](https://github.com/Darkatek7/ProsperoSunshine/issues/10)).
 
 ## 0.2.1 (2026-11-03)
 
