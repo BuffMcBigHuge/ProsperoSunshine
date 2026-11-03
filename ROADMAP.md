@@ -18,7 +18,8 @@ Ein unveränderter Moonlight-Client im lokalen Netz fügt die PS5 per IP hinzu, 
 
 Nicht in v1.0: HEVC/AV1, HDR, 4K, mehrere Clients oder Controller, Mikrofon, Rumble, adaptive Trigger, Internetzugriff, Maus/Tastatur.
 
-Davon ist seit 0.1.2 HEVC (bis 50 Mbit/s), Rumble und die Lichtleiste des Pads dazugekommen, seit 0.1.4 1440p und 4K, jeweils nur auf Firmware 13.00. HDR läuft im Testclient und mit einem echten Moonlight am HDR-Fernseher (`STATUS.md`), noch nicht veröffentlicht. Weiter nicht vorgesehen: AV1, mehrere Clients oder Controller, Mikrofon, adaptive Trigger, Internetzugriff, Maus/Tastatur.
+Davon ist seit 0.1.2 HEVC (bis 50 Mbit/s), Rumble und die Lichtleiste des Pads dazugekommen, seit 0.1.4 1440p und 4K, jeweils nur auf Firmware 13.00. HDR läuft im Testclient und mit einem echten Moonlight am HDR-Fernseher (`STATUS.md`), noch nicht veröffentlicht. Weiter nicht vorgesehen: AV1, mehrere Clients oder Controller, Mikrofon, adaptive Trigger, Internetzugriff. Tastatur und Maus
+gehen seit dem Stand nach 0.2.0 auf eine virtuelle Tastatur und Maus der Konsole, gemessen auf 13.00 (`STATUS.md`).
 
 ## Architekturentscheidung (Vorschlag ADR-001, Abschluss in Phase 0)
 
@@ -30,7 +31,7 @@ Die Nahtstellen im Sunshine-Commit `a679b059` sind eng und gut abgegrenzt:
 | --- | --- | --- |
 | Video | `stream.cpp` ruft `video::capture(mail, config, session)` und liest `video::packet_t` aus `mail::video_packets`; IDR-Wünsche kommen über `mail::idr`. | Eigene `video::capture()` liefert Avcap2-Frames als `packet_raw_generic`. Kein Encoder, kein Bildformatwandel. |
 | Audio | `audio::capture()` holt PCM über `platf::audio_control()->microphone()` und kodiert mit Opus. | PS5-Implementierung von `audio_control_t`/`mic_t`. Opus-Pfad bleibt upstream. |
-| Eingabe | `input.cpp` ruft `platf::alloc_gamepad`, `gamepad_update`, `free_gamepad`. | Natives virtuelles PS5-Pad. Maus/Tastatur als leere Implementierungen. |
+| Eingabe | `input.cpp` ruft `platf::alloc_gamepad`, `gamepad_update`, `free_gamepad`. | Natives virtuelles PS5-Pad, dazu eine virtuelle Tastatur und Maus der Konsole (`src/platform/ps5/kbm.c`). |
 | Plattform | `platform/common.h`: `init`, `appdata`, `send`/`send_batch`, Hostname, MAC, Timer, Threadpriorität. | `src/platform/ps5/`. |
 
 Einordnung der Sunshine-Quellen:

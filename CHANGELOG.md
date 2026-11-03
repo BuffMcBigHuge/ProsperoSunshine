@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Keyboard and mouse:** Moonlight's keyboard and mouse now reach the console as a virtual keyboard and mouse, so you can
+  play with them from Windows. They are added the first time you press a key or move the mouse in a stream and removed when
+  the stream ends. Keys move the focus in the console's menus and type into text fields while the on-screen keyboard is open,
+  Shift included; text sent from a phone's keyboard is typed as on a US keyboard. The mouse moves the pointer and clicks in
+  games that support a mouse, measured in Planet Zoo; the console's browser doesn't use one. Measured on 13.00 with the
+  test client, which got `--kbm-seq` for this. Wheel, the right and middle buttons and firmware 10.20 are not tested yet.
+
 ## 0.2.0 (2026-11-03)
 
 ### Added

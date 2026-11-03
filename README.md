@@ -17,7 +17,8 @@ patches) for the console and replaces the parts that talk to PC hardware:
 
 - **Video:** the console's hardware encoder (Avcap2) delivers H.264 or HEVC, 8 bit or HDR, straight into Sunshine's packetiser.
 - **Audio:** game audio as PCM from the same capture service, encoded by Sunshine's Opus path.
-- **Input:** a native virtual DualSense per Moonlight gamepad, with touchpad and motion sensors.
+- **Input:** a native virtual DualSense per Moonlight gamepad, with touchpad and motion sensors, and a virtual keyboard and
+  mouse for Moonlight's keyboard and mouse.
 - **App list:** "PS5 Screen" and the console's installed games, with their covers. There is no web UI.
 
 Details: `docs/adr/001-sunshine-port.md`. Roadmap: `ROADMAP.md`; verified state: `STATUS.md`;
@@ -116,7 +117,11 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   round, a controller that is already connected and not disconnected (seen with a second virtual pad) keeps the app, and
   only the console's home screen still reacts to Moonlight. If the stream controller does nothing in an app, turn the
   other controller off.
-- No AV1, mouse, keyboard, touchscreen or microphone.
+- Keyboard and mouse appear on the console the first time you use them in a stream ("Keyboard connected") and go when the
+  stream ends. The console takes keys in its menus and in text fields once the on-screen keyboard is open. The mouse works
+  only in games that support one (Planet Zoo does); the console's browser ignores it. Keys are sent by position as on a
+  US keyboard, and the console's keyboard language setting decides what they type. Tested on 13.00 only.
+- No AV1, touchscreen or microphone.
 - HDR has been seen on one real setup so far: Moonlight on an HDR TV, 4K, one game. The capture provides no HDR metadata, so the
   host sends none, and other screens may handle that differently.
 - The pad's touchpad and motion sensors are measured with the test client only, not yet with a real Moonlight client or in a game

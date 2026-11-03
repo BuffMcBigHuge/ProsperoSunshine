@@ -476,6 +476,35 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### Tastatur und Maus (2026-11-03, 13.00, nicht veröffentlicht)
+
+Moonlight-Tastatur und -Maus gehen auf eine virtuelle Tastatur und Maus der Konsole (`docs/re/keyboard-mouse.md`). Gemessen
+mit `src/kbm_probe.cpp` und mit dem Host über `stream_test.exe --kbm-seq`, der Tasten als Windows-Tastencodes schickt wie
+Moonlight für PC.
+
+- **Probe:** Anlegen von Tastatur und Maus liefert 0, das System meldet „Keyboard connected“ und „Mouse connected“ und
+  ordnet beide dem Benutzer zu. Dreimal Rechts und einmal Links schoben den Fokus im Startmenü von ProsperoEden zwei
+  Kacheln weiter auf Mario 64 (Screenshot), beim Entfernen kam „… disconnected“.
+- **Erste Taste:** Je eine neue Tastatur, eine Taste nach 0, 50, 150, 300, 600 und 1000 ms: Nur die nach 0 ms ging verloren
+  (Hintergrundwechsel im Systemlog). Mit 12 s Pause davor kamen auch 100, 250, 500 und 1000 ms an.
+- **Host, Startmenü:** Rechts, Rechts, Links aus dem Stream, je 120 ms gehalten. Mit der ersten Fassung kamen nur zwei an:
+  Die erste Taste ging unten und oben 1 ms auseinander raus, weil das Loslassen während der Wartezeit nach dem Anlegen
+  eintraf. Seit Tasten mindestens 30 ms gehalten werden, kamen alle drei an (drei Hintergrundwechsel in der erwarteten
+  Richtung). Die Tastatur entstand beim ersten Tastendruck und ging mit dem Ende des Streams, ebenso die Maus. Der
+  Ein-Pixel-Ruck, den Sunshine bei jedem Streamstart schickt, legt keine Maus mehr an (Hostlog).
+- **Host, Browser:** Auf einer Testseite vom PC kamen Tasten erst an, nachdem das Textfeld angeklickt und die
+  Bildschirmtastatur offen war. Dann standen `a`, `b`, `c`, ein mit gehaltener linker Shift-Taste getipptes `B` und der als
+  Text geschickte String `Hi5` im Feld: `abcBHi5`. Die Seite meldete `keydown` mit `KeyH` und `shift=true`. Den Zeiger des
+  Browsers bewegte die Maus nicht.
+- **Host, Planet Zoo, Hauptmenü:** Die Maus zeigte einen Zeiger im Spiel. Nach oben gefahren stand er am oberen Rand, eine
+  Bewegung um +300, +200 schob ihn um etwa 150, 110 Bildpunkte, eine weitere setzte ihn genau auf „OK“ eines Hinweises, und
+  der Linksklick schloss ihn (Bilder aus dem aufgezeichneten Stream). Die allererste Bewegung nach dem Anschließen kam im Spiel
+  nicht an. Ein zweiter virtueller Controller neben dem des Streams öffnete „Who's using this controller?“.
+- Unit-Test `keyboard_map_test`: Tastencodes, Modifier, ASCII-Zeichen, gehaltene Tasten, Maustasten und Radschritte.
+
+Nicht geprüft: Rad und horizontales Rad, rechte, mittlere und Seitentasten, Strg, Alt und die Windows-Taste, absolute
+Mausposition (Moonlight im Remote-Desktop-Modus), das echte Moonlight, mehrere Clients gleichzeitig und Firmware 10.20.
+
 ### Streamen ohne Bildschirm (2026-11-02, 13.00, Testclient)
 
 Das HDMI-Kabel wurde bei laufender Konsole vom Besitzer gezogen, vorher lief 4K an einem Fernseher. Host 0.1.9, HEVC, 4K verlangt, `stream_test` mit `--no-script`:

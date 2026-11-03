@@ -16,13 +16,16 @@
 //       [--duration 20] [--bitrate 6000] [--audio-out file.s16] [--no-encryption]
 //       [--timing-log file.csv] [--ui-ticks N [--tick-interval-ms 1500] [--tick-hold-ms 120]
 //       [--tick-kind dpad|ps|back] [--tick-seq right,cross,...] [--tick-start S]] [--no-script] [--hevc] [--hevc10]
-//       [--touch-motion]
+//       [--touch-motion] [--kbm-seq step,step,... [--tick-start S] [--tick-interval-ms N] [--tick-hold-ms N]]
 //
 // --touch-motion announces a controller with touchpad and sensors and, from 3 s on, moves two fingers without a click and
 // sends a few seconds of motion. Whatever is in front on the console receives this as input.
 // --timing-log writes one CSV line per video frame / audio packet / input press on a common monotonic microsecond
 // clock, --ui-ticks presses D-pad RIGHT/LEFT (or the PS button, or Select) N times after the startup input, --no-script skips
 // the scripted startup input (see tools/moonlight/av_sync.py, README).
+// --kbm-seq sends keyboard and mouse events, one step per tick interval from --tick-start on: key:VK (press, hold, release),
+// down:VK, up:VK (VK in hex, Windows virtual-key codes), move:DX:DY (in ten reports), click:N (Sunshine's button number),
+// scroll:N and hscroll:N (120 per notch), text:CHARS (as an on-screen keyboard sends it), abs:X:Y (of 1920x1080).
 
 #include <getopt.h>
 #include <math.h>
@@ -286,6 +289,61 @@ static int hex2bin(const char *hex, uint8_t *out, size_t n) {
 
 static void sleep_ms(int ms) { usleep((useconds_t) ms * 1000); }
 
+// One --kbm-seq step. Shift, Ctrl and Alt held by down: go along as modifiers, as Moonlight sends them.
+static char kbm_modifiers;
+
+static char modifier_of(int vk) {
+  switch (vk) {
+    case 0x10: case 0xA0: case 0xA1: return MODIFIER_SHIFT;
+    case 0x11: case 0xA2: case 0xA3: return MODIFIER_CTRL;
+    case 0x12: case 0xA4: case 0xA5: return MODIFIER_ALT;
+    default: return 0;
+  }
+}
+
+static void kbm_key(int vk, char action) {
+  if (action == KEY_ACTION_DOWN) kbm_modifiers |= modifier_of(vk);
+  else kbm_modifiers &= (char) ~modifier_of(vk);
+  int r = LiSendKeyboardEvent((short) (0x8000 | vk), action, kbm_modifiers);
+  tlog("input: key 0x%02x %s -> %d\n", vk, action == KEY_ACTION_DOWN ? "down" : "up", r);
+}
+
+static int kbm_step(const char *step, int hold_ms) {
+  int a = 0, b = 0;
+  if (sscanf(step, "key:%x", &a) == 1) {
+    kbm_key(a, KEY_ACTION_DOWN);
+    sleep_ms(hold_ms);
+    kbm_key(a, KEY_ACTION_UP);
+  } else if (sscanf(step, "down:%x", &a) == 1) {
+    kbm_key(a, KEY_ACTION_DOWN);
+  } else if (sscanf(step, "up:%x", &a) == 1) {
+    kbm_key(a, KEY_ACTION_UP);
+  } else if (sscanf(step, "move:%d:%d", &a, &b) == 2) {
+    int r = 0;
+    for (int i = 0; i < 10; i++) {
+      r |= LiSendMouseMoveEvent((short) ((a * (i + 1)) / 10 - (a * i) / 10), (short) ((b * (i + 1)) / 10 - (b * i) / 10));
+      sleep_ms(8);
+    }
+    tlog("input: mouse move %d,%d -> %d\n", a, b, r);
+  } else if (sscanf(step, "click:%d", &a) == 1) {
+    int r = LiSendMouseButtonEvent(BUTTON_ACTION_PRESS, a);
+    sleep_ms(hold_ms);
+    r |= LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, a);
+    tlog("input: mouse button %d click -> %d\n", a, r);
+  } else if (sscanf(step, "scroll:%d", &a) == 1) {
+    tlog("input: scroll %d -> %d\n", a, LiSendHighResScrollEvent((short) a));
+  } else if (sscanf(step, "hscroll:%d", &a) == 1) {
+    tlog("input: hscroll %d -> %d\n", a, LiSendHighResHScrollEvent((short) a));
+  } else if (!strncmp(step, "text:", 5)) {
+    tlog("input: text \"%s\" -> %d\n", step + 5, LiSendUtf8TextEvent(step + 5, (unsigned) strlen(step + 5)));
+  } else if (sscanf(step, "abs:%d:%d", &a, &b) == 2) {
+    tlog("input: mouse position %d,%d -> %d\n", a, b, LiSendMousePositionEvent((short) a, (short) b, 1920, 1080));
+  } else {
+    return -1;
+  }
+  return 0;
+}
+
 static void pad_event(int buttons, int lt, int rt, int lx, int ly, int rx, int ry, const char *what) {
   int r = LiSendMultiControllerEvent(0, 0x1, buttons, (unsigned char) lt, (unsigned char) rt, (short) lx,
                                      (short) ly, (short) rx, (short) ry);
@@ -330,6 +388,7 @@ int main(int argc, char **argv) {
   const char *tick_kind = "dpad", *timing_path = NULL;
   char *tick_seq = NULL;
   int hevc = 0, hevc10 = 0, touch_motion = 0;
+  char *kbm_seq = NULL;
 
   static const struct option opts[] = {
     {"addr", 1, 0, 'a'},     {"rtsp-url", 1, 0, 'r'},   {"rikey", 1, 0, 'k'},    {"rikeyid", 1, 0, 'i'},
@@ -338,7 +397,7 @@ int main(int argc, char **argv) {
     {"width", 1, 0, 'W'},    {"height", 1, 0, 'H'},     {"fps", 1, 0, 'f'},      {"idr-at", 1, 0, 'I'},
     {"ui-ticks", 1, 0, 'U'}, {"tick-interval-ms", 1, 0, 'T'}, {"tick-start", 1, 0, 'S'}, {"tick-kind", 1, 0, 'K'},
     {"timing-log", 1, 0, 'L'}, {"no-script", 0, 0, 'N'}, {"tick-hold-ms", 1, 0, 'M'}, {"tick-seq", 1, 0, 'Q'},
-    {"hevc", 0, 0, 'E'},     {"hevc10", 0, 0, 'X'},     {"touch-motion", 0, 0, 'Y'},
+    {"hevc", 0, 0, 'E'},     {"hevc10", 0, 0, 'X'},     {"touch-motion", 0, 0, 'Y'}, {"kbm-seq", 1, 0, 'Z'},
     {0, 0, 0, 0}};
   int c;
   while ((c = getopt_long(argc, argv, "", opts, NULL)) != -1) {
@@ -370,6 +429,7 @@ int main(int argc, char **argv) {
       case 'E': hevc = 1; break;
       case 'X': hevc = hevc10 = 1; break;
       case 'Y': touch_motion = 1; break;
+      case 'Z': kbm_seq = optarg; break;
       default: return 2;
     }
   }
@@ -401,6 +461,11 @@ int main(int argc, char **argv) {
       seq_names[seq_n] = seq_buttons[b].name;
       seq_flags[seq_n++] = seq_buttons[b].flag;
     }
+  }
+  const char *kbm_steps[64];
+  int kbm_n = 0;
+  if (kbm_seq) {
+    for (char *t = strtok(kbm_seq, ","); t && kbm_n < 64; t = strtok(NULL, ",")) kbm_steps[kbm_n++] = t;
   }
   // The UI ticks start after the scripted startup input (which ends at 7.0 s) unless --tick-start says otherwise.
   if (tick_start < 0) tick_start = no_script ? 5.0 : 9.0;
@@ -508,8 +573,8 @@ int main(int argc, char **argv) {
     int sent_arrival = 0, step = 0, sent_idr = 0;
     // UI ticks (--ui-ticks): phase 0 = press due, 1 = release due.  D-pad RIGHT/LEFT alternate so the highlight
     // stays on screen; the PS button toggles the control centre.
-    int tick_n = 0, tick_phase = 0;
-    uint64_t tick_next_ms = 0;
+    int tick_n = 0, tick_phase = 0, kbm_i = 0;
+    uint64_t tick_next_ms = 0, kbm_next_ms = 0;
     const char *tick_names[2] = {"right", "left"};
     int last_sec = -1;
     while (!g_terminated) {
@@ -574,12 +639,17 @@ int main(int argc, char **argv) {
           }
         }
       }
+      if (kbm_i < kbm_n && el >= tick_start && now_ms() >= kbm_next_ms) {
+        if (kbm_step(kbm_steps[kbm_i], tick_hold_ms)) tlog("input: unknown --kbm-seq step %s\n", kbm_steps[kbm_i]);
+        kbm_i++;
+        kbm_next_ms = now_ms() + (uint64_t) tick_interval_ms;
+      }
       if (!sent_idr && el >= idr_at) {
         tlog("requesting IDR frame (LiRequestIdrFrame); IDRs so far: %llu\n", (unsigned long long) V.idrs);
         LiRequestIdrFrame();
         sent_idr = 1;
       }
-      sleep_ms(ui_ticks > 0 ? 2 : 20);
+      sleep_ms(ui_ticks > 0 || kbm_n ? 2 : 20);
     }
     uint64_t run_end = now_ms();
     tlog("stopping connection (terminated=%d code=%d)\n", g_terminated, g_term_code);

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Sunshine's platf:: layer for the PS5: networking, game audio from Avcap2, the native virtual pad
-// and placeholders for what v1.0 does not forward (mouse, keyboard, touch screen, pen).
+// Sunshine's platf:: layer for the PS5: networking, game audio from Avcap2, the native virtual pad, keyboard
+// and mouse, and placeholders for what is not forwarded (touch screen, pen).
 #include "input/gamepad_map.hpp"
+#include "input/keyboard_map.hpp"
 #include "input/pad_touch.hpp"
+#include "platform/ps5/kbm.h"
 #include "platform/ps5/pad.h"
 #include "platform/ps5/shared_capture.hpp"
 #include "src/config.h"
@@ -16,10 +18,14 @@
 #include <pthread_np.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <mutex>
+#include <optional>
 #include <string>
+#include <utility>
 #include <thread>
 #include <boost/asio/ip/address.hpp>
 
@@ -341,7 +347,7 @@ public:
 
 std::unique_ptr<audio_control_t> audio_control() { return std::make_unique<silent_audio_control>(); }
 
-// Input: one native virtual DualSense per Moonlight gamepad slot.
+// Input: one native virtual DualSense per Moonlight gamepad slot, and one keyboard and one mouse shared by all clients.
 struct input_raw_t {
     std::mutex mutex;
     std::array<ps_pad *, MAX_GAMEPADS> pads{};
@@ -354,6 +360,16 @@ struct input_raw_t {
     std::array<std::array<uint8_t, 3>, MAX_GAMEPADS> colors{};
     std::array<prospero::TriggerBlock, MAX_GAMEPADS> triggers{};
     std::array<prospero::PadTouch, MAX_GAMEPADS> touch{};
+    // Added on a client's first key or mouse event, removed when no session is left (client_session).
+    ps_keyboard *keyboard = nullptr;
+    ps_mouse *mouse = nullptr;
+    bool keyboard_failed = false, mouse_failed = false;
+    prospero::KeyboardState keys;
+    uint8_t mouse_buttons = 0;
+    prospero::WheelSteps wheel, tilt;
+    std::chrono::steady_clock::time_point key_down_at, button_down_at;
+    std::optional<std::pair<float, float>> pointer;  // the last absolute position, for abs_mouse
+    int sessions = 0;
     uint32_t user = 0;
     std::jthread output_thread;
 };
@@ -418,6 +434,25 @@ static void poll_pad_output(std::stop_token stop, input_raw_t *input) {
     }
 }
 
+static void close_keyboard_mouse(input_raw_t &input) {
+    if (input.keyboard) {
+        const int rc = ps_keyboard_close(input.keyboard);
+        BOOST_LOG(info) << "PS5 virtual keyboard detached ("sv << rc << ')';
+    }
+    if (input.mouse) {
+        const int rc = ps_mouse_close(input.mouse);
+        BOOST_LOG(info) << "PS5 virtual mouse detached ("sv << rc << ')';
+    }
+    input.keyboard = nullptr;
+    input.mouse = nullptr;
+    input.keyboard_failed = input.mouse_failed = false;
+    input.keys.clear();
+    input.mouse_buttons = 0;
+    input.wheel.clear();
+    input.tilt.clear();
+    input.pointer.reset();
+}
+
 void freeInput(input_raw_t *input) {
     if (!input) return;
     input->output_thread.request_stop();
@@ -426,6 +461,7 @@ void freeInput(input_raw_t *input) {
         ps_pad_close(pad);
         pad = nullptr;
     }
+    close_keyboard_mouse(*input);
     delete input;
 }
 
@@ -566,17 +602,156 @@ std::vector<supported_gamepad_t> &supported_gamepads(input_t *) {
 
 platform_caps::caps_t get_capabilities() { return platform_caps::controller_touch; }
 
-std::unique_ptr<client_input_t> allocate_client_input_context(input_t &) { return std::make_unique<deinit_t>(); }
+// Sunshine keeps one of these per stream session, and keeps it for a reconnect like its pads. The keyboard and mouse
+// go when the last one does, so the console doesn't list them (nor games show their prompts) once nobody streams.
+class client_session: public client_input_t {
+public:
+    explicit client_session(input_raw_t *input): input_(input) {
+        std::lock_guard lock(input_->mutex);
+        ++input_->sessions;
+    }
 
-// Not forwarded in v1.0.
-void move_mouse(input_t &, int, int) {}
-void move_mouse(input_t &, const touch_port_t &, int, int) {}
-void abs_mouse(input_t &, const touch_port_t &, float, float) {}
-void button_mouse(input_t &, int, bool) {}
-void scroll(input_t &, int) {}
-void hscroll(input_t &, int) {}
-void keyboard_update(input_t &, uint16_t, bool, uint8_t, bool) {}
-void unicode(input_t &, const char *, int) {}
+    ~client_session() override {
+        std::lock_guard lock(input_->mutex);
+        if (--input_->sessions == 0) close_keyboard_mouse(*input_);
+    }
+
+private:
+    input_raw_t *input_;
+};
+
+std::unique_ptr<client_input_t> allocate_client_input_context(input_t &input) {
+    return std::make_unique<client_session>(input.get());
+}
+
+// Each device is added on first use; one that fails is not tried again until the sessions end. The system drops what
+// a device reports right after it was added (a key at 0 ms was lost, at 50 ms taken, kbm_probe on 13.00), so the
+// first report waits a little, once per session.
+constexpr auto device_settle = 150ms;
+
+// A key or button let go within a few ms of going down is not seen: the first key after the settle wait above went
+// down and up 1 ms apart and was lost. So a release waits until its press has been in effect this long.
+constexpr auto min_hold = 30ms;
+
+static void hold_from(std::chrono::steady_clock::time_point down) { std::this_thread::sleep_until(down + min_hold); }
+
+static ps_keyboard *keyboard_of(input_raw_t &input) {
+    if (!input.keyboard && !input.keyboard_failed) {
+        if (const int rc = ps_keyboard_open(input.user, &input.keyboard); rc) {
+            BOOST_LOG(error) << "PS5 virtual keyboard failed: "sv << rc;
+            input.keyboard_failed = true;
+        } else {
+            BOOST_LOG(info) << "PS5 virtual keyboard attached"sv;
+            std::this_thread::sleep_for(device_settle);
+        }
+    }
+    return input.keyboard;
+}
+
+static ps_mouse *mouse_of(input_raw_t &input) {
+    if (!input.mouse && !input.mouse_failed) {
+        if (const int rc = ps_mouse_open(input.user, &input.mouse); rc) {
+            BOOST_LOG(error) << "PS5 virtual mouse failed: "sv << rc;
+            input.mouse_failed = true;
+        } else {
+            BOOST_LOG(info) << "PS5 virtual mouse attached"sv;
+            std::this_thread::sleep_for(device_settle);
+        }
+    }
+    return input.mouse;
+}
+
+static void send_mouse(input_raw_t &input, int dx, int dy, int8_t wheel = 0, int8_t tilt = 0) {
+    ps_mouse *mouse = mouse_of(input);
+    if (!mouse) return;
+    // A large jump goes out in several reports rather than wrapping around.
+    do {
+        const auto x = static_cast<int16_t>(std::clamp(dx, -32767, 32767));
+        const auto y = static_cast<int16_t>(std::clamp(dy, -32767, 32767));
+        ps_mouse_send(mouse, x, y, input.mouse_buttons, wheel, tilt);
+        dx -= x;
+        dy -= y;
+        wheel = tilt = 0;
+    } while (dx || dy);
+}
+
+void move_mouse(input_t &input, int deltaX, int deltaY) {
+    std::lock_guard lock(input->mutex);
+    input->pointer.reset();
+    // Sunshine nudges the pointer by a pixel and back at every stream start; that alone does not add a mouse.
+    if (!input->mouse && std::abs(deltaX) <= 1 && std::abs(deltaY) <= 1) return;
+    send_mouse(*input, deltaX, deltaY);
+}
+
+void move_mouse(input_t &input, const touch_port_t &, int deltaX, int deltaY) { move_mouse(input, deltaX, deltaY); }
+
+// The console's pointer is relative only, so a client in absolute mode moves it by the difference to its last position.
+void abs_mouse(input_t &input, const touch_port_t &, float x, float y) {
+    std::lock_guard lock(input->mutex);
+    const auto last = std::exchange(input->pointer, std::pair{x, y});
+    if (!last) return;
+    send_mouse(*input, static_cast<int>(std::lround(x - last->first)), static_cast<int>(std::lround(y - last->second)));
+}
+
+void button_mouse(input_t &input, int button, bool release) {
+    const uint8_t bit = prospero::mouse_button_bit(button);
+    if (!bit) return;
+    std::lock_guard lock(input->mutex);
+    const uint8_t buttons = release ? input->mouse_buttons & ~bit : input->mouse_buttons | bit;
+    if (buttons == input->mouse_buttons) return;
+    input->mouse_buttons = buttons;
+    if (release) hold_from(input->button_down_at);
+    send_mouse(*input, 0, 0);
+    if (!release) input->button_down_at = std::chrono::steady_clock::now();
+}
+
+void scroll(input_t &input, int distance) {
+    std::lock_guard lock(input->mutex);
+    if (const int8_t steps = input->wheel.add(distance)) send_mouse(*input, 0, 0, steps, 0);
+}
+
+void hscroll(input_t &input, int distance) {
+    std::lock_guard lock(input->mutex);
+    if (const int8_t steps = input->tilt.add(distance)) send_mouse(*input, 0, 0, 0, steps);
+}
+
+void keyboard_update(input_t &input, uint16_t modcode, bool release, uint8_t, bool) {
+    std::lock_guard lock(input->mutex);
+    if (!input->keys.update(modcode, release)) return;
+    ps_keyboard *keyboard = keyboard_of(*input);
+    if (!keyboard) return;
+    if (release) hold_from(input->key_down_at);
+    ps_keyboard_send(keyboard, input->keys.modifiers(), input->keys.usages(), input->keys.count());
+    if (!release) input->key_down_at = std::chrono::steady_clock::now();
+}
+
+// Text from a client's on-screen keyboard: printable ASCII is typed key by key as on a US keyboard, and what the
+// client holds stays held. Other characters have no key and are dropped.
+void unicode(input_t &input, const char *utf8, int size) {
+    std::lock_guard lock(input->mutex);
+    ps_keyboard *keyboard = keyboard_of(*input);
+    if (!keyboard) return;
+    const auto &held = input->keys;
+    int dropped = 0;
+    for (int i = 0; i < size; i++) {
+        const auto key = prospero::ascii_key(utf8[i]);
+        if (!key.usage) {
+            dropped += (static_cast<uint8_t>(utf8[i]) & 0xC0) != 0x80;  // a UTF-8 sequence counts once
+            continue;
+        }
+        std::array<uint8_t, prospero::KeyboardState::max_keys> usages{};
+        const auto count = std::min<uint8_t>(held.count(), prospero::KeyboardState::max_keys - 1);
+        std::copy_n(held.usages(), count, usages.begin());
+        usages[count] = key.usage;
+        const uint8_t modifiers = held.modifiers() | (key.shift ? 0x02 : 0);
+        ps_keyboard_send(keyboard, modifiers, usages.data(), count + 1);
+        std::this_thread::sleep_for(min_hold);
+        ps_keyboard_send(keyboard, held.modifiers(), held.usages(), held.count());
+        std::this_thread::sleep_for(min_hold);
+    }
+    if (dropped) BOOST_LOG(debug) << "PS5 virtual keyboard: "sv << dropped << " characters without a key"sv;
+}
+
 void touch_update(client_input_t *, const touch_port_t &, const touch_input_t &) {}
 void pen_update(client_input_t *, const touch_port_t &, const pen_input_t &) {}
 void gamepad_battery(input_t &, const gamepad_battery_t &) {}
