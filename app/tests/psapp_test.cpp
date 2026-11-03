@@ -179,9 +179,18 @@ static void experimental_tests()
     CHECK(diag::experimental_needed(0x13600000, "experimental_high_bitrate"));
     CHECK(diag::experimental_needed(0x12400000, "experimental_high_bitrate"));
     CHECK(diag::experimental_needed(0, "experimental_high_bitrate"));
+    // Modes below 1080p: verified on 10.20 only, so 13.00 has a switch for them too.
+    CHECK(!diag::experimental_needed(0x10200006, "experimental_small_modes"));
+    CHECK(!diag::experimental_no_effect(0x10200006, "experimental_small_modes"));
+    CHECK(diag::experimental_needed(0x13000040, "experimental_small_modes"));
+    CHECK(!diag::experimental_no_effect(0x13000040, "experimental_small_modes"));
+    CHECK(diag::experimental_needed(0x10400000, "experimental_small_modes"));
+    CHECK(!diag::experimental_no_effect(0x10400000, "experimental_small_modes"));
+    CHECK(diag::experimental_needed(0x13600000, "experimental_small_modes"));
 
     // The options: switches, off by default, written as 1.
-    for (const char *key : {"experimental_hevc", "experimental_hdr", "experimental_large_modes", "experimental_high_bitrate"})
+    for (const char *key : {"experimental_hevc", "experimental_hdr", "experimental_large_modes", "experimental_high_bitrate",
+                            "experimental_small_modes"})
     {
         const OptionSpec *spec = find_option(key);
         CHECK(spec != nullptr);

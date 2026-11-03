@@ -120,6 +120,8 @@ int ps_capture_large_modes_verified(void) { return ps_exp_large_verified(kernel_
 
 int ps_capture_high_bitrate_verified(void) { return ps_exp_bitrate_verified(kernel_get_fw_version()); }
 
+int ps_capture_small_modes_verified(void) { return ps_exp_small_verified(kernel_get_fw_version()); }
+
 // The Experimental switches (experimental.h). The lock also covers what the failure handling below changes.
 static pthread_mutex_t experiment_lock = PTHREAD_MUTEX_INITIALIZER;
 static ps_experiment experiment;
@@ -156,6 +158,12 @@ int ps_capture_high_bitrate_allowed(void)
     return ps_capture_high_bitrate_verified() || ps_exp_bitrate_offered(&now);
 }
 
+int ps_capture_small_modes_allowed(void)
+{
+    const ps_experiment now = experiment_now();
+    return ps_capture_small_modes_verified() || ps_exp_small_offered(&now);
+}
+
 static void mode_snapshot(uint32_t mode[7])
 {
     mode[5] = atomic_load(&video_ten_bit);
@@ -189,7 +197,7 @@ uint32_t ps_capture_video_resolution(void) { return atomic_load(&video_resolutio
 
 int ps_capture_fall_back_mode(void)
 {
-    if (!atomic_load(&refused) || atomic_load(&video_resolution) < 5) return 0;
+    if (!atomic_load(&refused) || !ps_exp_mode_may_fall_back(atomic_load(&video_resolution))) return 0;
     ps_capture_set_video_mode(4, atomic_load(&video_timing));
     return 1;
 }
@@ -591,18 +599,20 @@ static void describe_attempt(char *out, size_t size, const ps_experiment *e, uin
                              uint32_t timing, uint32_t average)
 {
     static const char *const variants[] = {"standard", "minimal", "full"};
+    // By ps_capture_set_video_mode's resolution, which it keeps within 1..6.
+    static const char *const modes[] = {"", "640x360", "960x540", "1280x720", "1920x1080", "2560x1440", "3840x2160"};
     char on[64], trial[64];
     names(on, sizeof on, e->on);
     const int unproven = ps_exp_unproven_codec(e, codec, ten_bit);
     uint8_t proving[PS_EXP_SWITCH_COUNT] = {0};
     proving[PS_EXP_HEVC] = unproven && !ten_bit;
     proving[PS_EXP_HDR] = unproven && ten_bit;
-    proving[PS_EXP_LARGE] = (uint8_t)ps_exp_unproven_mode(e, resolution);
+    const int mode = ps_exp_mode_switch(resolution);
+    if (mode >= 0) proving[mode] = (uint8_t)ps_exp_unproven_mode(e, resolution);
     proving[PS_EXP_BITRATE] = (uint8_t)ps_exp_unproven_rate(e, average);
     names(trial, sizeof trial, proving);
     snprintf(out, size, "switches=%s firmware=%#x trial=%s codec=%s bits=%d mode=%s fps=%d kbit=%u variant=%s", on, kernel_get_fw_version(), trial,
-             codec == 1 ? "hevc" : "h264", ten_bit ? 10 : 8,
-             resolution == 6 ? "3840x2160" : resolution == 5 ? "2560x1440" : "1920x1080", timing ? 60 : 30, average / 1000,
+             codec == 1 ? "hevc" : "h264", ten_bit ? 10 : 8, modes[resolution], timing ? 60 : 30, average / 1000,
              variants[ps_exp_variant_for(e, codec, ten_bit)]);
 }
 
@@ -707,7 +717,8 @@ int ps_capture_open_or_fall_back(ps_capture **out)
         enum ps_exp_next next = PS_EXP_GIVE_UP;
         if (rc) {
             const int attributable = rc == PS_CAPTURE_ERROR && atomic_load(&reached_encoder);
-            next = ps_exp_failed(&experiment, codec, ten_bit, average, attributable, atomic_load(&refused) && resolution >= 5);
+            next = ps_exp_failed(&experiment, codec, ten_bit, resolution, average, attributable,
+                                 atomic_load(&refused) && ps_exp_mode_may_fall_back(resolution));
         } else {
             ps_exp_succeeded(&experiment, codec, ten_bit, resolution, average);
         }

@@ -90,6 +90,21 @@ static void setup_high(uint32_t firmware, int hevc, uint32_t codec, uint32_t ave
     ps_capture_set_opening_bitrate(average, average / 100 * 112);
     fake_log[0] = 0;
 }
+// The switch for modes below 1080p alone.
+static void setup_small(uint32_t firmware, int small, uint32_t codec, uint32_t resolution)
+{
+    setup(firmware, 0, 0, 0, codec, 0, resolution);
+    int switches[PS_EXP_SWITCH_COUNT] = {0};
+    switches[PS_EXP_SMALL] = small;
+    ps_capture_set_experimental(switches, marker);
+    fake_log[0] = 0;
+}
+static int small_fails(const char *step, const uint8_t *record)
+{
+    uint32_t resolution;
+    memcpy(&resolution, record + 0x18, sizeof resolution);
+    return !strcmp(step, "OpenVideo") && resolution < 4 ? INVALID : 0;
+}
 static uint32_t record_u32(size_t at)
 {
     uint32_t value;
@@ -223,6 +238,67 @@ int main(void)
     assert(fake_opens == 3 && ps_capture_video_resolution() == 4);
     assert(logged("mode=1920x1080 fps=60 kbit=20000 variant=minimal error=0") && logged("feature=large") && !logged("feature=hevc"));
     assert(ps_capture_hevc_allowed() && !ps_capture_large_modes_allowed());
+
+    // A smaller mode that fails gives 1080p in the same stream, and stays off. 10.40 has them unverified.
+    setup_small(0x10400000u, 1, 0, 2);
+    assert(ps_capture_small_modes_allowed() && !ps_capture_large_modes_allowed());
+    fake_decide = small_fails;
+    assert(open_and_close() == 0);
+    assert(fake_opens == 2 && ps_capture_video_resolution() == 4 && record_u32(0x18) == 4);
+    assert(logged("trial=small codec=h264 bits=8 mode=960x540") && logged("experimental disabled feature=small\n"));
+    assert(!ps_capture_small_modes_allowed());
+    // It runs: the record asks for the mode, with the resource 1080p uses.
+    setup_small(0x10400000u, 1, 0, 1);
+    assert(open_and_close() == 0);
+    assert(fake_opens == 1 && record_u32(0x18) == 1 && record_u32(0x28) == 180);
+    assert(logged("trial=small codec=h264 bits=8 mode=640x360") && logged("result=ok") && ps_capture_small_modes_allowed());
+    // Once it ran, a refusal (a title starting, say) gives 1080p for that stream, and the switch stays for the next one.
+    fake_opens = 0;
+    fake_log[0] = 0;
+    fake_decide = small_fails;
+    assert(open_and_close() == 0);
+    assert(fake_opens == 2 && ps_capture_video_resolution() == 4 && record_u32(0x18) == 4);
+    assert(logged("trial=none") && !logged("disabled"));
+    assert(ps_capture_small_modes_allowed());
+    // 10.20 has them verified: no switch, no trial and no frame read; a refusal gives 1080p, as on every firmware.
+    setup_small(0x10200006u, 0, 0, 3);
+    assert(ps_capture_small_modes_allowed());
+    reads = 0;
+    fake_decide = count_reads;
+    assert(open_and_close() == 0);
+    assert(reads == 0 && fake_opens == 1 && record_u32(0x18) == 3 && !logged("experimental"));
+    setup_small(0x10200006u, 0, 0, 3);
+    fake_decide = small_fails;
+    assert(open_and_close() == 0);
+    assert(fake_opens == 2 && ps_capture_video_resolution() == 4 && record_u32(0x18) == 4);
+    assert(!logged("experimental") && ps_capture_small_modes_allowed());
+    // 13.00 refused 720p in mode_spike: there they take the switch, with the same fallback.
+    setup_small(0x13000040u, 0, 0, 3);
+    assert(!ps_capture_small_modes_allowed());
+    setup_small(0x13000040u, 1, 0, 3);
+    assert(ps_capture_small_modes_allowed());
+    fake_decide = small_fails;
+    assert(open_and_close() == 0);
+    assert(fake_opens == 2 && ps_capture_video_resolution() == 4 && logged("experimental disabled feature=small\n"));
+
+    // From 1080p up the switch changes nothing: the same record, one open, no first-frame check, also where it counts (13.00).
+    {
+        static const uint32_t firmwares[] = {0x13000040u, 0x10200006u, 0x10400000u};
+        for (size_t f = 0; f < sizeof firmwares / sizeof firmwares[0]; f++)
+            for (uint32_t codec = 0; codec < 2; codec++)
+                for (uint32_t resolution = 4; resolution <= 6; resolution++) {
+                    setup_small(firmwares[f], 0, codec, resolution);
+                    assert(open_and_close() == 0);
+                    uint8_t without[sizeof fake_record];
+                    memcpy(without, fake_record, sizeof without);
+                    setup_small(firmwares[f], 1, codec, resolution);
+                    reads = 0;
+                    fake_decide = count_reads;
+                    assert(open_and_close() == 0);
+                    assert(fake_opens == 1 && reads == 0 && !memcmp(without, fake_record, sizeof without));
+                    assert(!logged("trial=small") && ps_capture_video_resolution() == resolution);
+                }
+    }
 
     // HEVC at 4K fails everywhere: HEVC is off, and 1440p and 4K are still unproven with H.264.
     setup(0x13600000u, 1, 0, 1, 1, 0, 6);

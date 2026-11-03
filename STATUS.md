@@ -167,7 +167,7 @@ Live auf der Konsole geprüft mit dem aktuellen Host (Testclient vom PC):
 
 Noch offen:
 
-1. **Auflösung (P9.3, Meilenstein 0.4):** Unter 1080p startet Avcap2 nicht (`src/mode_spike.cpp`: 360p, 540p, 720p scheitern, `sceAvcap2ChangeScanInResolution` lehnt ab mit `0x81950001`, `0x8195000A`); Moonlight skaliert 1080p selbst herunter. Darüber gehen H.264 und HEVC (siehe „1440p und 4K“ oben). Offen: 4K im aktiven Spielbetrieb (nicht ohne Eingaben und Spielstände messbar), 4K mit anderen Clients als Moonlight für PC.
+1. **Auflösung (P9.3, Meilenstein 0.4):** Unter 1080p startet Avcap2 auf 13.00 nicht (`src/mode_spike.cpp`: 360p, 540p, 720p scheitern, `sceAvcap2ChangeScanInResolution` lehnt ab mit `0x81950001`, `0x8195000A`); Moonlight skaliert 1080p selbst herunter. Auf 10.20 laufen 360p, 540p und 720p (unten, „Modi unter 1080p auf Firmware 10.20“). Darüber gehen H.264 und HEVC (siehe „1440p und 4K“ oben). Offen: 4K im aktiven Spielbetrieb (nicht ohne Eingaben und Spielstände messbar), 4K mit anderen Clients als Moonlight für PC.
 2. **Mehrere Controller am selben Nutzer:** Die Oberfläche der Konsole nimmt Eingaben von allen an, die App aber nur von einem. Beobachtet mit dem RemoteEye-Test-Pad: War es zuerst verbunden, ignorierte die App das Stream-Pad (44 Drücke, keine Bildänderung); nach `ps5_detach` reagierte sie auf alle 44. Das passt zu P9.8 in umgekehrter Reihenfolge. Mit einem echten DualSense verhielt es sich anders (Nutzertest, iPhone, 2026-10-31): Er trennte sich beim Verbinden, die Moonlight-Steuerung ging sofort, auch in Mario 64. Wieder eingeschaltet während des Streams reagierte nur Moonlight, nach Stream-Ende arbeitete der DualSense normal. Im Klog meldet die Konsole beim Anmelden des Stream-Pads `DEVICE_REMOVED` für den DualSense; im Host-Code gibt es dafür keinen Aufruf, der Grund liegt also auf Konsolenseite und ist unbekannt. Für den Stream ist das kein Hindernis, daher bleibt es bei der Beschreibung in der README.
 3. **Payload-Manager-Fenster:** Ein offenes Fenster des Payload Managers liegt über Apps und nimmt Eingaben an sich, auch wenn es nicht reagiert. In dem Zustand lässt es sich nur am echten Controller schließen. Beim Fernsteuern vorher prüfen.
 4. **Eigene Werkzeuge vom PC:** `PIN`/`QUIT` und `pair.py status` über den Steuer-Socket gehen vom PC aus nur noch mit der leeren Datei `/data/prosperosunshine/control_lan` (danach Host neu starten). Sonst geht der Host-Neustart über die App.
@@ -253,8 +253,70 @@ Gemessen auf einer PS5 Pro mit 10.20 (Datensatz von 10.x, `record_shift`). Eine 
 - **10.20 gilt als geprüft:** Die App zeigt dort keinen Hinweis „untested“ mehr, und `ra_nids.h` kennt die Adressen der
   ResourceArbitrator-Aufrufe (`0xde0`, `0xfe0`, `0x1220`, `0x1360`, auf 10.20 per NID gefunden). `ra_nid_probe.elf` aus diesem Stand meldet dort `result=PASS … known=1`, NID und Tabelle stimmen für alle vier überein.
 - **Offen:** HEVC auf Android, iOS und Switch (dort bisher nur H.264); andere 10.x-Versionen (bekommen nur H.264); Schritt 6
-  der Checkliste (Bitrate beim Öffnen) ist auf 10.x nicht erfüllbar; Modi über 1080p bleiben auf 10.x aus (`ps_capture_large_modes_verified`); die Bitrate,
+  der Checkliste (Bitrate beim Öffnen) ist auf 10.x nicht erfüllbar; Modi über 1080p bleiben auf 10.x aus (`ps_capture_large_modes_verified`; die darunter laufen auf 10.20, siehe „Modi unter 1080p auf Firmware 10.20“); die Bitrate,
   die der Encoder auf 10.x wie bei H.264 nicht aus der Konfiguration übernimmt.
+
+### Modi unter 1080p auf Firmware 10.20 (2026-11-02, nicht veröffentlicht)
+
+Gemessen auf der PS5 Pro mit 10.20, Ausgabe der Konsole in 1080p (`video out mode 0x13c`), Startbildschirm, kein Titel vorn,
+Host ohne Stream. Sonde `src/small_mode_probe.cpp`, je Modus ein neuer Kanal mit dem Datensatz des Hosts, 3 s, alle 500 ms ein
+IDR angefordert, 16 Mbit/s verlangt. Auf 10.x setzt der Host dabei den Quantisierer 24/28 (`encoder_qp.h`).
+
+- **Alle 24 Kombinationen laufen:** 640x360, 960x540, 1280x720 und 1920x1080, je H.264, HEVC 8 und HEVC 10 Bit, je 30 und 60
+  fps. `OpenVideo` und `Start` geben 0 zurück, Profil 180, Zweck 2, 90 bzw. 179–181 Bilder. Die gespeicherten Streams decodiert
+  PyAV (FFmpeg) auf dem PC ohne Fehler in genau diesen Größen, HEVC 10 Bit als `yuv420p10le`. Ein zweiter, unabhängiger Lauf
+  am selben Tag (eine eigene Sonde, die alle Modi nacheinander öffnet) sah dieselben Modi Bilder liefern, mit denselben Slices.
+  Das ist anders als auf 13.00, wo `mode_spike` 720p60 H.264 nicht öffnen konnte (oben unter „Noch offen“; 540p und 360p hat
+  es dort nur über `sceAvcap2ChangeScanInResolution` versucht).
+- **Bildgrößen bei 60 fps** (IDR im Mittel, andere Bilder im Mittel, Slices je Bild; der Startbildschirm bewegt sich kaum, die
+  Werte vergleichen die Modi untereinander, nicht mit einem Spiel):
+
+| Modus | H.264 | HEVC 8 Bit | HEVC 10 Bit |
+| --- | --- | --- | --- |
+| 1920x1080 | 65,1 KB, 580 B, 34 Slices | 68,4 KB, 257 B, 17 | 55,7 KB, 263 B, 17 |
+| 1280x720 | 43,1 KB, 659 B, 45 | 43,2 KB, 181 B, 12 | 36,8 KB, 182 B, 12 |
+| 960x540 | 27,1 KB, 473 B, 34 | 24,7 KB, 153 B, 9 | 20,3 KB, 156 B, 9 |
+| 640x360 | 14,8 KB, 333 B, 23 | 13,3 KB, 95 B, 6 | 11,1 KB, 95 B, 6 |
+
+  Ein IDR in 720p kostet also rund zwei Drittel von 1080p, in 540p rund 40 %, in 360p rund 20 %. Bei 30 fps sind die Bilder
+  gleich groß.
+- **Slices:** H.264 kommt in 720p mit 45 Slices, in 540p wie 1080p mit 34, beides mehr als die Hardware-Decoder von FFmpeg
+  nehmen (32); erst 360p bleibt mit 23 darunter. HEVC bleibt überall darunter.
+- **Host:** Mit diesem Stand wählt der Host auf 10.20 für eine Anfrage unter 1080p den Modus, der ihr in der Höhe am nächsten
+  liegt, bei Gleichstand den größeren: 960x544 (PS Vita) gibt 960x540, 854x480 960x540, 1280x800 1280x720, 1600x900 bleibt bei
+  1080p. Lehnt das System einen dieser Modi ab, fällt der Stream wie bei 1440p und 4K auf 1080p, also auf das, was jeder
+  Client vor diesen Modi bekam. Auf 10.20 und bei einem Modus, der schon lief, nur für diesen Stream; auf anderer Firmware
+  ist der Schalter danach bis zum Neustart aus, wenn er noch unbewiesen war.
+- **Moonlight auf dem iPhone über das Internet (2026-11-02, 13:45–14:03):** Testhost aus diesem Stand mit der
+  Firmware-Sonde, GTA III, Verbindung verschlüsselt (Client nicht im LAN). Jede Anfrage bekam, was oben steht:
+  640x360@60 gab 640x360 (HEVC HDR), 960x544@60 960x540 (HEVC und H.264), 1280x720@60 1280x720 (H.264). Keine Warnung,
+  kein Verlust der Aufnahme, kein Rückfall. Über Mobilfunk (4G) liefen die ersten Läufe in 360p und 540p laut Nutzer
+  flüssig; 720p in H.264 ruckelte leicht, zwei spätere 540p-Läufe deutlich. Derselbe 540p-Lauf in H.264 über das WLAN eines
+  anderen Anbieters lief ohne Ruckeln, im Client 19 ms mittlere Latenz. Der Host lieferte in jedem Lauf alle Bilder, das
+  Ruckeln lag also auf der Strecke.
+- **Datenrate in 540p H.264** (der Fall der PS Vita: H.264 960x540@60, verlangt 3428 kbit/s, QP 30/34 aus `encoder_qp.h`), mit
+  einem Messzähler im Testhost (Bytes jedes gelesenen Bildes, alle 5 s): in GTA III mit Fahrt durch die Stadt, drei Läufe zu je
+  1–2,5 min, 0,24 bis 1,9 Mbit/s im Mittel je 5 s, in Fahrt meist 0,9 bis 1,3; die dichteste Sekunde einmal 2,7 Mbit/s, in
+  Fahrt sonst 1,0 bis 1,8; größtes Bild 27 KB (das erste IDR); 300 Bilder je 5 s ohne Ausnahme.
+- **Ab 1080p unverändert, live (2026-11-02, 15:04–15:11):** derselbe Host, GTA III. Für 1920x1080@60 bekamen Moonlight auf dem
+  iPhone im WLAN (HEVC) und Moonlight unter Linux am Kabel (HEVC HDR) 1920x1080@60, beide mit 14 988 kbit/s und QP 24/28.
+  Linux bekam außerdem 2560x1440@60 für 2560x1440@60 (HEVC HDR, 30 988 kbit/s, QP 21/25; der Schalter für 1440p/4K prüfte
+  wie bisher das erste Bild, nach 10 ms) und 3840x2160@60 für 3840x2160@60 (HEVC HDR, 50 000 kbit/s bei verlangten 62 988). Das sind dieselben Antworten
+  wie bei einem Host ohne diese Änderung am selben Tag (13:12 und 13:13: 2560x1440 und 3840x2160 wie verlangt, 30 988 und
+  50 000 kbit/s). Keine Warnung, kein Rückfall.
+- **Auf 0.1.9 mit weiteren Clients (2026-11-02, 18:57–19:24, Heimnetz, GTA III):**
+  - iPhone 15: 1280x720@60 verlangt und bekommen (HEVC, 7308 kbit/s).
+  - Android-Telefon mit 165 Hz: 854x480@165 verlangt, 960x540@60 bekommen (HEVC HDR, 4908 kbit/s).
+  - Nintendo Switch: 1280x720@60 verlangt und bekommen (HEVC, 16 024 kbit/s).
+  - Keine Warnung der Aufnahme, kein Rückfall.
+- **PS Vita (2026-11-02, 19:52–19:58):** Moonlight auf einer echten PS Vita im WLAN in einer anderen Stadt, also über das
+  Internet, GTA III, 0.1.9 mit dieser Änderung.
+  - 960x544@60 verlangt, 960x540@60 bekommen, H.264 mit 34 Slices je Bild, 7308 kbit/s verlangt (QP 30/34).
+  - 5 min 40 s ohne Verlust der Aufnahme und ohne Rückfall.
+  - Laut Nutzer flüssig, mit wenigen sehr kurzen Rucklern, insgesamt sehr gut. Der Decoder der Vita verträgt also die
+    34 Slices.
+  - Die gesendete Bitrate zählte dieser Host nicht. Gemessen ist sie mit dem iPhone in derselben Einstellung (oben).
+  - Der Stream wurde auf der Vita geschlossen, ohne ihn zu beenden; der Host beendete die Sitzung beim Ping-Timeout.
 
 ### Terminate App schließt das Spiel (2026-11-01, nicht veröffentlicht)
 

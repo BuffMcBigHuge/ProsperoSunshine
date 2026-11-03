@@ -2,6 +2,7 @@
 // Which Avcap2 mode serves a client's request. Portable, so that the tests can run it.
 #pragma once
 #include <cstdint>
+#include <initializer_list>
 
 namespace prospero {
 
@@ -10,11 +11,24 @@ struct CaptureMode {
     int width, height;
 };
 
-inline constexpr CaptureMode mode_1080p{4, 1920, 1080}, mode_1440p{5, 2560, 1440}, mode_2160p{6, 3840, 2160};
+inline constexpr CaptureMode mode_360p{1, 640, 360}, mode_540p{2, 960, 540}, mode_720p{3, 1280, 720}, mode_1080p{4, 1920, 1080},
+                             mode_1440p{5, 2560, 1440}, mode_2160p{6, 3840, 2160};
 
-// The largest mode that doesn't exceed the request, at least 1080p: smaller requests get 1080p and the client scales it,
-// because Avcap2 doesn't start below that.
-constexpr CaptureMode choose_capture_mode(int requested_height, bool large_modes_allowed) {
+// From 1080 lines up, the largest mode that doesn't exceed the request. Below that, where the smaller modes are allowed, the
+// nearest by height, a tie going to the larger one: 960x544 (PS Vita) gets 960x540, 854x480 960x540, 1280x800 1280x720, and
+// 1600x900 keeps 1080p. Without them smaller requests get 1080p and the client scales it, as on 13.00, where 720p didn't start.
+// A request without a height gets 1080p.
+constexpr CaptureMode choose_capture_mode(int requested_height, bool large_modes_allowed, bool small_modes_allowed) {
+    if (requested_height <= 0) return mode_1080p;
+    if (requested_height < mode_1080p.height && small_modes_allowed) {
+        const auto distance = [requested_height](const CaptureMode &mode) {
+            return mode.height > requested_height ? mode.height - requested_height : requested_height - mode.height;
+        };
+        CaptureMode nearest = mode_1080p;
+        for (const CaptureMode &mode : {mode_720p, mode_540p, mode_360p})
+            if (distance(mode) < distance(nearest)) nearest = mode;
+        return nearest;
+    }
     if (!large_modes_allowed) return mode_1080p;
     if (requested_height >= mode_2160p.height) return mode_2160p;
     if (requested_height >= mode_1440p.height) return mode_1440p;
@@ -22,7 +36,9 @@ constexpr CaptureMode choose_capture_mode(int requested_height, bool large_modes
 }
 
 constexpr CaptureMode capture_mode_of(uint32_t resolution) {
-    return resolution == mode_2160p.resolution ? mode_2160p : resolution == mode_1440p.resolution ? mode_1440p : mode_1080p;
+    for (const CaptureMode &mode : {mode_360p, mode_540p, mode_720p, mode_1440p, mode_2160p})
+        if (mode.resolution == resolution) return mode;
+    return mode_1080p;
 }
 
 }  // namespace prospero

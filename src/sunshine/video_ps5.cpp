@@ -68,7 +68,8 @@ int probe_encoders() {
                     << (active_hevc_mode == 3   ? "H.264, HEVC and HEVC HDR, "sv
                         : active_hevc_mode == 2 ? "H.264 and HEVC, "sv
                                                 : "H.264, "sv)
-                    << (ps_capture_large_modes_allowed() ? "up to 3840x2160, "sv : "1920x1080, "sv) << "TSC "sv
+                    << (ps_capture_small_modes_allowed() ? "640x360 to "sv : ps_capture_large_modes_allowed() ? "up to "sv : ""sv)
+                    << (ps_capture_large_modes_allowed() ? "3840x2160, "sv : "1920x1080, "sv) << "TSC "sv
                     << tsc_per_ns() << " ticks/ns"sv;
     return 0;
 }
@@ -80,10 +81,12 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     auto touch_port_event = mail->event<input::touch_port_t>(mail::touch_port);
     auto hdr_event = mail->event<hdr_info_t>(mail::hdr);
 
-    // Avcap2 encodes at 30 or 60 fps, 1080p and up; smaller modes do not start (mode_spike, STATUS.md).
+    // Avcap2 encodes at 30 or 60 fps. On 13.00 720p did not start (mode_spike); on 10.20 360p, 540p and 720p
+    // do (STATUS.md), so a client that asks for less gets less to receive and decode.
     const bool hevc = config.videoFormat == 1;
     const bool low_rate = config.framerate > 0 && config.framerate <= 30;
-    const auto mode = prospero::choose_capture_mode(config.height, ps_capture_large_modes_allowed());
+    const auto mode =
+        prospero::choose_capture_mode(config.height, ps_capture_large_modes_allowed(), ps_capture_small_modes_allowed());
     BOOST_LOG(info) << "PS5 capture requested "sv << config.width << 'x' << config.height << '@' << config.framerate
                     << ", delivering "sv << mode.width << 'x' << mode.height << '@' << (low_rate ? 30 : 60);
     int delivered_height = 0;
@@ -99,12 +102,12 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     // Avcap2 reports no mastering metadata, and all zero means unknown. The stream itself says BT.2020 and PQ in its SPS.
     const bool hdr = hevc && config.dynamicRange > 0 && ps_capture_hdr_allowed();
     hdr_event->raise(std::make_unique<hdr_info_raw_t>(hdr));
-    // The session falls back to 1080p when the system refuses a larger mode.
+    // The session falls back to 1080p when the system refuses a larger or smaller mode.
     const auto check_fallback = [&] {
         const auto delivered = prospero::capture_mode_of(ps_capture_video_resolution());
         if (delivered.height != delivered_height)
-            BOOST_LOG(warning) << "PS5 capture: larger mode refused by the system, delivering "sv << delivered.width << 'x'
-                               << delivered.height;
+            BOOST_LOG(warning) << "PS5 capture: "sv << (delivered_height > delivered.height ? "larger"sv : "smaller"sv)
+                               << " mode refused by the system, delivering "sv << delivered.width << 'x' << delivered.height;
         announce_mode(delivered);
     };
 
