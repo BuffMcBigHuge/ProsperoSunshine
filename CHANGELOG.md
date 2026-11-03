@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 (2026-11-03)
 
 ### Added
 
@@ -9,7 +9,16 @@
   the stream ends. Keys move the focus in the console's menus and type into text fields while the on-screen keyboard is open,
   Shift included; text sent from a phone's keyboard is typed as on a US keyboard. The mouse moves the pointer and clicks in
   games that support a mouse, measured in Planet Zoo; the console's browser doesn't use one. Measured on 13.00 with the
-  test client, which got `--kbm-seq` for this. Wheel, the right and middle buttons and firmware 10.20 are not tested yet.
+  test client, which got `--kbm-seq` for this, and used through Moonlight Web. Wheel, the right and middle
+  buttons and firmware 10.20 are not tested yet.
+
+### Changed
+
+- **A new stream from the same device replaces its old one.** The console can only capture one stream, so until now a
+  second start was turned away while the first still held the capture. A client that retries when its first attempt
+  hangs, like Moonlight Web behind a strict proxy, then waited half a minute or more until the old stream timed out. Now the
+  host ends the old stream and the new one takes over within a few milliseconds. A stream from another device is still
+  turned away.
 
 ## 0.2.0 (2026-11-03)
 

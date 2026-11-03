@@ -5,7 +5,7 @@
 A native, Sunshine-compatible game-stream host for the PlayStation 5. Add your console to Moonlight and stream
 the PS5 screen, game audio and controller input over your LAN.
 
-> **Status: 0.2.0 ([changelog](CHANGELOG.md)).** Pairing, H.264, HEVC and HDR from 360p up to 4K at 30 or 60 fps, game audio and controller input work end to end
+> **Status: 0.2.1 ([changelog](CHANGELOG.md)).** Pairing, H.264, HEVC and HDR from 360p up to 4K at 30 or 60 fps, game audio, controller, keyboard and mouse input work end to end
 > with Moonlight on PC, in the browser (Moonlight Web) and on iPhone. Sessions of 30 minutes and ten reconnects
 > were tested without errors on firmware 13.00. Firmware 10.20 was tested by a contributor at 1080p. Users report streams on
 > 13.60, not measured here. Not every client or game has been tried.
@@ -108,7 +108,8 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   test client on wired LAN and a noise image at 4K, not yet with Moonlight or in a game. Games may stay well below what you set.
   With H.264, extreme images can exceed the setting: full-screen random noise reached about 140 Mbit/s at 4K and 35 Mbit/s at
   1080p, whatever was set.
-- One streaming session at a time. More than one Moonlight controller is untested.
+- One streaming session at a time. A new stream from the same device replaces its old one; one from another device is turned
+  away while a stream runs. More than one Moonlight controller is untested.
 - Without `close_game_on_quit`, Moonlight for PC can still offer to quit a game from its app list, also when you pick another
   game, but that sends nothing to the host: it reports no running game once the stream has ended, so Moonlight skips its quit
   request and waits at "Quitting…". Close the game on the console instead. Other clients are untested.
