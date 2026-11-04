@@ -2,7 +2,8 @@
 // The app's screen, drawn with ps5-homebrew-ui in its 1920x1080 virtual canvas. Three pages under a
 // tab bar (L1/R1):
 //   Home      a hero with the host's state and the sun emblem, the host's actions (start or stop,
-//             restart, start at boot), pairing requests as cards (Cross: the PIN) and the paired
+//             restart, start at boot), pairing requests as cards (Cross: the PIN), the running streams
+//             while someone streams (Cross: a list with what each gets, to end one) and the paired
 //             devices (Cross: a list to rename or remove them);
 //   Settings  one tile per sunshine.conf option (Cross opens its editor, Square puts it back to the
 //             host's default), the Experimental section's switches among them (Cross flips one), then
@@ -65,6 +66,8 @@ class Screen
         number,
         devices,
         remove_device,
+        streams,
+        end_stream,
     };
     enum class Action
     {
@@ -87,6 +90,7 @@ class Screen
     void open_sheet(Sheet kind, const std::string &title, const std::string &help, const std::string &initial);
     void close_sheet();
     void open_devices();
+    void open_streams();
 
     // State helpers.
     bool busy() const
@@ -106,11 +110,22 @@ class Screen
     hui::gfx::Rect focus_rect() const;
     hui::gfx::Rect action_rect(int index) const;
     hui::gfx::Rect pairing_rect(int index) const;
-    hui::gfx::Rect devices_card() const;
+    hui::gfx::Rect streams_rect() const; // the home page's card of the running streams
+    hui::gfx::Rect devices_card() const; // the list sheet: paired devices or running streams
     hui::gfx::Rect device_row_rect(int visible) const; // visible: counted from the first row in view
     hui::gfx::Rect tile_rect(int index) const;
     hui::gfx::Rect settings_action_rect(int index) const;
     int visible_pairings() const;
+    // The home page's lower row: the pairing cards, the streams card while someone streams, the paired devices.
+    bool streams_shown() const
+    {
+        return !snap_.streams.empty();
+    }
+    int devices_index() const
+    {
+        return visible_pairings() + (streams_shown() ? 1 : 0);
+    }
+    int list_rows() const; // the rows of the list sheet shown
     float appear(int order) const; // 0..1, the staggered entrance of the page's parts
 
     // Drawing.
@@ -146,12 +161,14 @@ class Screen
     int page_direction_ = 1;
     int home_row_ = 0; // 0 the actions, 1 the pairing cards and the paired devices
     int home_action_ = 0;
-    int home_card_ = 0; // the pairing cards, then the paired devices after them
+    int home_card_ = 0; // the pairing cards, then the streams card (while someone streams), then the paired devices
     int tile_ = 0; // the option tiles, then the three actions under them
     float tile_amount_[7 + PS_EXP_SWITCH_COUNT + 3] = {};
     float action_amount_[3] = {};
     float card_amount_[2] = {};
     float devices_amount_ = 0.0f; // the paired devices' focus
+    float streams_amount_ = 0.0f; // the streams card's focus
+    int seen_devices_index_ = 0;  // devices_index() of the last frame
     float tab_x_ = -1.0f; // the selected tab's plate glides between tabs
     hui::ui::ComponentStyle style_;
     hui::ui::Highlight highlight_;
@@ -180,7 +197,7 @@ class Screen
     std::string pair_pin_;        // the PIN while the device's name is asked after it
     std::string pair_suggestion_; // the name that takes when the field is left empty
     bool renaming_ = false;       // the text sheet renames the device target_
-    int device_row_ = 0;          // the focused row of the device list
+    int device_row_ = 0;          // the focused row of the device list or the stream list
     int device_top_ = 0;          // the first row in view
     int choice_ = 0; // the focused row of a choice sheet (0: the default)
     long number_ = 0;

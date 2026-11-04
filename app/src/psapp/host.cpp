@@ -158,6 +158,10 @@ void Host::remove_device(const std::string &id, const std::string &name)
 {
     push({Kind::remove_device, id, name, {}, {}, false});
 }
+void Host::end_stream(const std::string &id, const std::string &name)
+{
+    push({Kind::end_stream, id, name, {}, {}, false});
+}
 void Host::start_host()
 {
     push({Kind::start, {}, {}, {}, {}, false});
@@ -253,6 +257,9 @@ void Host::run()
                 break;
             case Kind::remove_device:
                 do_remove_device(job);
+                break;
+            case Kind::end_stream:
+                do_end_stream(job);
                 break;
             case Kind::start:
                 do_start();
@@ -454,6 +461,19 @@ void Host::poll()
                 devices.push_back(device);
         }
     }
+    bool streams_known = false;
+    std::vector<diag::Stream> streams;
+    if (running && error.empty() && devices_known)
+    {
+        const io::Exchange list = io::exchange(kControlPort, "STREAMS\n", is_end, 3000);
+        streams_known = !list.lines.empty() && list.lines.back() == "END";
+        for (const std::string &line : list.lines)
+        {
+            diag::Stream stream;
+            if (streams_known && diag::parse_stream_line(line, &stream))
+                streams.push_back(stream);
+        }
+    }
     // The host offers the report for some seconds after each of these.
     bool served = false;
     if (serve_ && running)
@@ -476,6 +496,8 @@ void Host::poll()
     state_.poll_error = error;
     state_.devices_known = devices_known;
     state_.devices = devices;
+    state_.streams_known = streams_known;
+    state_.streams = streams;
 }
 
 bool Host::wait_control(bool open, int timeout_ms)
@@ -573,6 +595,20 @@ void Host::do_remove_device(const Job &job)
     const bool ok = reply.error.empty() && !reply.lines.empty() && reply.lines.front().rfind("OK", 0) == 0;
     read_files();
     finish(ok ? "Removed " + job.b + ". It has to pair again to stream." : "Could not remove " + job.b, ok);
+}
+
+void Host::do_end_stream(const Job &job)
+{
+    set_busy("Ending the stream of " + job.b + "...");
+    // The host answers once the device's stream has ended.
+    const io::Exchange reply = io::exchange(kControlPort, "ENDSTREAM " + job.a + "\n", any_line, 20000);
+    const std::string answer = reply.lines.empty() ? std::string() : reply.lines.front();
+    if (reply.error.empty() && answer.rfind("OK", 0) == 0)
+        finish("Ended the stream of " + job.b + ". The game keeps running.", true);
+    else if (answer == "ERR not streaming")
+        finish(job.b + " is not streaming anymore", true);
+    else
+        finish("Could not end the stream of " + job.b, false);
 }
 
 void Host::do_start()

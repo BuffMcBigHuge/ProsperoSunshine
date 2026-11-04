@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Replaces Sunshine's video.cpp. Avcap2 already delivers H.264 or HEVC, so there is no encoder, display or
 // colour conversion: frames from CaptureSession go straight into the stream's packet queue.
+#include "sunshine/video_ps5.hpp"
 #include "capture/capture_session.hpp"
 #include "platform/ps5/capture.h"
 #include "video/capture_mode.hpp"
@@ -102,6 +103,7 @@ struct {
     prospero::CaptureMode mode{};
     bool low_rate = false;
     uint32_t requested = 0;  // bit/s
+    uint32_t average = 0;    // bit/s the channel opens with
     std::vector<joined_stream *> joined;
     bool keyframe_wanted = false;  // a joined stream asked for one
 } owner;
@@ -121,6 +123,21 @@ std::string_view stream_kind(int video_format, bool hdr) {
 std::optional<bool> running_stream_hdr() {
     if (running_format < 0) return std::nullopt;
     return running_hdr.load();
+}
+
+std::optional<running_capture_t> running_capture() {
+    std::lock_guard lock(owner.mutex);
+    if (!owner.streaming) return std::nullopt;
+    running_capture_t capture;
+    capture.cert = owner.cert;
+    for (const auto *j : owner.joined) capture.joined.push_back(j->cert);
+    capture.video_format = owner.video_format;
+    capture.hdr = owner.hdr;
+    capture.width = owner.delivered.width;
+    capture.height = owner.delivered.height;
+    capture.fps = owner.low_rate ? 30 : 60;
+    capture.average = owner.average;
+    return capture;
 }
 
 int probe_encoders() {
@@ -262,9 +279,11 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
         BOOST_LOG(info) << "PS5 capture: keeping the running mode "sv << mode.width << 'x' << mode.height << '@'
                         << (low_rate ? 30 : 60) << ", "sv << requested / 1000 << " kbit/s"sv;
     }
+    const uint32_t average = std::min({requested, max_average, prospero::max_average_of(mode, low_rate)});
     owner.mode = mode;
     owner.low_rate = low_rate;
     owner.requested = requested;
+    owner.average = average;
     owner.streaming = true;
     owner.cert = cert;
     owner.shutdown = shutdown_event;
@@ -287,7 +306,6 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
         owner.changed.notify_all();
     });
 
-    const uint32_t average = std::min({requested, max_average, prospero::max_average_of(mode, low_rate)});
     ps_capture_set_opening_bitrate(average, average / 100 * (hevc ? 110 : 112));
     ps_capture_set_codec(hevc ? 1 : 0);
     ps_capture_set_ten_bit(hdr);
@@ -302,6 +320,10 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
         return;
     }
     check_fallback();
+    {
+        std::lock_guard lock(owner.mutex);
+        owner.average = ps_capture_opening_average();
+    }
     BOOST_LOG(info) << "PS5 capture "sv << (hdr ? "HEVC HDR"sv : hevc ? "HEVC"sv : "H.264"sv) << " bitrate "sv << ps_capture_opening_average() / 1000 << " kbit/s (requested "sv
                     << requested / 1000 << ')';
     // The audio thread may have opened the channel earlier, and the next periodic IDR can be ten seconds away.

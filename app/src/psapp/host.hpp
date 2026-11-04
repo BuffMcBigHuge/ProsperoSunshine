@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Everything the app does to the host, on one worker thread so the frame loop never waits:
-//   - the host's control socket on 127.0.0.1:47995 (src/control/control_server.hpp): STATUS, PAIRINGS
-//     and DEVICES every two seconds, PIN for a pending pairing, RENAME and UNPAIR for a paired device,
-//     QUIT to stop it, REPORT to have it offer the diagnostic report on the network (a title may not
+//   - the host's control socket on 127.0.0.1:47995 (src/control/control_server.hpp): STATUS, PAIRINGS,
+//     DEVICES and STREAMS every two seconds, PIN for a pending pairing, RENAME and UNPAIR for a paired
+//     device, ENDSTREAM to end one device's stream, QUIT to stop it, REPORT to have it offer the diagnostic report on the network (a title may not
 //     listen there itself);
 //   - starting the host: its ELF sent to the ELF loader on 127.0.0.1:9021;
 //   - /data/prosperosunshine/sunshine.conf (conf.hpp) and the Payload Manager's autoload list
@@ -62,6 +62,8 @@ struct Snapshot
     std::string poll_error;   // set when the socket is there but did not answer properly
     bool devices_known = false;       // the running host answered DEVICES (an older one does not)
     std::vector<diag::Device> devices;
+    bool streams_known = false;       // the running host answered STREAMS (an older one does not)
+    std::vector<diag::Stream> streams; // who streams now
     // Files.
     bool files_read = false;
     Values config;            // the keys of option_specs()
@@ -99,6 +101,7 @@ class Host
     void submit_pin(const std::string &id, const std::string &pin, const std::string &name);
     void rename_device(const std::string &id, const std::string &name);
     void remove_device(const std::string &id, const std::string &name); // name: for the message
+    void end_stream(const std::string &id, const std::string &name);    // the game and the others go on
     void start_host();
     void stop_host();
     void restart_host();
@@ -116,6 +119,7 @@ class Host
         pin,
         rename_device,
         remove_device,
+        end_stream,
         start,
         stop,
         restart,
@@ -151,6 +155,7 @@ class Host
     void do_pin(const Job &job);
     void do_rename_device(const Job &job);
     void do_remove_device(const Job &job);
+    void do_end_stream(const Job &job);
     void do_start();
     void do_stop();
     void do_restart();

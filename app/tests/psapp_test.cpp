@@ -367,6 +367,50 @@ static void experimental_tests()
     CHECK(log.attempts.back().fps == std::to_string(diag::kMaxAttempts + 4));
 }
 
+// The host's STREAMS lines (src/control/stream_list.hpp writes them).
+static void stream_tests()
+{
+    diag::Stream s;
+    CHECK(diag::parse_stream_line("OK uuid=4D7B-22 address=192.168.1.20 codec=HEVC hdr=1 mode=1920x1080@60 kbps=20000 secs=754 "
+                                  "pads=1 role=capture name=Living room PC",
+                                  &s));
+    CHECK(s.id == "4D7B-22" && s.address == "192.168.1.20" && s.codec == "HEVC" && s.hdr && s.mode == "1920x1080@60");
+    CHECK(s.kbps == 20000 && s.seconds == 754 && s.pads == 1 && s.role == "capture" && s.name == "Living room PC");
+    CHECK(diag::stream_label(s) == "Living room PC");
+    CHECK(diag::stream_info(s) == "HEVC HDR, 1920x1080@60, 20 Mbit/s, 1 controller");
+
+    // "-" for what the host does not know; an empty name; a name that holds "name=" itself.
+    CHECK(diag::parse_stream_line("OK uuid=- address=- codec=H.264 hdr=0 mode=- kbps=0 secs=0 pads=0 role=starting name=", &s));
+    CHECK(s.id.empty() && s.address.empty() && s.mode.empty() && !s.hdr && s.kbps == 0 && s.name.empty());
+    CHECK(diag::stream_label(s) == "Unnamed device");
+    CHECK(diag::stream_info(s) == "H.264, no controller");
+    CHECK(diag::parse_stream_line("OK uuid=A codec=H.264 kbps=6500 pads=3 role=joined name=Deck name=2", &s));
+    CHECK(s.name == "Deck name=2" && s.kbps == 6500 && s.pads == 3 && s.role == "joined" && s.address.empty());
+    CHECK(diag::stream_info(s) == "H.264, 6.5 Mbit/s, 3 controllers");
+
+    // Keys in another order and keys a newer host adds; values that are not numbers count as 0.
+    CHECK(diag::parse_stream_line("OK role=joined future=x uuid=B kbps=abc secs=-5 pads=1 name=Phone", &s));
+    CHECK(s.id == "B" && s.role == "joined" && s.kbps == 0 && s.seconds == 0 && s.name == "Phone" && s.codec.empty());
+    CHECK(diag::stream_info(s) == "Video, 1 controller");
+    s.kbps = 800;
+    CHECK(diag::stream_info(s) == "Video, 800 kbit/s, 1 controller");
+
+    // Not stream lines.
+    CHECK(!diag::parse_stream_line("END", &s));
+    CHECK(!diag::parse_stream_line("ERR unknown command", &s));
+    CHECK(!diag::parse_stream_line("OK uuid=A address=1.2.3.4", &s)); // no name
+    CHECK(!diag::parse_stream_line("OK address=1.2.3.4 name=A", &s)); // no uuid
+    CHECK(!diag::parse_stream_line("OK 4D7B-22 0 1280x720@60 PS Vita", &s)); // a DEVICES line
+
+    CHECK(diag::duration_text(0) == "0 s");
+    CHECK(diag::duration_text(45) == "45 s");
+    CHECK(diag::duration_text(60) == "1 min");
+    CHECK(diag::duration_text(754) == "12 min");
+    CHECK(diag::duration_text(3600 + 5 * 60 + 7) == "1 h 05 min");
+    CHECK(diag::duration_text(26 * 3600 + 40 * 60) == "26 h 40 min");
+    CHECK(diag::duration_text(-1) == "0 s");
+}
+
 static void diag_tests()
 {
     CHECK(diag::firmware_text(0x13000040) == "13.00");
@@ -490,6 +534,7 @@ static void diag_tests()
 
     experimental_tests();
     capture_line_tests();
+    stream_tests();
 
     CHECK(diag::tail("a\nb\nc\n", 2) == "b\nc\n");
     CHECK(diag::tail("a\nb\nc", 5) == "a\nb\nc\n");

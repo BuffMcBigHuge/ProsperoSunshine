@@ -1,0 +1,197 @@
+ProsperoSunshine: describe the running sessions for the app's list of streams
+
+The control socket's STREAMS shows who streams: each session's client, address, what it asked for, when it started
+and how many virtual gamepads it has. rtsp_stream::session_infos() collects them under the server's session lock.
+stream::session::start() records the address, the start time and the input under a lock of the session's own, since
+the control socket reads them from another thread. ENDSTREAM ends one device's sessions with terminate_sessions_by_cert,
+as patch 0012 does for /cancel.
+
+--- a/src/rtsp.h
++++ b/src/rtsp.h
+@@ -7,8 +7,11 @@
+ // standard includes
+ #include <array>
+ #include <atomic>
++#include <chrono>
+ #include <cstddef>
+ #include <cstdint>
++#include <string>
++#include <vector>
+ 
+ // local includes
+ #include "crypto.h"
+@@ -140,6 +143,29 @@
+   int session_count_except_cert(std::string_view cert);
+ 
+   /**
++   * @brief What the PS5 control socket shows of a running session.
++   */
++  struct session_info_t {
++    std::string client_cert;  ///< PEM certificate of the paired client.
++    std::string address;  ///< Address the client streams from.
++    int width;  ///< Width the client asked for.
++    int height;  ///< Height the client asked for.
++    int fps;  ///< Frame rate the client asked for.
++    int bitrate;  ///< Bit rate the client asked for, in kbit/s.
++    int video_format;  ///< Codec the client asked for: 0 = H.264, 1 = HEVC, 2 = AV1.
++    int dynamic_range;  ///< Color depth the client asked for: 0 = 8-bit, 1 = 10-bit.
++    std::chrono::steady_clock::time_point started;  ///< When the session started.
++    int gamepads;  ///< Virtual gamepads the client has now.
++  };
++
++  /**
++   * @brief Describe the running sessions.
++   *
++   * @return One entry per running session.
++   */
++  std::vector<session_info_t> session_infos();
++
++  /**
+    * @brief Runs the RTSP server loop.
+    */
+   void start();
+--- a/src/rtsp.cpp
++++ b/src/rtsp.cpp
+@@ -668,6 +668,21 @@
+     }
+ 
+     /**
++     * @brief Describe the running sessions.
++     * @return One entry per session that has started.
++     */
++    std::vector<session_info_t> infos() {
++      auto lg = _session_slots.lock();
++      std::vector<session_info_t> result;
++      for (const auto &slot : *_session_slots) {
++        if (stream::session::state(*slot) == stream::session::state_e::RUNNING) {
++          result.push_back(stream::session::describe(*slot));
++        }
++      }
++      return result;
++    }
++
++    /**
+      * @brief Removes the provided session from the set of sessions.
+      * @param session The session to remove.
+      */
+@@ -762,6 +777,10 @@
+     return server.count_except_cert(cert);
+   }
+ 
++  std::vector<session_info_t> session_infos() {
++    return server.infos();
++  }
++
+   /**
+    * @brief Send the serialized response over the active socket.
+    *
+--- a/src/stream.h
++++ b/src/stream.h
+@@ -13,6 +13,7 @@
+ // local includes
+ #include "audio.h"
+ #include "crypto.h"
++#include "rtsp.h"
+ #include "video.h"
+ 
+ namespace stream {
+@@ -94,5 +95,12 @@
+      * @return PEM certificate associated with the session's client.
+      */
+     const std::string &client_cert(session_t &session);
++    /**
++     * @brief Describe a stream session for the PS5 control socket; another thread may call it while the session runs.
++     *
++     * @param session Active streaming session.
++     * @return The client, what it asked for, when it started and its gamepads.
++     */
++    rtsp_stream::session_info_t describe(session_t &session);
+   }  // namespace session
+ }  // namespace stream
+--- a/src/stream.cpp
++++ b/src/stream.cpp
+@@ -571,6 +571,11 @@
+     safe::signal_t controlEnd;  ///< Signal raised when the control channel exits.
+ 
+     std::atomic<session::state_e> state;  ///< Current lifecycle state observed by stream workers.
++
++    std::mutex info_mutex;  ///< Guards the fields below, which the PS5 control socket reads from another thread.
++    std::string info_address;  ///< Address the client streams from.
++    std::chrono::steady_clock::time_point info_started;  ///< When the session started.
++    std::shared_ptr<input::input_t> info_input;  ///< The session's input, for its gamepad count.
+   };
+ 
+   /**
+@@ -2211,6 +2216,21 @@
+       return session.client_cert;
+     }
+ 
++    rtsp_stream::session_info_t describe(session_t &session) {
++      // config and client_cert are set before the session is listed and never change.
++      const auto &monitor = session.config.monitor;
++      rtsp_stream::session_info_t result {session.client_cert, {}, monitor.width, monitor.height, monitor.framerate, monitor.bitrate, monitor.videoFormat, monitor.dynamicRange, {}, 0};
++      std::shared_ptr<input::input_t> session_input;
++      {
++        std::scoped_lock lock {session.info_mutex};
++        result.address = session.info_address;
++        result.started = session.info_started;
++        session_input = session.info_input;
++      }
++      result.gamepads = session_input ? input::gamepad_count(session_input) : 0;
++      return result;
++    }
++
+     /**
+      * @brief Stop the active streaming session and prevent new packets from being queued.
+      */
+@@ -2295,6 +2315,13 @@
+       session.control.expected_peer_address = addr_string;
+       BOOST_LOG(debug) << "Expecting incoming session connections from "sv << addr_string;
+ 
++      {
++        std::scoped_lock lock {session.info_mutex};
++        session.info_address = addr_string;
++        session.info_started = std::chrono::steady_clock::now();
++        session.info_input = session.input;
++      }
++
+       // Insert this session into the session list
+       {
+         auto lg = session.broadcast_ref->control_server._sessions.lock();
+--- a/src/input.h
++++ b/src/input.h
+@@ -49,6 +49,14 @@
+   void terminate_gamepads(std::string_view session_id);
+ 
+   /**
++   * @brief Count the virtual gamepads a stream has now, for display.
++   *
++   * @param input The stream's input state.
++   * @return Number of gamepad slots with a virtual device.
++   */
++  int gamepad_count(const std::shared_ptr<input_t> &input);
++
++  /**
+    * @brief Queue a raw input message for platform passthrough.
+    */
+   void passthrough(std::shared_ptr<input_t> &input, std::vector<std::uint8_t> &&input_data);
+--- a/src/input.cpp
++++ b/src/input.cpp
+@@ -2372,6 +2372,17 @@
+     });
+   }
+ 
++  int gamepad_count(const std::shared_ptr<input_t> &input) {
++    // The input task assigns the ids; a count taken meanwhile is a snapshot for display, one arrival early or late.
++    int count = 0;
++    for (const auto &gamepad : input->gamepads) {
++      if (gamepad.id >= 0) {
++        ++count;
++      }
++    }
++    return count;
++  }
++
+   /**
+    * @brief RAII helper that runs shutdown cleanup when destroyed.
+    */
