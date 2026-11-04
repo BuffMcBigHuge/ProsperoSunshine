@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.3.0 (2026-11-04)
+
+### Added
+
+- **Only player 1 can press PS.** A friend can no longer leave your game, open the control center or reach the console's
+  settings by accident (or on purpose): the PS button works only for the controller that plays as the console's user. Every
+  further player's PS press is ignored, also the "hold Select" PS on a phone. The new setting **PS for all players** in the
+  app's Settings (off by default) gives it back to everyone.
+- **The app shows what really reaches each device.** In the list of streams, every device shows the bitrate it actually
+  gets, the round-trip time to it, and how often it lost a picture and had to ask for a new one, so you can see who has a
+  weak connection. The control socket's `STREAMS` has them as `sent_kbps`, `rtt_ms` and `recoveries`.
+- **A section on playing over the internet** in the README: which ports to forward, the bitrate, and that a friend who asks
+  for 720p gets a capture channel and bitrate of their own.
+
+### Changed
+
+- **A friend who joins sees the picture sooner.** The keyframe a joining device needs went out before its client was ready
+  for it, so the picture started only when Moonlight asked again after 2 seconds. The host now sends two more, and the
+  picture comes after about 0.4 s.
+- **Taking a channel over no longer pauses the picture.** When the device holding a capture channel leaves, the next one
+  now takes the open channel as it is, instead of closing and reopening it (a pause of about 185 ms).
+- **The settings page has two rows of four,** to make room for the new setting. The encryption settings are now called "LAN
+  encryption" and "Internet encryption".
+
+### Tested
+
+- **Several controllers on one device** are separate players: measured with the test client, and a contributor played with
+  two controllers on one Moonlight client on 10.20.
+
 ## 0.2.4 (2026-11-04)
 
 ### Added

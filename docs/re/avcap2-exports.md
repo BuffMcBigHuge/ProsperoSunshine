@@ -214,7 +214,7 @@ Ende/Entzug.
 | 0x08 | u64 `0x18` | Größe des Kopfblocks | sicher |
 | 0x10 | u32 0 | Kanalart (≤ 2; RemotePlay: 0) | sicher |
 | 0x14 | u32 | Purpose (< 8: 0 VideoRecording, 1 GameLiveStreaming, 2 Remoteplay, 3 SocialScreen, 4 Shareplay, 5 ShareScreen, 6 VideoChat, 7 PS Now). Der Server wählt daraus den Audio-Ring: Remoteplay (2) und PS Now (7) → `full`, GLS (1) → `aux`, Share/VideoChat → `share`, Recording/Social/Shareplay → `restrict` | wahrscheinlich |
-| 0x18 | u32 | **Encoder-Typ**: 0 = rohes PCM, 1 = AAC (`libSceM4aacEnc`), **2 = Opus-CELT (`libSceOpusCeltEnc`)**, 3 = PCM 12 Kanal (nur Purpose 2), 4 = Sonderfall (nur Purpose 8). Typ 2 verlangt `cfg+0x30 < 3` | sicher (Server-Factory `0x11720`, Validator `0x10AA0`) |
+| 0x18 | u32 | **Encoder-Typ**: 0 = rohes PCM, 1 = AAC (`libSceM4aacEnc`), **2 = Opus-CELT (`libSceOpusCeltEnc`)**, 3 = PCM 12 Kanal (nur Purpose 2; gemessen 13.00: 1024 Abtastwerte × 12 Kanäle × Float32 je Paket, `surround_probe`), 4 = Sonderfall (nur Purpose 8). Typ 2 verlangt `cfg+0x30 < 3` | sicher (Server-Factory `0x11720`, Validator `0x10AA0`) |
 | 0x1C | u32 | **ResourceArbitrator-Id (muss aktiv sein, z. B. 180)** — siehe „R2-Nachtrag“ | sicher |
 | 0x20 | u64/u32 | Größe des Codec-Blocks: 0x10 (AAC), 0x18 (Opus) | sicher |
 | 0x28 | u32 | **Bitrate in bit/s** (RemotePlay: Opus 64000 = `0xFA00`, AAC 128000 = `0x1F400`); geht bei Opus direkt in `OPUS_SET_BITRATE (4002)` | sicher |

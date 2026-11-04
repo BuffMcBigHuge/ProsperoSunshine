@@ -5,7 +5,7 @@
 A native, Sunshine-compatible game-stream host for the PlayStation 5. Add your console to Moonlight and stream
 the PS5 screen, game audio and controller input over your LAN.
 
-> **Status: 0.2.4 ([changelog](CHANGELOG.md)).** Pairing, H.264, HEVC and HDR from 360p up to 4K at 30 or 60 fps, game audio, controller, keyboard and mouse input work end to end
+> **Status: 0.3.0 ([changelog](CHANGELOG.md)).** Pairing, H.264, HEVC and HDR from 360p up to 4K at 30 or 60 fps, game audio, controller, keyboard and mouse input work end to end
 > with Moonlight on PC, in the browser (Moonlight Web) and on iPhone. Sessions of 30 minutes and ten reconnects
 > were tested without errors on firmware 13.00. Firmware 10.20 was tested by a contributor at 1080p. Users report streams on
 > 13.60, not measured here. A second device can join a running stream as another player, in its own codec, dynamic range or resolution up to 1080p. Not every client or game has
@@ -62,8 +62,10 @@ Pairing survives host restarts. To rename a device or take its access away, sele
 list also shows the mode each device last asked for. Removing a device ends its running stream, and it has to pair again to come back.
 
 While someone streams, the app's home page shows **Streaming now**: each device with its name, address, codec and HDR,
-resolution and frame rate, bitrate, how long it has been streaming and how many controllers it has. Select it to end one
-device's stream; the game and the other devices' streams go on, and the device stays paired and can connect again.
+resolution and frame rate, bitrate, how long it has been streaming and how many controllers it has. Its list also shows
+what really reaches each device: the bitrate it gets, the round-trip time, and how often it lost a picture and asked for a
+new one, which points to a weak connection. Select a device to end its stream; the game and the other devices' streams go
+on, and the device stays paired and can connect again.
 
 ## Streaming
 
@@ -90,6 +92,39 @@ closes nothing.
 **PS button:** Moonlight's on-screen controller on a phone has none, so holding Select for half a second sends it. A
 short press of Select sends Create when you let go, which means Create cannot be held. To get a plain Create button
 back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is the hold time in milliseconds.
+
+**Several controllers on one device:** every controller on a Moonlight client is a player of its own. The first plays as the
+console's user, and for each further one the console asks "Who's using this controller?". Two people on one PC need one
+Moonlight with both controllers connected, not two clients. Measured here with the test client (two pads on one device),
+and a contributor played with two controllers on one Moonlight client on 10.20.
+
+**Only player 1 can press PS.** The PS button works only for the controller that plays as the console's user, so another
+player can't leave your game, open the control center or reach the console's settings. Their PS press is ignored, also the
+"hold Select" PS. To give it to everyone, turn on **PS for all players** in the app's Settings and restart the host.
+
+## Playing over the internet
+
+A friend in another house can join like a device on the LAN. A contributor played that way with two of four players over the
+internet (forwarded ports, a phone on 4G and one on another Wi-Fi). It isn't tested here.
+
+1. **Pair the device at home first**, on the same network as the console, or pair over the internet once the ports are open;
+   either way the PIN goes into the app on the console.
+2. **Forward these ports** on your router to the console (the defaults; they move with **Base port** in the app's Settings):
+   TCP 47984, 47989 and 48010, UDP 47998, 47999 and 48000. The host has no web interface, so there's nothing else to open.
+   Don't forward the control socket (TCP 47995); it only listens on the console itself anyway.
+3. In Moonlight, **add the host by your public address** (or a dynamic DNS name for it).
+4. **Lower the bitrate** in Moonlight to what the upload of your connection carries. Every player gets a copy of the stream,
+   so two friends over the internet need twice the upload.
+
+Tips:
+
+- A friend whose Moonlight asks for **another resolution up to 1080p** (720p, say) or another codec gets a capture channel of
+  their own, with their own bitrate. Asking for the same mode as you shares your stream, at your bitrate.
+- **Encryption over the internet** in the app's Settings is on ("When supported") by default, so a client outside your
+  network gets an encrypted stream when it supports it.
+- Instead of forwarding ports, a VPN works too, as long as something in your network routes to the console: the console can't
+  run a VPN client itself. With Tailscale, for example, a PC or router at home acting as a subnet router; the friend then adds
+  the console's LAN address in Moonlight. Untested here.
 
 ## Known limits
 

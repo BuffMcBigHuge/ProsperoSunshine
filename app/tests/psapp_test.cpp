@@ -395,6 +395,19 @@ static void stream_tests()
     s.kbps = 800;
     CHECK(diag::stream_info(s) == "Video, 800 kbit/s, 1 controller");
 
+    // What reaches the device (0.3): unknown from an older host or "-", then rate, round trip and losses.
+    CHECK(s.sent_kbps == -1 && s.rtt_ms == -1 && s.recoveries == 0 && diag::stream_network(s).empty());
+    CHECK(diag::parse_stream_line("OK uuid=C codec=HEVC kbps=20000 pads=1 role=capture channel=0 sent_kbps=18320 rtt_ms=4 "
+                                  "recoveries=2 name=PC",
+                                  &s));
+    CHECK(s.sent_kbps == 18320 && s.rtt_ms == 4 && s.recoveries == 2);
+    CHECK(diag::stream_network(s) == "18 Mbit/s \xC2\xB7 4 ms \xC2\xB7 2 losses");
+    CHECK(diag::parse_stream_line("OK uuid=C sent_kbps=- rtt_ms=0 recoveries=1 name=PC", &s));
+    CHECK(s.sent_kbps == -1 && s.rtt_ms == 0 && diag::stream_network(s) == "0 ms \xC2\xB7 1 loss");
+    s.sent_kbps = 6540;
+    s.recoveries = 0;
+    CHECK(diag::stream_network(s) == "6.5 Mbit/s \xC2\xB7 0 ms");
+
     // Not stream lines.
     CHECK(!diag::parse_stream_line("END", &s));
     CHECK(!diag::parse_stream_line("ERR unknown command", &s));

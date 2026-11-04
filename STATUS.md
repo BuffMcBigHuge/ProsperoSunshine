@@ -501,6 +501,37 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### Für 0.3.0 (2026-11-04, 13.00, Testclient, Home-Bildschirm)
+
+**Zwei Controller an einem Gerät.** Der Testclient kann mit `--pads N` mehrere Controller melden, wie Moonlight mit mehreren
+Gamepads (Maske `activeGamepadMask` bei jedem Ereignis). Mit `--pads 2`: „virtual pad 1 attached, the console asks who uses it“,
+1195 Bilder in 20 s ohne Lücke, am Ende beide Pads gelöst. Ein Mitwirkender spielte auf 10.20 mit zwei Controllern an einem
+echten Moonlight-Client (Bericht mit Bildschirmfoto, hier nicht gemessen).
+
+**Übernahme ohne Neuöffnen.** Geht das Gerät, das einen Kanal hält, übernimmt der nächste Stream die offene Sitzung
+(`leaving channel 0 open for the stream that takes it over`, `took the open channel 0 over, no reopen`). Längste Pause beim
+übernehmenden Gerät: Kanal 0 31 und 48 ms (zwei Läufe), Kanal 1 19 ms (vorher 185 ms). Keine fehlende Bildnummer.
+
+**Erstes Bild beim Beitreten.** Bisher verwarf das beitretende Gerät 123 Bilder („Waiting for IDR frame“), bis es nach 2,1 s
+selbst ein IDR anforderte: Das Schlüsselbild, das der Host beim Beitreten anfordert, geht vor dem ersten Video-Ping des Clients
+raus, wenn Sunshine dessen Adresse noch nicht kennt. Mit einem weiteren Schlüsselbild nach 0,5 s kam das erste Bild nach
+0,61–0,66 s, mit zwei nach 0,25 und 1 s nach 0,39–0,40 s (je drei Läufe, H.264 1080p), ohne eigene Anforderung des Clients.
+Das haltende Gerät blieb ohne Lücke.
+
+**Was beim Gerät ankommt (`STREAMS`).** Zwei Geräte (H.264 auf Kanal 0, HEVC auf Kanal 1), zweimal im Abstand von 5 s
+abgefragt: `sent_kbps` 1498–2223 bei 4148 kbit/s Vorgabe (Home-Bildschirm, wenig Bewegung), `rtt_ms=1`, `recoveries=2` je
+Gerät (der Testclient fordert zu Beginn und in der Mitte ein IDR an), `pads=2` beim Gerät mit zwei Controllern.
+
+**PS nur für Spieler 1.** Mit der Voreinstellung (`ps_button_all_players` nicht gesetzt) meldet der Host „only player 1 can
+press PS“. Zwei PS-Drücke von Pad 1: „PS ignored, only player 1 has it“, der Home-Bildschirm blieb unverändert. PS von Pad 0
+öffnete wie bisher das Kontrollzentrum. Die Einstellungsseite der App mit der neuen Kachel „PS for all players“ (zwei Reihen
+zu vier) auf der Konsole angesehen, Navigation per Steuerkreuz bis zur neuen Kachel geprüft.
+
+**Raumklang (`surround_probe`).** `OpenAudio` mit Encoder-Typ 3 (Purpose 2) geht auf 13.00: 47 Pakete/s zu 49152 Byte, also
+1024 Abtastwerte × 12 Kanäle × 32-Bit-Float (Typ 0: 8192 Byte, 2 Kanäle). Auf dem Home-Bildschirm tragen nur Kanal 0 und 1 Ton,
+mit fast denselben Pegeln wie Typ 0 (RMS 0,0055/0,0052 gegen 0,0053/0,0051); Kanal 2–11 sind still. Welcher Kanal welcher
+Lautsprecher ist, braucht eine Quelle mit echtem Raumklang; der Host liefert weiter Stereo.
+
 ### Release 0.2.4 auf der Konsole (2026-11-04, 13.00)
 
 Die App aus `build/app` auf die Konsole kopiert und neu registriert; sie zeigt `v01.000.015`. Nach „Restart host“ meldet

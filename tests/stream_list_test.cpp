@@ -24,7 +24,7 @@ int main() {
     // No capture yet: what the client asked for.
     assert(stream_line(first, {}, "UUID-A", "Living room PC") ==
            "OK uuid=UUID-A address=192.168.1.20 codec=HEVC hdr=1 mode=1280x720@30 kbps=10000 secs=754 pads=1 "
-           "role=starting channel=- name=Living room PC");
+           "role=starting channel=- sent_kbps=- rtt_ms=- recoveries=0 name=Living room PC");
 
     // The stream that holds the capture: what is delivered.
     CaptureFacts capture;
@@ -38,7 +38,7 @@ int main() {
     capture.hdr = false;
     assert(stream_line(first, {capture}, "UUID-A", "Living room PC") ==
            "OK uuid=UUID-A address=192.168.1.20 codec=HEVC hdr=0 mode=1920x1080@60 kbps=20000 secs=754 pads=1 "
-           "role=capture channel=0 name=Living room PC");
+           "role=capture channel=0 sent_kbps=- rtt_ms=- recoveries=0 name=Living room PC");
 
     // A device that joined gets the same picture, whatever it asked for.
     StreamFacts second;
@@ -52,7 +52,7 @@ int main() {
     second.pads = 2;
     assert(stream_line(second, {capture}, "UUID-B", "Steam Deck") ==
            "OK uuid=UUID-B address=192.168.1.21 codec=HEVC hdr=0 mode=1920x1080@60 kbps=20000 secs=5 pads=2 "
-           "role=joined channel=0 name=Steam Deck");
+           "role=joined channel=0 sent_kbps=- rtt_ms=- recoveries=0 name=Steam Deck");
 
     // A second channel next to the first: the device that holds it and one that joined it get its own mode.
     CaptureFacts second_channel;
@@ -69,7 +69,7 @@ int main() {
     fourth.video_format = 1;
     fourth.hdr = true;
     assert(stream_line(fourth, {capture, second_channel}, "UUID-D", "Phone") ==
-           "OK uuid=UUID-D address=- codec=H.264 hdr=0 mode=1280x720@30 kbps=8000 secs=0 pads=0 role=capture channel=1 name=Phone");
+           "OK uuid=UUID-D address=- codec=H.264 hdr=0 mode=1280x720@30 kbps=8000 secs=0 pads=0 role=capture channel=1 sent_kbps=- rtt_ms=- recoveries=0 name=Phone");
     StreamFacts fifth;
     fifth.cert = "cert-e";
     assert(stream_line(fifth, {capture, second_channel}, "UUID-E", "Tablet").find(" mode=1280x720@30 ") != std::string::npos);
@@ -85,7 +85,7 @@ int main() {
     third.seconds = -3;
     third.pads = -1;
     assert(stream_line(third, {capture}, "", "") ==
-           "OK uuid=- address=- codec=H.264 hdr=0 mode=- kbps=0 secs=0 pads=0 role=starting channel=- name=");
+           "OK uuid=- address=- codec=H.264 hdr=0 mode=- kbps=0 secs=0 pads=0 role=starting channel=- sent_kbps=- rtt_ms=- recoveries=0 name=");
 
     // A session without a certificate never counts as the capture's.
     StreamFacts anonymous;
@@ -96,8 +96,23 @@ int main() {
     StreamFacts v6;
     v6.address = "fe80::1";
     assert(stream_line(v6, {}, "U", "two\nlines\r") ==
-           "OK uuid=U address=fe80::1 codec=H.264 hdr=0 mode=- kbps=0 secs=0 pads=0 role=starting channel=- name=two lines ");
+           "OK uuid=U address=fe80::1 codec=H.264 hdr=0 mode=- kbps=0 secs=0 pads=0 role=starting channel=- sent_kbps=- rtt_ms=- recoveries=0 name=two lines ");
 
-    std::cout << "PASS: stream list (what each device asked for, what each capture channel delivers, unknown values, one line)\n";
+    // What reaches the network.
+    StreamFacts measured = v6;
+    measured.sent_kbps = 18250;
+    measured.rtt_ms = 3;
+    measured.recoveries = 2;
+    assert(stream_line(measured, {}, "U", "pc").find(" sent_kbps=18250 rtt_ms=3 recoveries=2 name=pc") != std::string::npos);
+    measured.recoveries = -4;
+    assert(stream_line(measured, {}, "U", "pc").find(" recoveries=0 ") != std::string::npos);
+
+    // The rate: 2.5 MB in 2 s is 10 Mbit/s; too short an interval tells nothing.
+    assert(sent_rate_kbps(2'500'000, 2.0) == 10000);
+    assert(sent_rate_kbps(0, 5.0) == 0);
+    assert(sent_rate_kbps(1'000'000, 0.2) == -1);
+
+    std::cout << "PASS: stream list (what each device asked for, what each capture channel delivers, unknown values, one line, "
+                 "what reaches the network)\n";
     return 0;
 }

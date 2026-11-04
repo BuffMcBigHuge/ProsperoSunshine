@@ -129,6 +129,9 @@ struct Stream
     long long seconds = 0; // since it started
     int pads = 0;          // its virtual controllers
     std::string role;      // capture (its stream holds the capture), joined (gets that picture), starting
+    long long sent_kbps = -1; // video it really sent lately; -1 while unknown
+    long long rtt_ms = -1;    // round-trip time to the device; -1 while unknown
+    long long recoveries = 0; // times the device lost a picture and asked for a new one
 };
 // "OK uuid=<uuid> address=<ip> codec=<c> hdr=<0|1> mode=<WxH@fps> kbps=<n> secs=<n> pads=<n> role=<r> name=<name>":
 // key=value in any order, unknown keys skipped, the name the rest of the line. "-" stands for an unknown value.
@@ -136,6 +139,8 @@ bool parse_stream_line(const std::string &line, Stream *stream);
 std::string stream_label(const Stream &stream);
 // "HEVC HDR, 1920x1080@60, 20 Mbit/s, 1 controller": what the stream sends and how many pads it has.
 std::string stream_info(const Stream &stream);
+// "18.3 Mbit/s · 4 ms · 2 losses": what really reaches the device; "" while the host knows none of it.
+std::string stream_network(const Stream &stream);
 // "45 s", "12 min", "1 h 05 min".
 std::string duration_text(long long seconds);
 

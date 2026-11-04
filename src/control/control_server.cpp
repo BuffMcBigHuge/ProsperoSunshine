@@ -123,17 +123,29 @@ std::string ControlServer::handle(const std::string &line) {
         }
         const auto now = std::chrono::steady_clock::now();
         std::string out;
+        std::map<std::string, SentSample> sent;
         for (const auto &session : rtsp_stream::session_infos()) {
-            const StreamFacts facts{session.client_cert,  session.address,       session.width,
-                                    session.height,       session.fps,           session.bitrate,
-                                    session.video_format, session.dynamic_range > 0, seconds_since(session.started, now),
-                                    session.gamepads};
+            StreamFacts facts{session.client_cert,  session.address,       session.width,
+                              session.height,       session.fps,           session.bitrate,
+                              session.video_format, session.dynamic_range > 0, seconds_since(session.started, now),
+                              session.gamepads};
+            // The rate since the last STREAMS, or on the first since the session started.
+            const auto last = sent_.find(session.client_cert);
+            if (last != sent_.end() && last->second.bytes <= session.video_bytes)
+                facts.sent_kbps = sent_rate_kbps(session.video_bytes - last->second.bytes,
+                                                 std::chrono::duration<double>(now - last->second.at).count());
+            else
+                facts.sent_kbps = sent_rate_kbps(session.video_bytes, std::chrono::duration<double>(now - session.started).count());
+            facts.rtt_ms = session.rtt_ms > 0 ? static_cast<int>(session.rtt_ms) : -1;
+            facts.recoveries = static_cast<int>(session.recoveries);
+            if (!session.client_cert.empty()) sent[session.client_cert] = {session.video_bytes, now};
             const auto device = devices.find(session.client_cert);
             const bool known = device != devices.end();
             out += stream_line(facts, captures, known ? device->second.first : std::string(),
                                known ? device->second.second : std::string()) +
                    '\n';
         }
+        sent_ = std::move(sent);  // sessions that ended drop out
         return out + "END";
     }
     if (command == "ENDSTREAM") {

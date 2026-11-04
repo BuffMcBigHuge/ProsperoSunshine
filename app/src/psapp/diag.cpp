@@ -551,6 +551,12 @@ bool parse_stream_line(const std::string &line, Stream *stream)
             parsed.pads = static_cast<int>(std::min<long long>(field_number(value), 99));
         else if (key == "role")
             parsed.role = value;
+        else if (key == "sent_kbps")
+            parsed.sent_kbps = value.empty() ? -1 : field_number(value);
+        else if (key == "rtt_ms")
+            parsed.rtt_ms = value.empty() ? -1 : field_number(value);
+        else if (key == "recoveries")
+            parsed.recoveries = field_number(value);
     }
     if (!have_id)
         return false;
@@ -564,6 +570,19 @@ std::string stream_label(const Stream &stream)
     return stream.name.empty() ? "Unnamed device" : stream.name;
 }
 
+namespace
+{
+// "20 Mbit/s", "6.5 Mbit/s", "800 kbit/s".
+std::string rate_text(long long kbps)
+{
+    if (kbps >= 10000)
+        return std::to_string((kbps + 500) / 1000) + " Mbit/s";
+    if (kbps >= 1000)
+        return std::to_string(kbps / 1000) + "." + std::to_string(kbps % 1000 / 100) + " Mbit/s";
+    return std::to_string(kbps) + " kbit/s";
+}
+}
+
 std::string stream_info(const Stream &stream)
 {
     std::string info = stream.codec.empty() ? std::string("Video") : stream.codec;
@@ -571,14 +590,23 @@ std::string stream_info(const Stream &stream)
         info += " HDR";
     if (!stream.mode.empty())
         info += ", " + stream.mode;
-    if (stream.kbps >= 10000)
-        info += ", " + std::to_string((stream.kbps + 500) / 1000) + " Mbit/s";
-    else if (stream.kbps >= 1000)
-        info += ", " + std::to_string(stream.kbps / 1000) + "." + std::to_string(stream.kbps % 1000 / 100) + " Mbit/s";
-    else if (stream.kbps > 0)
-        info += ", " + std::to_string(stream.kbps) + " kbit/s";
+    if (stream.kbps > 0)
+        info += ", " + rate_text(stream.kbps);
     info += stream.pads == 0 ? ", no controller" : stream.pads == 1 ? ", 1 controller" : ", " + std::to_string(stream.pads) + " controllers";
     return info;
+}
+
+std::string stream_network(const Stream &stream)
+{
+    std::string text;
+    const auto add = [&](const std::string &part) { text += (text.empty() ? "" : " \xC2\xB7 ") + part; };
+    if (stream.sent_kbps >= 0)
+        add(rate_text(stream.sent_kbps));
+    if (stream.rtt_ms >= 0)
+        add(std::to_string(stream.rtt_ms) + " ms");
+    if (stream.recoveries > 0)
+        add(stream.recoveries == 1 ? std::string("1 loss") : std::to_string(stream.recoveries) + " losses");
+    return text;
 }
 
 std::string duration_text(long long seconds)

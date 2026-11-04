@@ -1,0 +1,77 @@
+ProsperoSunshine: what each session really sends, for the app's list of streams
+
+The control socket's STREAMS shows what a client asked for and what the capture delivers. It adds what reaches the
+network: the video bytes sent (counted per batch, FEC and encryption prefix included), how often the client asked for an
+IDR or to invalidate reference frames after a loss, and the round-trip time of the control connection. The control thread
+copies the RTT from the ENet peer, since the control socket reads from another thread where the peer may be gone.
+
+--- a/src/rtsp.h
++++ b/src/rtsp.h
+@@ -156,6 +156,9 @@
+     int dynamic_range;  ///< Color depth the client asked for: 0 = 8-bit, 1 = 10-bit.
+     std::chrono::steady_clock::time_point started;  ///< When the session started.
+     int gamepads;  ///< Virtual gamepads the client has now.
++    std::uint64_t video_bytes = 0;  ///< Video bytes sent so far, FEC included.
++    std::uint32_t recoveries = 0;  ///< Times the client asked for an IDR or to invalidate reference frames.
++    std::uint32_t rtt_ms = 0;  ///< Round-trip time of the control connection, 0 until known.
+   };
+ 
+   /**
+--- a/src/stream.cpp
++++ b/src/stream.cpp
+@@ -576,6 +576,9 @@
+     std::string info_address;  ///< Address the client streams from.
+     std::chrono::steady_clock::time_point info_started;  ///< When the session started.
+     std::shared_ptr<input::input_t> info_input;  ///< The session's input, for its gamepad count.
++    std::atomic<std::uint64_t> info_video_bytes {0};  ///< Video bytes sent to the client, FEC included.
++    std::atomic<std::uint32_t> info_recoveries {0};  ///< The client's requests for an IDR or to invalidate reference frames.
++    std::atomic<std::uint32_t> info_rtt_ms {0};  ///< Round-trip time of the control connection; the control thread sets it.
+   };
+ 
+   /**
+@@ -1210,6 +1213,7 @@
+ 
+     server->map(packetTypes[IDX_REQUEST_IDR_FRAME], [&](session_t *session, const std::string_view &payload) {
+       BOOST_LOG(debug) << "type [IDX_REQUEST_IDR_FRAME]"sv;
++      session->info_recoveries.fetch_add(1, std::memory_order_relaxed);
+ 
+       session->video.idr_events->raise(true);
+     });
+@@ -1224,6 +1228,7 @@
+         << "firstFrame [" << firstFrame << ']' << std::endl
+         << "lastFrame [" << lastFrame << ']';
+ 
++      session->info_recoveries.fetch_add(1, std::memory_order_relaxed);
+       session->video.invalidate_ref_frames_events->raise(std::make_pair(firstFrame, lastFrame));
+     });
+ 
+@@ -1344,6 +1349,11 @@
+ 
+           auto session = *pos;
+ 
++          // The control socket reads it from another thread, where the peer may already be gone.
++          if (session->control.peer) {
++            session->info_rtt_ms.store(session->control.peer->roundTripTime, std::memory_order_relaxed);
++          }
++
+           if (now > session->pingTimeout) {
+             auto address = session->control.peer ? platf::from_sockaddr((sockaddr *) &session->control.peer->address.address) : session->control.expected_peer_address;
+             BOOST_LOG(info) << address << ": Ping Timeout"sv;
+@@ -1833,6 +1843,7 @@
+ 
+               ratecontrol_group_packets_sent += current_batch_size;
+               ratecontrol_frame_packets_sent += current_batch_size;
++              session->info_video_bytes.fetch_add(current_batch_size * (shards.prefixsize + shards.blocksize), std::memory_order_relaxed);
+               next_shard_to_send = x + 1;
+             }
+           }
+@@ -2228,6 +2239,9 @@
+         session_input = session.info_input;
+       }
+       result.gamepads = session_input ? input::gamepad_count(session_input) : 0;
++      result.video_bytes = session.info_video_bytes.load(std::memory_order_relaxed);
++      result.recoveries = session.info_recoveries.load(std::memory_order_relaxed);
++      result.rtt_ms = session.info_rtt_ms.load(std::memory_order_relaxed);
+       return result;
+     }
+ 

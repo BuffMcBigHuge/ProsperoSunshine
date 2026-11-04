@@ -8,6 +8,7 @@
 #include "platform/ps5/pad.h"
 #include "platform/ps5/shared_capture.hpp"
 #include "src/config.h"
+#include "src/file_handler.h"
 #include "src/logging.h"
 #include "src/platform/common.h"
 #include <arpa/inet.h>
@@ -423,6 +424,7 @@ struct input_raw_t {
     std::array<ps_pad *, MAX_GAMEPADS> pads{};
     std::array<bool, MAX_GAMEPADS> active{};  // last state had something pressed or deflected
     std::array<bool, MAX_GAMEPADS> back{};    // Select is down
+    std::array<bool, MAX_GAMEPADS> ps_held{}; // a PS press that was held back, logged once per press
     std::array<std::chrono::steady_clock::time_point, MAX_GAMEPADS> back_since{};
     std::array<feedback_queue_t, MAX_GAMEPADS> feedback{};
     std::array<uint8_t, MAX_GAMEPADS> client_index{};
@@ -441,6 +443,7 @@ struct input_raw_t {
     std::optional<std::pair<float, float>> pointer;  // the last absolute position, for abs_mouse
     int sessions = 0;
     uint32_t user = 0;
+    bool ps_all_players = false;  // ps_button_all_players: every pad may press PS, not only pad 0
     std::jthread output_thread;
 };
 
@@ -540,6 +543,12 @@ input_t input() {
     raw->user = ps_pad_default_user();
     // Not the user's id: this log goes into the report people post (app/src/psapp/diag.cpp).
     BOOST_LOG(info) << (raw->user ? "PS5 input: virtual pads ready"sv : "PS5 input: no user for virtual pads"sv);
+    // The app's "PS for all players" (off by default). Sunshine doesn't know the key and leaves it alone.
+    const auto settings = config::parse_config(file_handler::read_file(config::sunshine.config_file.c_str()));
+    const auto all = settings.find("ps_button_all_players");
+    raw->ps_all_players = all != settings.end() && all->second == "1";
+    BOOST_LOG(info) << (raw->ps_all_players ? "PS5 input: every player can press PS"sv
+                                            : "PS5 input: only player 1 can press PS"sv);
     raw->output_thread = std::jthread(poll_pad_output, raw);
     return input_t{raw};
 }
@@ -596,6 +605,7 @@ void free_gamepad(input_t &input, int nr) {
     input->triggers[nr] = {};
     input->touch[nr].clear();
     input->back[nr] = false;
+    input->ps_held[nr] = false;
     BOOST_LOG(info) << "PS5 virtual pad "sv << nr << " detached ("sv << rc << ')';
 }
 
@@ -611,7 +621,10 @@ void gamepad_update(input_t &input, int nr, const gamepad_state_t &state) {
     // Sunshine turns a held Select into PS (back_button_timeout), but Select is Create here and pressing it
     // first would open the Create menu. So Create only goes out, as a tap, when Select comes up early. The
     // margin keeps Sunshine's own forced release at the timeout from counting as early.
-    uint32_t flags = state.buttonFlags;
+    uint32_t flags = prospero::allowed_buttons(state.buttonFlags, nr, input->ps_all_players);
+    if ((state.buttonFlags & ~flags) && !(input->ps_held[nr]))
+        BOOST_LOG(info) << "PS5 virtual pad "sv << nr << ": PS ignored, only player 1 has it (ps_button_all_players)"sv;
+    input->ps_held[nr] = state.buttonFlags & ~flags;
     bool create_tap = false;
     if (const auto timeout = config::input.back_button_timeout; timeout >= 0ms) {
         const bool back = flags & BACK;

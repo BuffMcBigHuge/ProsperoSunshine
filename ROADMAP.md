@@ -1,8 +1,8 @@
 # ProsperoSunshine Roadmap und Umsetzungsplan
 
-Stand: 4. November 2026, nach Release 0.2.4. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
+Stand: 4. November 2026, nach Release 0.3.0. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
 
-## Stand (4. November 2026, nach Release 0.2.4)
+## Stand (4. November 2026, nach Release 0.3.0)
 
 Seit 0.1.5 sind folgende Releases dazugekommen:
 
@@ -22,6 +22,11 @@ Seit 0.1.5 sind folgende Releases dazugekommen:
   - Ein zweiter Aufnahmekanal: Ein Gerät bekommt einen eigenen Codec, Dynamikbereich oder eine eigene Auflösung bis 1080p.
   - Die App zeigt, wer streamt, und beendet den Stream eines Geräts (`STREAMS`, `ENDSTREAM`).
   - HDR-Streams senden HDR10-Metadaten statt Nullen.
+- **0.3.0:**
+  - PS-Taste nur für Spieler 1 (Einstellung „PS for all players“).
+  - Die App zeigt je Gerät die tatsächliche Bitrate, die Laufzeit und Verluste.
+  - Beitreten zeigt das erste Bild nach 0,4 statt 2,2 s; eine Übernahme öffnet den Kanal nicht neu.
+  - README-Abschnitt zum Spielen über das Internet.
 
 Firmware: 13.00 und 10.20 sind geprüft. 10.40 und 13.60 streamen laut Nutzerberichten (Issues #1 und #2), dort aber nicht
 gemessen.
@@ -291,6 +296,9 @@ Bewusst nicht geplant: Haptik (Moonlight hat keinen Kanal dafür); harte Trigger
    Auflösung den Encoder (`STATUS.md`).
 2. 120 fps: `cfg+0x1c = 2` lehnt OpenVideo auf 13.00 mit 0x80c70004 ab (`slice_rate_probe`, `STATUS.md`). Weitere Spuren
    nur mit einem Titel, der 120 Hz ausgibt, und über die Prüfroutine in `docs/re/avcap2-exports.md`.
+   Raumklang: Encoder-Typ 3 liefert 12 Kanäle Float (`STATUS.md`, „Für 0.3.0“). Nächster Schritt: mit einem Spiel mit 5.1/7.1
+   bestimmen, welcher Kanal welcher Lautsprecher ist (`surround_probe` während das Spiel läuft), dann bei 6 oder 8 Kanälen in
+   Moonlight Typ 3 statt Typ 0 lesen und umsortieren.
 3. 13.60 (Issue #1): Der Host wartet seit 0.2.3 bis zu 6 s auf die Zuteilung und schreibt `RUNNING granted after N ms`,
    wenn es länger dauert. Ein Bericht damit zeigt, wie lang die Zuteilung dort braucht. Danach die Checkliste in
    `docs/firmware-porting.md` für 13.60.
@@ -302,7 +310,7 @@ Bewusst nicht geplant: Haptik (Moonlight hat keinen Kanal dafür); harte Trigger
    (`STATUS.md`). Das ist zu klären. Offen sind außerdem das Aufwecken per Controller und der einmalige Hänger im ersten
    Test. Wecken aus Moonlight geht nicht (`STATUS.md`, Issue #10). Tests nur nach Rückfrage.
 6. Längere Spielsitzung in 4K mit HEVC in Moonlight: Am 3. November 2026 lief sie beim Besitzer länger ohne Probleme
-   (Bericht, Logs nicht ausgewertet). Für 0.3 und 0.4 fehlt noch eine Sitzung, deren Log ausgewertet wird.
+   (Bericht, Logs nicht ausgewertet). 0.3.0 kam auf Wunsch des Besitzers ohne ausgewertetes Log; für 0.4 fehlt es noch.
 7. Weitere Clients (P9.6): Android, TV/Shield, Steam Deck. Co-op mit echtem Moonlight auf mehreren Geräten ist von einem
    Tester belegt (vier Spieler auf 10.20, Issue #11), hier nur mit dem Testclient. Noch ungeprüft ist, wie Moonlight auf dem
    Handy die Meldung bei falschem Dynamikbereich zeigt.

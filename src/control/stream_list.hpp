@@ -19,7 +19,17 @@ struct StreamFacts {
     bool hdr = false;  // the client asked for 10 bit
     long long seconds = 0;  // since the session started
     int pads = 0;  // virtual gamepads of the client
+    // What reaches the network (patch 0015): -1 while unknown.
+    int sent_kbps = -1;  // video kbit/s sent lately
+    int rtt_ms = -1;  // round-trip time of the control connection
+    int recoveries = 0;  // times the client asked for a new picture after a loss
 };
+
+// kbit/s from a count of bytes sent over some seconds; -1 when there's too little time to tell.
+inline int sent_rate_kbps(unsigned long long bytes, double seconds) {
+    if (seconds < 0.5) return -1;
+    return static_cast<int>(static_cast<double>(bytes) * 8.0 / 1000.0 / seconds + 0.5);
+}
 
 // A PS5 capture channel while a stream holds it.
 struct CaptureFacts {
@@ -37,10 +47,11 @@ inline std::string codec_name(int video_format) {
 }
 
 // "OK uuid=<uuid> address=<ip> codec=<H.264|HEVC|AV1> hdr=<0|1> mode=<WxH@fps> kbps=<n> secs=<n> pads=<n>
-//  role=<capture|joined|starting> channel=<0|1|-> name=<name>". The name comes last because it may hold spaces; "-"
-// stands for an unknown uuid, address, mode or channel. role: capture holds a capture channel, joined gets its picture,
+//  role=<capture|joined|starting> channel=<0|1|-> sent_kbps=<n|-> rtt_ms=<n|-> recoveries=<n> name=<name>". The name comes
+// last because it may hold spaces; "-" stands for an unknown uuid, address, mode, channel, rate or round-trip time. role: capture holds a capture channel, joined gets its picture,
 // starting has neither yet (its values are what it asked for). channel: the capture channel it holds or joined, whose
-// codec, dynamic range, mode and bit rate the line shows then.
+// codec, dynamic range, mode and bit rate the line shows then. sent_kbps, rtt_ms and recoveries are what reaches the
+// network: the video sent lately, the control connection's round-trip time, and how often the client lost a picture.
 inline std::string stream_line(const StreamFacts &stream, const std::vector<CaptureFacts> &captures, const std::string &uuid,
                                const std::string &name) {
     std::string role = "starting", channel = "-";
@@ -73,7 +84,10 @@ inline std::string stream_line(const StreamFacts &stream, const std::vector<Capt
     return "OK uuid=" + (uuid.empty() ? "-" : uuid) + " address=" + (address.empty() ? "-" : address) +
            " codec=" + codec_name(video_format) + " hdr=" + (hdr ? "1" : "0") + " mode=" + mode +
            " kbps=" + std::to_string(std::max(0, kbps)) + " secs=" + std::to_string(std::max(0LL, stream.seconds)) +
-           " pads=" + std::to_string(std::max(0, stream.pads)) + " role=" + role + " channel=" + channel + " name=" + clean_name;
+            " pads=" + std::to_string(std::max(0, stream.pads)) + " role=" + role + " channel=" + channel +
+           " sent_kbps=" + (stream.sent_kbps < 0 ? std::string("-") : std::to_string(stream.sent_kbps)) +
+           " rtt_ms=" + (stream.rtt_ms < 0 ? std::string("-") : std::to_string(stream.rtt_ms)) +
+           " recoveries=" + std::to_string(std::max(0, stream.recoveries)) + " name=" + clean_name;
 }
 
 }

@@ -8,8 +8,9 @@
 //   PIN <id> <pin> [name]       -> approves the given request
 //   DEVICES                     -> "OK <uuid> <streaming 0|1> <last mode or -> <name>" per paired device, then "END"
 //   STREAMS                     -> per running stream "OK uuid=<uuid> address=<ip> codec=<H.264|HEVC|AV1> hdr=<0|1>
-//                                  mode=<WxH@fps> kbps=<n> secs=<n> pads=<n> role=<capture|joined|starting> name=<name>",
-//                                  then "END" (stream_list.hpp; "-" for an unknown uuid, address or mode)
+//                                  mode=<WxH@fps> kbps=<n> secs=<n> pads=<n> role=<capture|joined|starting> channel=<0|1|->
+//                                  sent_kbps=<n|-> rtt_ms=<n|-> recoveries=<n> name=<name>", then "END" (stream_list.hpp;
+//                                  "-" for an unknown value; sent_kbps since the last STREAMS, or since the start)
 //   ENDSTREAM <uuid>            -> ends that device's stream; the game and the others' streams go on ("OK ended" / "ERR ...")
 //   RENAME <uuid> <name>      -> gives a paired device another name ("OK renamed" / "ERR ...")
 //   UNPAIR <uuid>               -> removes a paired device and ends its stream ("OK removed" / "ERR ...")
@@ -24,6 +25,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <stop_token>
 #include <string>
@@ -51,6 +53,13 @@ private:
     std::atomic_bool report_listening_{false};
     std::atomic_bool relisten_{false};
     std::atomic<std::chrono::steady_clock::rep> report_until_{0};
+    // Each session's video bytes at the last STREAMS, by client certificate: the rate is the difference. One client at a
+    // time asks, so the handler's thread is the only one that touches it.
+    struct SentSample {
+        unsigned long long bytes;
+        std::chrono::steady_clock::time_point at;
+    };
+    std::map<std::string, SentSample> sent_;
 };
 
 }

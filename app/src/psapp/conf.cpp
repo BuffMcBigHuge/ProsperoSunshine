@@ -56,15 +56,19 @@ const std::vector<OptionSpec> &option_specs()
         {"port", "Base port",
          "Moonlight's ports count from here.",
          OptionKind::number, "47989", {}, 1025, 65514, 1, 47989},
-        {"lan_encryption_mode", "Encryption on the LAN",
+        {"lan_encryption_mode", "LAN encryption",
          "Encrypts the stream in the local network.", OptionKind::choice, "Off",
          kEncryption, 0, 0, 1, 0},
-        {"wan_encryption_mode", "Encryption over the internet",
+        {"wan_encryption_mode", "Internet encryption",
          "The same for clients outside it.", OptionKind::choice,
          "When supported", kEncryption, 0, 0, 1, 0},
         // Sunshine reads this one (patch 0010), as it does the options above.
         {"close_game_on_quit", "Quit closes the game",
          "On: quitting in Moonlight also closes the game the stream started or found in front, and unsaved progress is lost.",
+         OptionKind::toggle, "Off", {}, 0, 0, 1, 0},
+        // The host reads this one (src/sunshine/main_ps5.cpp). Off, only player 1 has the PS button.
+        {"ps_button_all_players", "PS for all players",
+         "Off: only player 1, who plays as the console's user, can press PS. On: every player can, also a friend over the internet.",
          OptionKind::toggle, "Off", {}, 0, 0, 1, 0},
         };
         // The Experimental switches, which the host reads itself (src/sunshine/main_ps5.cpp), not Sunshine.

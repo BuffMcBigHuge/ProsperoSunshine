@@ -40,10 +40,10 @@ const Rect kPairedDevices{1220.0f, 740.0f, 604.0f, 172.0f};
 constexpr int kReportVisible = 19; // lines of the report on screen
 constexpr float kReportLine = 26.0f;
 
-const Icon kOptionIcons[] = {Icon::tag, Icon::log, Icon::timer, Icon::plug, Icon::lock, Icon::globe, Icon::sliders};
-// option_specs(): a row of four, a row of three, then a row with the Experimental switches
-constexpr int kFirstWide = 4;
-constexpr int kFirstSwitch = 7;
+const Icon kOptionIcons[] = {Icon::tag, Icon::log, Icon::timer, Icon::plug, Icon::lock, Icon::globe, Icon::sliders, Icon::home};
+// option_specs(): two rows of four, then a row with the Experimental switches
+constexpr int kRowLength = 4;
+constexpr int kFirstSwitch = 8;
 constexpr int kTiles = kFirstSwitch + PS_EXP_SWITCH_COUNT;
 
 float approach(float value, float target, float dt, float speed)
@@ -177,10 +177,9 @@ Rect Screen::tile_rect(int index) const
         const float width = (1728.0f - 20.0f * static_cast<float>(PS_EXP_SWITCH_COUNT - 1)) / static_cast<float>(PS_EXP_SWITCH_COUNT);
         return {96.0f + static_cast<float>(index - kFirstSwitch) * (width + 20.0f), 594.0f, width, 124.0f};
     }
-    if (index >= kFirstWide)
-        return {96.0f + static_cast<float>(index - kFirstWide) * 584.0f, 414.0f, 560.0f, 124.0f};
     constexpr float kNarrow = (1728.0f - 3.0f * 24.0f) / 4.0f;
-    return {96.0f + static_cast<float>(index) * (kNarrow + 24.0f), 276.0f, kNarrow, 124.0f};
+    const int row = index / kRowLength, col = index % kRowLength;
+    return {96.0f + static_cast<float>(col) * (kNarrow + 24.0f), 276.0f + 138.0f * static_cast<float>(row), kNarrow, 124.0f};
 }
 
 Rect Screen::settings_action_rect(int index) const
@@ -437,18 +436,20 @@ void Screen::handle_settings(const hui::InputFrame &input, hui::ui::Feedback &fe
         int next = tile_;
         if (tile_ < kTiles)
         {
-            const bool switches = tile_ >= kFirstSwitch, wide = !switches && tile_ >= kFirstWide;
-            const int col = switches ? tile_ - kFirstSwitch : wide ? tile_ - kFirstWide : tile_;
-            // Up and down go to the nearest tile: a row of four has one of three under or over it, and the other way round.
-            const int to_wide = kFirstWide + std::min((col + 1) / 2, 2), to_four = col == 2 ? 3 : col;
+            const bool switches = tile_ >= kFirstSwitch, second = !switches && tile_ >= kRowLength;
+            const int col = switches ? tile_ - kFirstSwitch : tile_ % kRowLength;
+            // Up and down go to the nearest tile: the two rows of four line up; the switches' row has its own count.
+            const int last_switch = PS_EXP_SWITCH_COUNT - 1;
+            const int to_switch = kFirstSwitch + (col * last_switch + (kRowLength - 1) / 2) / (kRowLength - 1);
+            const int from_switch = kRowLength + (col * (kRowLength - 1) + last_switch / 2) / std::max(last_switch, 1);
             if (input.nav == Direction::left)
                 next = col > 0 ? tile_ - 1 : -1;
             else if (input.nav == Direction::right)
-                next = col < (switches ? PS_EXP_SWITCH_COUNT - 1 : wide ? 2 : kFirstWide - 1) ? tile_ + 1 : -1;
+                next = col < (switches ? last_switch : kRowLength - 1) ? tile_ + 1 : -1;
             else if (input.nav == Direction::up)
-                next = switches ? to_wide : wide ? to_four : -1;
+                next = switches ? from_switch : second ? tile_ - kRowLength : -1;
             else
-                next = switches ? kTiles + std::min(col, 2) : wide ? kFirstSwitch + std::min(to_four, PS_EXP_SWITCH_COUNT - 1) : to_wide;
+                next = switches ? kTiles + std::min(col, 2) : second ? std::min(to_switch, kFirstSwitch + last_switch) : tile_ + kRowLength;
         }
         else
         {
@@ -1816,9 +1817,15 @@ void Screen::draw_sheet(hui::gfx::DrawList &list, std::uint32_t glass) const
             if (!stream.address.empty() && room - name_w - 14.0f > 80.0f)
                 hui::ui::text(list, fonts_.regular, shorten(fonts_.regular, stream.address, 21.0f, room - name_w - 14.0f),
                               row.x + 86.0f + name_w + 14.0f, row.y + 36.0f, 21.0f, kFaint);
+            // What really reaches the device on the right, under the time: the rate it gets, the round trip and its losses.
+            const std::string network = diag::stream_network(stream);
+            const float network_w = network.empty() ? 0.0f
+                                                    : hui::ui::text(list, fonts_.regular, network, row.x + row.w - 24.0f, row.y + 66.0f,
+                                                                    21.0f, focused ? kMuted : kFaint, Align::right) +
+                                                          24.0f;
             const std::string info = (stream.role == "joined" ? "Joined, " : "") + diag::stream_info(stream);
-            hui::ui::text(list, fonts_.regular, shorten(fonts_.regular, info, 21.0f, row.w - 110.0f), row.x + 86.0f, row.y + 66.0f, 21.0f,
-                          kGood);
+            hui::ui::text(list, fonts_.regular, shorten(fonts_.regular, info, 21.0f, row.w - 110.0f - network_w), row.x + 86.0f,
+                          row.y + 66.0f, 21.0f, kGood);
         }
         if (count > kDeviceRows)
         {

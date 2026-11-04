@@ -352,8 +352,11 @@ static int kbm_step(const char *step, int hold_ms) {
   return 0;
 }
 
+// The pads present, sent with every controller event: Sunshine drops a pad that is missing from it.
+static short pad_mask = 0x1;
+
 static void pad_event(int buttons, int lt, int rt, int lx, int ly, int rx, int ry, const char *what) {
-  int r = LiSendMultiControllerEvent(0, 0x1, buttons, (unsigned char) lt, (unsigned char) rt, (short) lx,
+  int r = LiSendMultiControllerEvent(0, pad_mask, buttons, (unsigned char) lt, (unsigned char) rt, (short) lx,
                                      (short) ly, (short) rx, (short) ry);
   tlog("input: %s -> %d\n", what, r);
 }
@@ -397,6 +400,8 @@ int main(int argc, char **argv) {
   char *tick_seq = NULL;
   int hevc = 0, hevc10 = 0, touch_motion = 0;
   char *kbm_seq = NULL;
+  int pads = 1;  // --pads N: controllers 0..N-1 arrive, one a second, as with several gamepads on one client
+  int tick_pad = 0;  // --tick-pad N: the UI ticks come from controller N (with --pads above N)
 
   static const struct option opts[] = {
     {"addr", 1, 0, 'a'},     {"rtsp-url", 1, 0, 'r'},   {"rikey", 1, 0, 'k'},    {"rikeyid", 1, 0, 'i'},
@@ -406,6 +411,7 @@ int main(int argc, char **argv) {
     {"ui-ticks", 1, 0, 'U'}, {"tick-interval-ms", 1, 0, 'T'}, {"tick-start", 1, 0, 'S'}, {"tick-kind", 1, 0, 'K'},
     {"timing-log", 1, 0, 'L'}, {"no-script", 0, 0, 'N'}, {"tick-hold-ms", 1, 0, 'M'}, {"tick-seq", 1, 0, 'Q'},
     {"hevc", 0, 0, 'E'},     {"hevc10", 0, 0, 'X'},     {"touch-motion", 0, 0, 'Y'}, {"kbm-seq", 1, 0, 'Z'},
+    {"pads", 1, 0, 'P'}, {"tick-pad", 1, 0, 'J'},
     {0, 0, 0, 0}};
   int c;
   while ((c = getopt_long(argc, argv, "", opts, NULL)) != -1) {
@@ -438,8 +444,14 @@ int main(int argc, char **argv) {
       case 'X': hevc = hevc10 = 1; break;
       case 'Y': touch_motion = 1; break;
       case 'Z': kbm_seq = optarg; break;
+      case 'P': pads = atoi(optarg); break;
+      case 'J': tick_pad = atoi(optarg); break;
       default: return 2;
     }
+  }
+  if (pads < 1 || pads > 16) {
+    fprintf(stderr, "--pads must be 1..16\n");
+    return 2;
   }
   if (!addr || !rtsp || !rikey) {
     fprintf(stderr, "usage: %s --addr A --rtsp-url URL --rikey HEX32 --rikeyid N [options]\n", argv[0]);
@@ -578,7 +590,7 @@ int main(int argc, char **argv) {
     uint32_t ff = LiGetHostFeatureFlags();
     tlog("host feature flags: 0x%x\n", ff);
     uint64_t run_start = now_ms();
-    int sent_arrival = 0, step = 0, sent_idr = 0;
+    int sent_arrival = 0, step = 0, sent_idr = 0, sent_pads = 1;
     // UI ticks (--ui-ticks): phase 0 = press due, 1 = release due.  D-pad RIGHT/LEFT alternate so the highlight
     // stays on screen; the PS button toggles the control centre.
     int tick_n = 0, tick_phase = 0, kbm_i = 0;
@@ -613,6 +625,14 @@ int main(int argc, char **argv) {
         tlog("input: controller arrival (pad 0, PS) -> %d\n", r);
         sent_arrival = 1;
       }
+      // Further controllers, one a second after the first; the mask names every pad present.
+      if (sent_arrival && sent_pads < pads && el >= 2.0 + sent_pads) {
+        const short mask = (short) ((1 << (sent_pads + 1)) - 1);
+        int r = LiSendControllerArrivalEvent((uint8_t) sent_pads, mask, LI_CTYPE_PS, 0x3FFFF, caps);
+        tlog("input: controller arrival (pad %d, PS, mask 0x%x) -> %d\n", sent_pads, (unsigned) mask, r);
+        sent_pads++;
+        pad_mask = mask;
+      }
       if (touch_motion && el >= 3.0) touch_motion_script(el - 3.0);
       if (step == 0 && el >= 3.0) { pad_event(0, 0, 0, 0, 0, 0, 0, "neutral state"); step++; }
       if (step == 1 && el >= 4.0) { pad_event(A_FLAG, 0, 0, 0, 0, 0, 0, "A press"); step++; }
@@ -630,7 +650,7 @@ int main(int argc, char **argv) {
             int flag = seq_n ? seq_flags[tick_n % seq_n]
                              : tick_ps ? SPECIAL_FLAG : tick_back ? BACK_FLAG : ((tick_n & 1) ? LEFT_FLAG : RIGHT_FLAG);
             uint64_t ts = now_us();
-            int r = LiSendMultiControllerEvent(0, 0x1, flag, 0, 0, 0, 0, 0, 0);
+            int r = LiSendMultiControllerEvent((short) tick_pad, pad_mask, flag, 0, 0, 0, 0, 0, 0);
             timing_line("P,%d,%s,%llu\n", tick_n, nm, (unsigned long long) ts);
             tlog("input: tick %d/%d %s press -> %d\n", tick_n + 1, ui_ticks, nm, r);
             tick_phase = 1;
@@ -638,7 +658,7 @@ int main(int argc, char **argv) {
           } else {
             const char *nm = seq_n ? seq_names[tick_n % seq_n] : tick_ps ? "ps" : tick_back ? "back" : tick_names[tick_n & 1];
             uint64_t ts = now_us();
-            int r = LiSendMultiControllerEvent(0, 0x1, 0, 0, 0, 0, 0, 0, 0);
+            int r = LiSendMultiControllerEvent((short) tick_pad, pad_mask, 0, 0, 0, 0, 0, 0, 0);
             timing_line("P,%d,release_%s,%llu\n", tick_n, nm, (unsigned long long) ts);
             (void) r;
             tick_phase = 0;
