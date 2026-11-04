@@ -252,7 +252,10 @@ Gemessen auf einer PS5 Pro mit 10.20 (Datensatz von 10.x, `record_shift`). Eine 
   H.264 auf dem Datensatz von 10.x.
 - **10.20 gilt als geprüft:** Die App zeigt dort keinen Hinweis „untested“ mehr, und `ra_nids.h` kennt die Adressen der
   ResourceArbitrator-Aufrufe (`0xde0`, `0xfe0`, `0x1220`, `0x1360`, auf 10.20 per NID gefunden). `ra_nid_probe.elf` aus diesem Stand meldet dort `result=PASS … known=1`, NID und Tabelle stimmen für alle vier überein.
-- **Offen:** HEVC auf Android, iOS und Switch (dort bisher nur H.264); andere 10.x-Versionen (bekommen nur H.264); Schritt 6
+- **HEVC auf Android, iOS und Switch (nachgetragen 2026-11-05):** inzwischen auf 10.20 gelaufen, siehe „Auf 0.1.9 mit weiteren
+  Clients“ unter „Modi unter 1080p auf Firmware 10.20“ und „Quantisierer auf 10.x folgt der Bitrate“. Dazu Play Together auf 0.2.2
+  (2026-11-04, #11): Switch im LAN, iPhone über Mobilfunk und Android über WLAN in einem anderen Netz, alle mit HEVC.
+- **Offen:** andere 10.x-Versionen (bekommen nur H.264); Schritt 6
   der Checkliste (Bitrate beim Öffnen) ist auf 10.x nicht erfüllbar; Modi über 1080p bleiben auf 10.x aus (`ps_capture_large_modes_verified`; die darunter laufen auf 10.20, siehe „Modi unter 1080p auf Firmware 10.20“); die Bitrate,
   die der Encoder auf 10.x wie bei H.264 nicht aus der Konfiguration übernimmt.
 
