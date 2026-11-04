@@ -318,6 +318,31 @@ IDR angefordert, 16 Mbit/s verlangt. Auf 10.x setzt der Host dabei den Quantisie
   - Die gesendete Bitrate zählte dieser Host nicht. Gemessen ist sie mit dem iPhone in derselben Einstellung (oben).
   - Der Stream wurde auf der Vita geschlossen, ohne ihn zu beenden; der Host beendete die Sitzung beim Ping-Timeout.
 
+### Titelwechsel im Stream unter 1080p (2026-11-03, 10.20, nicht veröffentlicht)
+
+Gemessen auf der PS5 Pro mit 10.20, Ausgabe der Konsole in 1080p (`video out mode 0x13c`). Moonlight für Windows streamte
+„PS5 Screen“ vom Startbildschirm; während des Streams wurde Black Myth: Wukong von außen gestartet und nach etwa 30 s
+beendet (Prozessende; die Ausgabe wechselt dabei wie beim Schließen aus dem Menü). Wukong stellt die Ausgabe auf einen
+eigenen Modus (`0x44`). GTA III und Resident Evil 4 bleiben beim Modus des Startbildschirms und nehmen die Aufnahme nicht
+weg.
+
+- **Ausgabe ohne Modus:** Beim Start und beim Ende des Titels geht die Aufnahme verloren (`ReadVideo` `0x81950009`), und
+  `sceAvcap2GetVideoOutMode` meldet 1,6 bis 2,1 s lang 0 (eine Sonde las den Modus während des Streams alle 20 ms). So
+  lange lehnt `OpenVideo` jeden Modus mit `0x81950008` ab.
+- **0.2.1 und 0.2.2:** Die Wiederöffnung wartet 1 s auf den Modus und versucht unter 1080p fünfmal, danach fällt der Stream
+  auf 1080p und bleibt dort bis zum Ende. 960x544 verlangt (H.264): nach dem Start in 1965 ms, nach dem Ende in 2058 ms
+  wieder offen, beide Male in 1920x1080. Eine PS Vita zeigt dann kein Bild mehr; der Stream steht, die Eingaben gehen
+  weiter.
+- **Mit dieser Änderung:** Eine Wiederöffnung im laufenden Stream fällt unter 1080p nicht zurück, solange die Ausgabe
+  keinen Modus hat oder ihn während der Versuche wechselt (`output not settled` im `host_diag.log`); die nächste
+  Wiederöffnung 250 ms später verlangt denselben Modus, höchstens 6 s lang. Jede Wiederöffnung verlangt wieder den Modus
+  des Clients. 960x544: nach dem Start 1991 ms, nach dem Ende 2035 ms, beide Male 960x540.
+- **PS Vita im Heimnetz** (Testhost auf 0.2.1 mit derselben Logik, aber für alle Auflösungen und mit Sonde): Wukong
+  zweimal gestartet und zweimal beendet, jedes Mal nach 1,9 bis 2,3 s wieder 960x540; laut Nutzer blieb das Bild.
+- **Ab 1080p unverändert:** 1920x1080 HEVC: 1959 und 2059 ms, 1080p (0.2.1: 1973 und 2111 ms). 3840x2160 HEVC: nach dem
+  Start 1867 ms und 1080p, weil das System 4K bei Wukongs Ausgabe ablehnt, auch wenn sie schon steht; nach dem Ende bleibt
+  1080p bis zum Schluss, wie mit 0.2.1 (1985 ms, 1080p). Die neue Prüfung griff bei diesen Läufen nicht.
+
 ### Terminate App schließt das Spiel (2026-11-01, nicht veröffentlicht)
 
 Gemessen auf der PS5 Pro mit 10.20 und ShadowMountPlus 1.7beta11.

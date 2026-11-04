@@ -150,9 +150,13 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     // The session falls back to 1080p when the system refuses a larger or smaller mode.
     const auto check_fallback = [&] {
         const auto delivered = prospero::capture_mode_of(ps_capture_video_resolution());
-        if (delivered.height != delivered_height)
-            BOOST_LOG(warning) << "PS5 capture: "sv << (delivered_height > delivered.height ? "larger"sv : "smaller"sv)
-                               << " mode refused by the system, delivering "sv << delivered.width << 'x' << delivered.height;
+        if (delivered.height != delivered_height) {
+            if (delivered.height == mode.height)
+                BOOST_LOG(info) << "PS5 capture: back to "sv << delivered.width << 'x' << delivered.height;
+            else
+                BOOST_LOG(warning) << "PS5 capture: "sv << (delivered_height > delivered.height ? "larger"sv : "smaller"sv)
+                                   << " mode refused by the system, delivering "sv << delivered.width << 'x' << delivered.height;
+        }
         announce_mode(delivered);
         std::lock_guard lock(owner.mutex);
         owner.delivered = delivered;  // for the streams that join
@@ -280,13 +284,21 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
             BOOST_LOG(warning) << "PS5 capture lost ("sv << static_cast<int>(status) << "), reopening"sv;
             const auto lost_at = std::chrono::steady_clock::now();
             bool recovered = false;
+            // Below 1080p the client may not decode more (a PS Vita), and the title that took the capture leaves the
+            // output without a mode for up to about 2 s (10.20). So each reopen asks for the client's mode again, also
+            // after a fall back, and for 6 s doesn't fall back while the output isn't settled; not once a switch on
+            // trial went off for it. From 1080p up nothing changes: there a fall back stays for the stream, as before.
             while (!shutdown_event->peek() && std::chrono::steady_clock::now() - lost_at < 20s) {
                 std::this_thread::sleep_for(250ms);
+                const bool small = mode.resolution < 4 && ps_capture_small_modes_allowed();
+                if (small) ps_capture_set_video_mode(mode.resolution, low_rate ? 0 : 1);
+                ps_capture_set_reopening(small && std::chrono::steady_clock::now() - lost_at < 6s);
                 if (session.start() == 0) {
                     recovered = true;
                     break;
                 }
             }
+            ps_capture_set_reopening(0);
             if (!recovered) {
                 BOOST_LOG(error) << "PS5 capture could not be reopened; ending the session"sv;
                 shutdown_event->raise(true);
