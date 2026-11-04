@@ -1,8 +1,31 @@
 # ProsperoSunshine Roadmap und Umsetzungsplan
 
-Stand: 1. November 2026, nach Release 0.1.5. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
+Stand: 4. November 2026, nach Release 0.2.3. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
 
-## Stand (1. November 2026, nach Release 0.1.5)
+## Stand (4. November 2026, nach Release 0.2.3)
+
+Seit 0.1.5 sind folgende Releases dazugekommen:
+
+- **0.1.6:** Spiele in der App-Liste von Moonlight, HDR, Touch und Bewegung.
+- **0.1.7:** Firmware 10.x und der Bereich „Experimentell“ in der App; auf 13.00 bis 150 Mbit/s.
+- **0.1.8:** „Beenden“ in Moonlight schließt das Spiel.
+- **0.1.9:** Gekoppelte Geräte in der App.
+- **0.2.0:** Modi unter 1080p auf 10.20 und 13.00.
+- **0.2.1:** Tastatur und Maus; ein neuer Stream vom selben Gerät löst den alten ab.
+- **0.2.2:** Weitere Spieler von anderen Geräten oder mit einem zweiten Controller.
+- **0.2.3:**
+  - Beim Co-op bleibt der laufende Modus, wenn das erste Gerät geht.
+  - Ein Gerät mit falschem Dynamikbereich wird mit Meldung abgewiesen.
+  - Ein Titelwechsel unter 1080p fällt nicht mehr auf 1080p zurück.
+  - Der Host wartet länger auf die Zuteilung der Aufnahme.
+
+Firmware: 13.00 und 10.20 sind geprüft. 10.40 und 13.60 streamen laut Nutzerberichten (Issues #1 und #2), dort aber nicht
+gemessen.
+
+Co-op: Weitere Geräte hängen sich an den laufenden Stream. Ein Tester spielte auf 10.20 mit vier Spielern, auch über das
+Internet (Issue #11). Alle Geräte bekommen denselben Modus; einen eigenen Modus je Gerät zeigt Schritt 2 unten.
+
+## Stand nach Release 0.1.5 (1. November 2026)
 
 Erledigt und live belegt (Details in `STATUS.md`): Phase 0 komplett, Spikes R1–R5 positiv (R6 ohne mDNS, das kam mit P9.2), Phase 1 komplett, P2.1–P2.4, P3.1–P3.4, P4.1–P4.2, P5.1, aus P6 die 30-Minuten-Sitzung und zehn Wiederverbindungen, P6.4 (automatischer Testclient in `tools/moonlight/`), P4.3 geprüft (Pad wird nach Abbruch neutral), P6.2 Paketverlust (10 % ohne Abbruch), P7.1 bis P7.5 und P8.1 bis P8.5, P8.7, P8.8. Ende-zu-Ende-Stream mit einem moonlight-common-c-Client funktioniert.
 
@@ -18,7 +41,9 @@ Ein unveränderter Moonlight-Client im lokalen Netz fügt die PS5 per IP hinzu, 
 
 Nicht in v1.0: HEVC/AV1, HDR, 4K, mehrere Clients oder Controller, Mikrofon, Rumble, adaptive Trigger, Internetzugriff, Maus/Tastatur.
 
-Davon ist seit 0.1.2 HEVC (bis 50 Mbit/s), Rumble und die Lichtleiste des Pads dazugekommen, seit 0.1.4 1440p und 4K, jeweils nur auf Firmware 13.00. HDR läuft im Testclient und mit einem echten Moonlight am HDR-Fernseher (`STATUS.md`), noch nicht veröffentlicht. Weiter nicht vorgesehen: AV1, mehrere Clients oder Controller, Mikrofon, adaptive Trigger, Internetzugriff. Tastatur und Maus
+Davon ist seit 0.1.2 HEVC (bis 50 Mbit/s), Rumble und die Lichtleiste des Pads dazugekommen, seit 0.1.4 1440p und 4K, jeweils nur auf Firmware 13.00. HDR läuft im Testclient und mit einem echten Moonlight am HDR-Fernseher (`STATUS.md`), veröffentlicht seit 0.1.6. Seit
+0.2.2 kommen weitere Geräte und Controller als Spieler dazu. Weiter nicht vorgesehen: AV1, Mikrofon, Internetzugriff durch
+den Host selbst (Moonlight über das Internet geht mit der eigenen Portfreigabe). Tastatur und Maus
 gehen seit dem Stand nach 0.2.0 auf eine virtuelle Tastatur und Maus der Konsole, gemessen auf 13.00 (`STATUS.md`).
 
 ## Architekturentscheidung (Vorschlag ADR-001, Abschluss in Phase 0)
@@ -220,7 +245,8 @@ Ist R2 negativ, erscheint 0.1 als Vorschau ohne Ton und benennt das deutlich.
 
 Erledigt seit 0.1.0: 60 fps (59,94 fps in der 30-Minuten-Sitzung), Moonlight-Discovery per mDNS, HEVC, Rumble und Lichtleiste.
 
-Offen, in dieser Reihenfolge, jeweils mit eigenem Spike: weitere Firmware-Versionen (Checkliste `docs/firmware-porting.md`; ResourceArbitrator per NID, Rest live zu prüfen), Haptik geht über Moonlight nicht (`docs/re/adaptive-triggers.md`), mehrere Controller. 1440p und 4K laufen seit dem 2026-10-31 (`STATUS.md`).
+Offen, in dieser Reihenfolge, jeweils mit eigenem Spike: weitere Firmware-Versionen (Checkliste `docs/firmware-porting.md`; ResourceArbitrator per NID, Rest live zu prüfen), Haptik geht über Moonlight nicht (`docs/re/adaptive-triggers.md`), eigener Modus je Gerät im Co-op. Mehrere Controller
+gibt es seit 0.2.2. 1440p und 4K laufen seit dem 2026-10-31 (`STATUS.md`).
 
 ## Risikoregister
 
@@ -242,7 +268,7 @@ Offen, in dieser Reihenfolge, jeweils mit eigenem Spike: weitere Firmware-Versio
 
 | Meilenstein | Ziel | Fertig, wenn | Abhängig von |
 | --- | --- | --- | --- |
-| 0.2 Mehr Konsolen | Andere Firmwares, zuerst 10.40 und 13.60 aus den Issues | Mindestens eine weitere Firmware besteht die Checkliste in `docs/firmware-porting.md`. Stand: 13.60 wartet auf Berichte zu 0.1.5, für 10.x hat ein Tester einen PR angeboten | Diagnoseberichten und Testern; hier läuft nur 13.00 |
+| 0.2 Mehr Konsolen | Andere Firmwares, zuerst 10.40 und 13.60 aus den Issues | Mindestens eine weitere Firmware besteht die Checkliste in `docs/firmware-porting.md`. Stand: 10.20 besteht sie seit 0.1.7; 10.40 und 13.60 streamen laut Nutzerberichten, die Checkliste ist dort offen | Diagnoseberichten und Testern; hier läuft nur 13.00 |
 | 0.3 Alltagstauglich | Der Host läuft zuverlässig, ohne Pflege | Ruhemodus mit Controller, offenem Spiel und laufendem Stream geprüft; Android und TV geprüft; Wake-on-LAN geprüft (die MAC kommt beim Client an); Fehlstarts geklärt (Windows-Client: 0 in 150); Dauertest über mehrere Stunden im Spiel; mehrere Controller im Spiel geprüft | Teils Nutzertests |
 | 0.4 Mehr Bild | 1440p, 4K, HDR | Mindestens eines davon stabil im Stream, oder belegt, warum nicht. Stand: H.264 und HEVC in 1440p und 4K laufen auch unter Last (`STATUS.md`); es fehlt der aktive Spielbetrieb. HDR läuft im Testclient und mit einem echten Client am HDR-Fernseher | Reverse Engineering |
 | 1.0 Stabil | Klare Zusage, was unterstützt ist | Liste geprüfter Firmwares und Clients; mehrstündige Sitzung in mindestens zwei Spielen ohne Ausfall; Ruhemodus belegt oder klar ausgeschlossen; Neuinstallation aus dem Store nach Anleitung, von jemandem ohne Vorwissen | Den Meilensteinen davor |
@@ -251,12 +277,38 @@ Bewusst nicht geplant: Haptik (Moonlight hat keinen Kanal dafür); harte Trigger
 
 ## Nächste konkrete Schritte
 
-1. 13.60: Berichte aus Issue #1 zu 0.1.5 auswerten. Der Versuch gilt H.264 in 1080p; Ton und Controller sind dort ebenfalls ungeprüft.
-2. 10.x: Den angebotenen PR aus Issue #2 prüfen und mergen, danach 10.40 testen lassen. Bei 10.20 offen laut Bericht: Bitrate, 34 Slices je Bild (Moonlight unter Windows nur mit Software-Decoding), PCM-Ton zu langsam.
-3. Eine Firmware gilt erst als unterstützt, wenn die Schritte 3 bis 6, 8 und 9 der Checkliste in `docs/firmware-porting.md` belegt sind (Schritt 7 nur für HEVC). Dann kommt sie in die README.
-4. Längere Spielsitzung in 4K mit HEVC in Moonlight (Nutzertest, Logs danach auswerten): Das fehlt für 0.3 und 0.4 und prüft auch das größere Frame-Budget am echten Client.
-5. Rückfall bei echter kleinerer Bildausgabe: Bildausgabe der Konsole auf 1080p, 4K verlangen. Die Einstellung ändert der Nutzer. Bisher nur per Probe nachgestellt (`STATUS.md`).
-6. Weitere Clients (P9.6): Android, TV/Shield, Steam Deck. Mehrere Controller im Spiel.
-7. Ungeklärtes aus `STATUS.md`: seltene Fehlstarts (1 in 86 im Docker-Client, 0 in 150 im Windows-Client). Ruhemodus: Der Host erkennt die verlorenen Ports und startet seine Dienste im selben Prozess neu (`src/control/listener_watch.hpp`, Patch 0009), in zwei Tests sauber (`STATUS.md`). Mit offenem Spiel und laufendem Stream kam der Host nicht zurück: Der Neustart endet nicht in `host ready` (`STATUS.md`), das ist als Nächstes zu klären. Offen sind außerdem der einmalige Hänger des ersten Tests ohne diese Erholung, Aufwecken per Controller und ein Weg zum Wecken aus Moonlight, dessen Magic Packet in einem Versuch nicht weckte; Tests nur nach Rückfrage.
-8. HDR weiter prüfen: andere Clients und Bildschirme wegen der fehlenden Metadaten, ein Spiel, das sicher HDR ausgibt, dazu die Matrix aus `docs/re/hdr.md`, Schritt 5 (Einstellung ändert der Nutzer). Touch und Bewegung in einem Titel, der sie nutzt. Bei Bedarf: Level 6.0 in 4K, falls ein Client daran scheitert (erster Versuch `cfg+0x5c = 4`, `docs/re/hevc.md`); zurück auf 4K, wenn nach einem Rückfall der Titel endet.
-9. Adaptive Trigger (P9.10): Moonlight PC müsste die Effekte beim Beenden zurücksetzen (`docs/re/adaptive-triggers.md`).
+1. Release 0.2.3 veröffentlichen, sobald CI wieder grün ist (am 2026-11-04 war ffmpeg.org nicht erreichbar, und CI hatte nie
+   einen Cache gespeichert; beides ist im Workflow behoben). Im Katalog die Beschreibung unter 200 Zeichen kürzen.
+2. Eigener Modus je Gerät im Co-op. Heute bekommen alle den Modus des ersten Streams. Ein Freund über das Mobilnetz trägt
+   also dieselbe Bitrate, und ein Client mit H.264 kann einem HEVC-Stream nicht beitreten.
+   - Kleiner Schritt, nur 13.00: die niedrigste Bitrate aller Geräte per `SetVideoBitrate`. Senken geht, Anheben über den
+     Wert beim Öffnen beendet den Kanal (`docs/re/hevc.md`). Ob H.264 bis zu diesem Wert wieder steigen kann, ist ungeprüft.
+     Probe: `src/bitrate_spike.cpp` erweitern.
+   - Der eigentliche Spike: ein zweiter Avcap2-Kanal mit eigener ResourceArbitrator-Id (175 oder 185, gleiche Zuteilung wie
+     180) gleichzeitig zum ersten. Er braucht eine neue Probe auf Basis von `src/open_probe.cpp` ohne die `owned`-Sperre: zwei
+     Kanäle mit H.264 in 1080p, je mit eigener Bitrate, danach H.264 neben HEVC, 1080p neben 720p und 4K (Profil 182) neben
+     1080p. Offen ist das Encoder-Budget (`vcn[20]` gegen `vcn[70]`, `docs/re/avcap2-exports.md`) und ob die Speicherpools
+     reichen (`docs/re/hevc.md`).
+   - Neu kodieren auf der Konsole ist keine Option. Der ffmpeg-Build hat keine Encoder, und der Hardware-Encoder ist nur
+     über Avcap2 erreichbar.
+3. 13.60 (Issue #1): Der Host wartet seit 0.2.3 bis zu 6 s auf die Zuteilung und schreibt `RUNNING granted after N ms`,
+   wenn es länger dauert. Ein Bericht damit zeigt, wie lang die Zuteilung dort braucht. Danach die Checkliste in
+   `docs/firmware-porting.md` für 13.60.
+4. 10.x: 10.20 ist geprüft, 10.40 streamt HEVC laut Nutzerbericht (Issue #2). Offen: H.264 kommt dort in 34 Slices je
+   Bild, und die Hardware-Decoder unter Windows nehmen höchstens 32 (weißes Bild). Klären, ob sich die Slice-Zahl
+   einstellen lässt; bis dahin HEVC empfehlen.
+5. Ruhemodus mit offenem Spiel und laufendem Stream: Der Neustart der Dienste endet dort nicht in `host ready`
+   (`STATUS.md`). Das ist zu klären. Offen sind außerdem das Aufwecken per Controller und der einmalige Hänger im ersten
+   Test. Wecken aus Moonlight geht nicht (`STATUS.md`, Issue #10). Tests nur nach Rückfrage.
+6. Längere Spielsitzung in 4K mit HEVC in Moonlight (Nutzertest, Logs danach auswerten). Das fehlt für 0.3 und 0.4.
+7. Weitere Clients (P9.6): Android, TV/Shield, Steam Deck. Co-op mit echtem Moonlight auf mehreren Geräten ist von einem
+   Tester belegt (vier Spieler auf 10.20, Issue #11), hier nur mit dem Testclient. Noch ungeprüft ist, wie Moonlight auf dem
+   Handy die Meldung bei falschem Dynamikbereich zeigt.
+8. HDR weiter prüfen:
+   - andere Clients und Bildschirme, wegen der fehlenden Metadaten;
+   - ein Spiel, das sicher HDR ausgibt;
+   - die Matrix aus `docs/re/hdr.md`, Schritt 5 (die Einstellung ändert der Nutzer);
+   - ein Gerät ohne HDR, das einem HDR-Stream beitritt.
+   Außerdem Touch und Bewegung in einem Titel, der sie nutzt.
+9. Seltene Fehlstarts: 1 in 86 Starts im Docker-Client, 0 in 150 im Windows-Client (`STATUS.md`).
+10. Adaptive Trigger (P9.10): Moonlight für PC müsste die Effekte beim Beenden zurücksetzen (`docs/re/adaptive-triggers.md`).
