@@ -501,6 +501,58 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### HDR-Metadaten, Slices, 120 fps, zweiter Kanal (2026-11-04, 13.00, nicht veröffentlicht)
+
+**HDR-Metadaten.** Der Host schickte bei HDR im Steuerkanal nur Nullen (`hdr_info_raw_t(true)` ohne Werte). moonlight-common-c
+meldet sie trotzdem als gültig (`LiGetHdrMetadata`), und Moonlight für Windows reicht sie an die Swapchain weiter. Ein
+Tester sah dort mit Hardware-Decoding übersättigte Farben (GitHub-Issue 2). Sunshine unter Windows schickt immer die
+Primärfarben von BT.2020 und D65. Der Host schickt jetzt die üblichen HDR10-Werte (`src/video/hdr10_metadata.hpp`).
+
+- Gemessen: Testclient mit `--hevc10` und dem Mario-64-Demo. Er bekam `primaries 35400,14600 8500,39850 6550,2300 white
+  15635,16450 lum 1000/50 cll 1000 fall 400 fullframe 400`.
+- Der Stream bleibt Main 10 in `yuv420p10le`, BT.2020 mit PQ und begrenztem Bereich, ohne fehlende Bildnummer.
+- Der erste Versuch dieses Laufs scheiterte direkt nach dem Neustart des Hosts am RTSP-`OPTIONS`; der zweite lief.
+- Nicht geprüft: ob die Farben am Windows-HDR-Bildschirm jetzt stimmen. Das braucht den Tester.
+
+**Slices bei H.264.** Auf 10.x kommt H.264 mit einer Slice je Makroblockzeile, also 34 bei 1080p. Hardware-Decoder unter
+Windows nehmen höchstens 32. Remote Play setzt für H.264 `cfg+0x40 = 1`, `cfg+0x44 = Anzahl` und `cfg+0x48 = 1`
+(`SceRemotePlay` 0x6f9df..0x6fa32); der Host lässt diese Felder auf 0.
+
+- `out/slice_rate_probe.elf` auf 13.00 mit dem Mario-64-Demo: H.264 1080p brachte in jeder Variante 1 Slice je Bild.
+  Getestet: ohne Felder, `0x44` = 0, 1, 4, 16 und 32, jeweils mit `0x40 = 0x48 = 1`, `0x44 = 16` allein, und 720p mit 16.
+  Start lief jedes Mal mit 0.
+- Auf 13.00 klären die Felder also nichts, die Konsole teilt dort ohnehin nicht. Ob sie auf 10.x die Slice-Zahl setzen, ist
+  offen; dafür muss die Probe auf 10.x laufen.
+
+**120 fps.** Der Host macht aus einer Anfrage über 60 fps schon immer 60 (`video_ps5.cpp`, `low_rate`).
+
+- Mit dem Mario-64-Demo (Bildausgabe `0x144`, 120 Hz) lehnt `OpenVideo` `cfg+0x1c = 2` mit `0x80c70004` ab. Das gilt für
+  H.264 und HEVC in 1080p und für H.264 in 720p; 1440p scheiterte schon an der Zuteilung.
+- `cfg+0x1c = 3` gibt `0x81950001`, also ungültig.
+- Über das Timing-Feld gibt es demnach kein 120 fps.
+
+**Zweiter Aufnahmekanal.** Probe `out/dual_open_probe.elf`, Host gestoppt:
+
+- Hält ein Kanal das Profil 180, verweigert der ResourceArbitrator Profil 185 sofort (`refused`), mit und ohne Spiel. Profil
+  182 (4K) verweigert er, solange das Mario-Demo läuft.
+- Profil 175 bekommt er neben 180, auf dem Startbildschirm wie mit dem Mario-Demo. Beide Kanäle liefern gleichzeitig
+  60 fps, ohne Lesefehler, die längste Pause bei 22 ms. Mit dem Spiel gemessen:
+  - HEVC 1080p neben H.264 1080p: 481 und 480 Bilder in 8 s.
+  - H.264 1080p neben H.264 720p: 482 und 480.
+  - HEVC 1080p neben HEVC 720p: 481 und 479.
+  Jeder Kanal hat dabei seinen eigenen Strom, mit eigenen Größen und Parametersätzen.
+- Gleicher Codec und gleiche Auflösung mit 20 und 5 Mbit/s: Beide Kanäle zeigten Sekunde für Sekunde dieselben Bildzahlen,
+  Bitraten und größten Bilder. Vermutlich teilt das System dann einen Encoder, und die Rate des zweiten gilt nicht. Das ist
+  nicht nachgewiesen; dafür müssten die beiden Ströme verglichen werden.
+- Alle Varianten schlossen und meldeten sich sauber ab. Der Host streamte danach normal.
+
+**H.264-Bitrate zur Laufzeit.** Probe `out/bitrate_steps_probe.elf`, H.264 1080p60, geöffnet mit 30 Mbit/s, dann per
+`SetVideoBitrate` 5, 30 und 5 Mbit/s für je 5 s:
+
+- Jeder Aufruf gab 0 zurück, ohne Lesefehler und ohne Pause über 20 ms.
+- Gemessen: bei 5 Mbit/s 5,4, zurück bei 30 bis 18 Mbit/s (der Rest hängt vom Bild ab), dann wieder 2,6 Mbit/s.
+- H.264 kann also bis zum Wert beim Öffnen wieder steigen.
+
 ### Langsame Zuteilung der Aufnahme (2026-11-04, 13.00, Release 0.2.3)
 
 Ein Tester auf 13.60 (GitHub-Issue 1, nicht selbst gemessen): Der erste Stream scheiterte, weil `RUNNING` zweimal in Folge

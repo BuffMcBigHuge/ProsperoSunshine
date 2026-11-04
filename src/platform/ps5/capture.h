@@ -56,6 +56,8 @@ uint32_t ps_capture_opening_average(void);
 // mode, so call this after it), and one more 32-bit config field to write after all others (field 0 = none).
 void ps_capture_set_resource(int id);
 void ps_capture_override_config(size_t field, uint32_t value);
+// Research: up to three more fields written after that one (slot 0..2, field 0 = none), for settings that span fields.
+void ps_capture_override_extra(int slot, size_t field, uint32_t value);
 // Research: raw result of the last sceAvcap2OpenVideo, and sceAvcap2ChangeScanInResolution at runtime.
 int ps_capture_last_open_rc(void);
 int ps_capture_change_scan_in(ps_capture *session, uint32_t resolution);

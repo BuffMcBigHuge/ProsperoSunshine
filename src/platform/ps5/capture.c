@@ -215,6 +215,16 @@ void ps_capture_override_config(size_t field, uint32_t value)
     atomic_store(&override_field, field);
 }
 
+static _Atomic size_t extra_field[3];
+static _Atomic uint32_t extra_value[3];
+
+void ps_capture_override_extra(int slot, size_t field, uint32_t value)
+{
+    if (slot < 0 || slot > 2) return;
+    atomic_store(&extra_value[slot], value);
+    atomic_store(&extra_field[slot], field);
+}
+
 // Firmware 13.60: the block at 0xb8 is 8 bytes larger, and what 13.00 keeps from 0x198 on sits 8 higher. Not measured
 // here, taken from two public projects that run on it (docs/firmware-porting.md).
 // Firmware 10.x (measured on 10.20): the block is 0x18 bytes smaller, and what 13.00 keeps from 0x198 on sits 0x18 lower.
@@ -306,6 +316,8 @@ static void configure(uint8_t *p, uint32_t mode, int variant)
         u32(p, 0x2c4 + high, 0x6e);
     }
     if (atomic_load(&override_field)) u32(p, atomic_load(&override_field), atomic_load(&override_value));
+    for (int i = 0; i < 3; i++)
+        if (atomic_load(&extra_field[i])) u32(p, atomic_load(&extra_field[i]), atomic_load(&extra_value[i]));
 }
 
 int ps_capture_close(ps_capture *s)
