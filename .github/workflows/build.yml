@@ -22,6 +22,7 @@ jobs:
         run: docker build -t prosperosunshine-sdk:v0.45 -f scripts/Dockerfile .
 
       - name: Cache third-party builds
+        id: deps-cache
         uses: actions/cache@v4
         with:
           # deps.sh rebuilds a library whenever its extracted source tree is missing, so the
@@ -31,6 +32,14 @@ jobs:
             .cache/deps/dl
             .cache/deps/src
           key: deps-${{ hashFiles('deps.lock', 'scripts/deps.sh', 'scripts/deps/**', 'patches/**', 'scripts/Dockerfile') }}
+          # An older cache still has the downloaded archives, so a run doesn't depend on every
+          # upstream server being reachable. deps.sh checks each archive against deps.lock.
+          restore-keys: deps-
+
+      - name: Keep only the downloads from an older cache
+        # Builds from an older cache may not match changed patches, dependencies or the SDK image.
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        run: rm -rf out/deps .cache/deps/src
 
       - name: Unit tests (ASan/UBSan)
         run: docker run --rm --mount type=bind,source="$PWD",target=/repo prosperosunshine-sdk:v0.45 bash scripts/test.sh
@@ -45,3 +54,9 @@ jobs:
         with:
           name: prosperosunshine-${{ github.sha }}
           path: dist/*.tar.gz
+
+      - name: Let the cache step read the dependency builds
+        # The container writes them as root, and actions/cache saves them after the job as the runner
+        # user; files it can't read made every save fail, so each run fetched and built everything anew.
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" out .cache || true
