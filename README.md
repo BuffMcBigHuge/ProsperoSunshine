@@ -192,7 +192,9 @@ address.
 - Sound is stereo unless you turn on **Surround** under Experimental in the app's Settings. With it, a Moonlight that asks for
   5.1 or 7.1 gets the console's own multichannel sound. Which channel goes to which speaker is a guess so far (the order of the
   console's 8-channel audio output): the console used for testing outputs stereo, and then only front left and right carry
-  sound. If you have a 5.1 or 7.1 system, see [Testing other firmware](#testing-other-firmware) for how to help.
+  sound. The console has to mix in 5.1 or 7.1 itself: connect it by HDMI to a receiver that reports 5.1 or 7.1 LPCM, and set
+  Settings > Sound > Audio Output to HDMI Device Type "AV Amplifier", the number of channels and Linear PCM. With a TV that
+  reports only stereo, the console mixes to stereo even with 5.1 selected (measured by a contributor on 13.60). If you have a 5.1 or 7.1 system, see [Testing other firmware](#testing-other-firmware) for how to help.
 - No AV1, touchscreen or microphone.
 - HDR has been seen on two real setups so far: Moonlight on an HDR TV (4K), and Moonlight on Windows with an HDR display and
   hardware decoding (1080p, since 0.2.4), one game each. The capture provides no HDR metadata, so the host sends the usual

@@ -222,6 +222,12 @@ Ende/Entzug.
 | 0x30 | u32 | nur Opus: Frame-Größen-Index 0 → 960, 1 → 480, 2 → 960 Samples (Tabelle `0x26748`) | wahrscheinlich |
 | 0x34 | u8 | nur Opus: weiteres Flag (setzt einen Opus-CTL, 4046) | Vermutung |
 
+Die 12 Kanäle von Typ 3: Bei Stereo-Ausgabe der Konsole tragen nur Kanal 0 und 1 Ton (13.00, `STATUS.md` „Für 0.3.1“). Auf
+13.60 blieb es laut PR 16 (BuffMcBigHuge) auch mit echter 5.1-Quelle und erzwungenem 5.1-LPCM auf HDMI bei Kanal 0 und 1,
+solange der Fernseher im EDID nur 2-Kanal-LPCM meldet; die Systemmischung folgt wohl dem EDID. `cfg+0x10 = 2` (AudioSecond)
+ist dort ebenfalls stereo, `cfg+0x10 = 1` (AudioAout) liefert keine Pakete. Welcher Kanal welcher Lautsprecher ist, ist
+ungemessen; der Host nimmt die 8-Kanal-Reihenfolge von `sceAudioOut` an (`src/audio/channel_map.hpp`).
+
 Aus dem Server (`0x11C90`): Opus-Encoder mit **48 000 Hz, 2 Kanäle**, `OPUS_SET_SIGNAL(MUSIC)`, Bitrate aus `cfg+0x28`.
 Avcap2 liefert also direkt Opus-Pakete (`SceOpusCeltEnc` = CELT-only), Frame 10 ms (Index 1) oder 20 ms (Index 0/2) —
 **kein 5-ms-Frame**. Erwartet Sunshine/Moonlight 5 ms (Standard-`packetDuration`), muss man entweder die Dauer aushandeln

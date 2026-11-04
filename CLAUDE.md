@@ -65,6 +65,8 @@ Toolchain: PS5 Payload SDK v0.45 in the Docker image `prosperosunshine-sdk:v0.45
 
 ## Releasing
 
+0. Before starting a feature and again before a release: `gh pr list` and `gh issue list` (open ones, and what changed since the
+   last release). A contributor may already be working on the same thing; PR 16 built surround in parallel with 0.3.1.
 1. Set the version in `CMakeLists.txt` (`PROJECT_VERSION`, `PROJECT_VERSION_PATCH`), `contentVersion` in
    `app/sce_sys/param.json` (must rise, format `01.000.004`), the status line in `README.md` and `CHANGELOG.md`.
 2. Build host and app, run both test suites, `scripts/package.sh <version>`. Check `SHA256SUMS` and grep the ELF

@@ -510,6 +510,22 @@ Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, de
 - **Tailscale:** Mit [ps5-tailscale](https://github.com/holdmysocks/ps5-tailscale) ab 0.7.3 (sein Beitrag, UDP 47998–48000 in
   den Standardports) erreichte Moonlight auf iOS den Host über die Tailnet-Adresse der Konsole. Hier nicht geprüft.
 
+### Raumklang auf 13.60 (2026-11-04, Bericht in PR 16 von BuffMcBigHuge)
+
+Ein Mitwirkender baute parallel zu 0.3.1 denselben Weg (Typ 3 bei 5.1/7.1) und maß auf 13.60 mit echten 5.1-Quellen. Hier
+nicht nachgemessen; die Angaben stammen aus seinem PR.
+
+- Konsole auf HDMI, Gerätetyp AV-Verstärker, 5.1, Linear PCM. Quelle: die App „Surround Sound Studio“ (6-Kanal-PCM, ihr
+  Audioport im Modus 6) und 007 First Light im Spiel. In Typ 3 trugen nur Kanal 0 und 1 Ton, 2–11 waren exakt 0.
+- Mit erzwungenem 5.1-LPCM auf dem HDMI-Kabel (AV-Control: `port:HDMI ... 48k 5.1 ... fmt:LPCM`) blieb die Aufnahme gleich:
+  Center und Surrounds lagen mit etwa −3 dB auf links/rechts, LFE war still.
+- Sein Fernseher meldet im EDID nur 2-Kanal-LPCM. Seine Deutung: Die Systemmischung der Konsole folgt dem EDID und bleibt bei
+  2.0, das Kabelformat ändert sie nicht. Offen ist der Test mit einem Gerät, das 6 oder 8 Kanäle LPCM meldet (AV-Receiver
+  oder EDID-Emulator).
+- `cfg+0x10 = 2` (AudioSecond) ist ebenfalls stereo; `cfg+0x10 = 1` (AudioAout) öffnet mit `rc=0`, liefert aber keine Pakete.
+- Für 7.1 nimmt er Sunshines Reihenfolge an (hinten vor seitlich), der Host seit 0.3.1 die von `sceAudioOut` (seitlich vor
+  hinten). Für 5.1 ergeben beide dasselbe. Gemessen ist keine.
+
 ### Release 0.3.1 auf der Konsole (2026-11-04, 13.00)
 
 App aus `build/app` kopiert und neu registriert, sie zeigt `v01.000.017`; nach „Restart host“ meldet `host_diag.log`
