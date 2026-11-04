@@ -501,6 +501,15 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### Berichte eines Mitwirkenden (2026-11-04, Discord, PS5 Pro mit 10.20)
+
+- **HDR-Farben unter Windows:** Moonlight unter Windows mit HDR-Bildschirm und Hardware-Decoding, HEVC 10 Bit HDR 1920x1080,
+  GTA III (Titelmenü). Laut Bericht und Foto vom Bildschirm stimmen die Farben jetzt, mit dem Host ab 0.2.4 (HDR10-Metadaten
+  statt Nullen). Moonlights Statistik im Foto: rund 58 fps, keine verlorenen Bilder. Windows-Screenshots desselben Streams
+  wirken überstrahlt; das liegt an der Aufnahme von HDR-Inhalten, nicht am Stream. Hier nicht gemessen.
+- **Tailscale:** Mit [ps5-tailscale](https://github.com/holdmysocks/ps5-tailscale) ab 0.7.3 (sein Beitrag, UDP 47998–48000 in
+  den Standardports) erreichte Moonlight auf iOS den Host über die Tailnet-Adresse der Konsole. Hier nicht geprüft.
+
 ### Release 0.3.1 auf der Konsole (2026-11-04, 13.00)
 
 App aus `build/app` kopiert und neu registriert, sie zeigt `v01.000.017`; nach „Restart host“ meldet `host_diag.log`
@@ -661,7 +670,7 @@ Primärfarben von BT.2020 und D65. Der Host schickt jetzt die üblichen HDR10-We
   15635,16450 lum 1000/50 cll 1000 fall 400 fullframe 400`.
 - Der Stream bleibt Main 10 in `yuv420p10le`, BT.2020 mit PQ und begrenztem Bereich, ohne fehlende Bildnummer.
 - Der erste Versuch dieses Laufs scheiterte direkt nach dem Neustart des Hosts am RTSP-`OPTIONS`; der zweite lief.
-- Nicht geprüft: ob die Farben am Windows-HDR-Bildschirm jetzt stimmen. Das braucht den Tester.
+- Am Windows-HDR-Bildschirm laut Bericht des Testers inzwischen richtig (oben, „Berichte eines Mitwirkenden“).
 
 **Slices bei H.264.** Auf 10.x kommt H.264 mit einer Slice je Makroblockzeile, also 34 bei 1080p. Hardware-Decoder unter
 Windows nehmen höchstens 32. Remote Play setzt für H.264 `cfg+0x40 = 1`, `cfg+0x44 = Anzahl` und `cfg+0x48 = 1`

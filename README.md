@@ -106,7 +106,9 @@ player can't leave your game, open the control center or reach the console's set
 ## Playing over the internet
 
 A friend in another house can join like a device on the LAN. A contributor played that way with two of four players over the
-internet (forwarded ports, a phone on 4G and one on another Wi-Fi). It isn't tested here.
+internet (forwarded ports, a phone on 4G and one on another Wi-Fi). It isn't tested here. There are two ways in: forwarded
+ports, below, or [Tailscale on the console](#without-port-forwarding-tailscale), which also works where you can't forward
+ports.
 
 1. **Pair the device at home first**, on the same network as the console, or pair over the internet once the ports are open;
    either way the PIN goes into the app on the console.
@@ -123,9 +125,22 @@ Tips:
   their own, with their own bitrate. Asking for the same mode as you shares your stream, at your bitrate.
 - **Encryption over the internet** in the app's Settings is on ("Optional") by default, so a client outside your
   network gets an encrypted stream when it supports it.
-- Instead of forwarding ports, a VPN works too, as long as something in your network routes to the console: the console can't
-  run a VPN client itself. With Tailscale, for example, a PC or router at home acting as a subnet router; the friend then adds
-  the console's LAN address in Moonlight. Untested here.
+
+### Without port forwarding: Tailscale
+
+Behind a double NAT, carrier-grade NAT or a router you can't change, forwarded ports don't help. [ps5-tailscale](https://github.com/holdmysocks/ps5-tailscale)
+puts the console itself on your [Tailscale](https://tailscale.com) network as a payload, and from version 0.7.3 on it passes
+ProsperoSunshine's ports by default. Nothing is open to the internet, only to the devices in your tailnet.
+
+1. Install ps5-tailscale on the console as its README says, and log the console in to your tailnet.
+2. Install Tailscale on the device you stream to, logged in to the same tailnet (or shared with it, for a friend).
+3. In Moonlight, add the console by its **tailnet address** (the 100.x address or its name), pair, and stream.
+
+If you set up ps5-tailscale before 0.7.3, its saved config keeps the old UDP list: add `47998, 47999, 48000` under its
+**Settings**, or Moonlight pairs and lists the games but the stream fails with "control stream establishment failed". A
+contributor tested this on a PS5 Pro on 10.20 with Moonlight on iOS; it isn't tested here. Without a payload on the
+console, a PC or router at home acting as a Tailscale subnet router works too; the friend then adds the console's LAN
+address.
 
 ## Known limits
 
@@ -179,8 +194,10 @@ Tips:
   console's 8-channel audio output): the console used for testing outputs stereo, and then only front left and right carry
   sound. If you have a 5.1 or 7.1 system, see [Testing other firmware](#testing-other-firmware) for how to help.
 - No AV1, touchscreen or microphone.
-- HDR has been seen on one real setup so far: Moonlight on an HDR TV, 4K, one game. The capture provides no HDR metadata, so the
-  host sends the usual HDR10 values, and screens may handle that differently.
+- HDR has been seen on two real setups so far: Moonlight on an HDR TV (4K), and Moonlight on Windows with an HDR display and
+  hardware decoding (1080p, since 0.2.4), one game each. The capture provides no HDR metadata, so the host sends the usual
+  HDR10 values, and other screens may handle that differently. Screenshots that Windows takes of an HDR stream look washed out
+  or burnt; that's the screenshot, not the stream.
 - The pad's touchpad and motion sensors are measured with the test client only, not yet with a real Moonlight client or in a game
   that uses them. Motion has no orientation, because Moonlight sends none.
 - Rumble is the classic two-motor kind only. Games that drive the DualSense's haptics send nothing to your controller.
