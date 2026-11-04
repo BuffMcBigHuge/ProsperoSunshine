@@ -41,11 +41,11 @@ int main(void)
                                 ps_capture_set_ten_bit(ten_bit);
                                 ps_capture_set_video_mode(resolution, timing);
                                 ps_capture_set_opening_bitrate(rates[r], rates[r] / 100 * 112);
-                                atomic_store(&session_resource, atomic_load(&resource_id));
+                                atomic_store(&session_resource[0], atomic_load(&resource_id[0]));
                                 uint8_t host[PS_CAPTURE_RECORD_CAPACITY] = {0}, probe[PS_CAPTURE_RECORD_CAPACITY];
-                                configure(host, 0x13c, variants[v]);
+                                configure(0, host, 0x13c, variants[v]);
                                 const ps_probe_layout l = ps_probe_host_layout(
-                                    record_shift(), codec, resolution, timing, ten_bit, (uint32_t)atomic_load(&resource_id),
+                                    record_shift(), codec, resolution, timing, ten_bit, (uint32_t)atomic_load(&resource_id[0]),
                                     0x13c, rates[r], rates[r] / 100 * 112, variants[v]);
                                 const size_t size = ps_probe_build_record(probe, sizeof probe, &l);
                                 // A host that sets 10.x's QP (0xc4/0xc8) picks it from the bitrate; the probe sets it per attempt.

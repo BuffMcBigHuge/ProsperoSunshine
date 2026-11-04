@@ -10,6 +10,10 @@
 #include <stdint.h>
 #include <string.h>
 
+// Slices per H.264 frame the host asks of 10.x, as PS_H264_SLICES in capture.c (tests/probe_record_test.c holds the two
+// together).
+#define PS_PROBE_H264_SLICES 4
+
 typedef struct {
     // Bytes the 0xb8 block and the record differ from 13.00's (0xe0 and 0x2e0); everything 13.00 keeps from 0x198 on
     // moves by it. 13.00: 0; 13.60: +8; 10.x: -0x18.
@@ -17,6 +21,7 @@ typedef struct {
     int inner_headers;           // 13.00's sub-block headers inside the 0xb8 block (0xc0, 0xe0, 0x100, 0x120)
     int rate_fields;             // 13.00's average, peak and bits per frame at 0xc8, 0xcc and 0xd0
     uint32_t qp_idr, qp_other;   // 10.20's QP fields at 0xc4 and 0xc8, 0 = not written; only without rate fields
+    uint32_t slices;             // 10.x, H.264: slices per frame at 0x44, with 0x40 and 0x48 on; 0 = not written
     int hevc_fields;             // Remote Play's HEVC fields as configure() writes them on 13.00
     ptrdiff_t hevc_high;         // where those from 0x220 on sit: 0, or the shift for the full variant
     uint32_t purpose, resolution, timing, ten_bit, codec, resource, video_out_mode;
@@ -37,6 +42,7 @@ static inline ps_probe_layout ps_probe_host_layout(ptrdiff_t shift, uint32_t cod
     l.inner_headers = l.rate_fields = shift >= 0;
     l.hevc_fields = shift >= 0 && codec == 1 && variant != PS_EXP_MINIMAL;
     l.hevc_high = variant == PS_EXP_FULL ? shift : 0;
+    l.slices = shift < 0 && codec == 0 ? PS_PROBE_H264_SLICES : 0;
     l.purpose = codec == 1 && resolution >= 5 ? 6 : 2;
     l.resolution = resolution;
     l.timing = timing;
@@ -89,6 +95,11 @@ static inline size_t ps_probe_build_record(uint8_t *p, size_t capacity, const ps
         if (l->qp_idr) ps_probe_put32(p, 0xc4, l->qp_idr);
         if (l->qp_other) ps_probe_put32(p, 0xc8, l->qp_other);
     }
+    if (l->slices) {
+        ps_probe_put32(p, 0x40, 1);
+        ps_probe_put32(p, 0x44, l->slices);
+        ps_probe_put32(p, 0x48, 1);
+    }
     ps_probe_put32(p, (size_t)(0x2a0 + s), l->video_out_mode);
     ps_probe_put32(p, (size_t)(0x2a4 + s), 2);
     ps_probe_put32(p, (size_t)(0x2b0 + s), 1);
@@ -104,7 +115,9 @@ static inline size_t ps_probe_build_record(uint8_t *p, size_t capacity, const ps
         ps_probe_put32(p, 0xd4, 35);
         ps_probe_put32(p, 0xd8, 0x33);
         p[0x108] = 1;
-        ps_probe_put32(p, 0x10c, l->resolution >= 6 ? 0x100000 : l->resolution == 5 ? 0xc0000 : 0x60000);
+        // configure()'s budget per mode: bytes a frame may cost before the encoder skips frames (docs/re/hevc.md).
+        static const uint32_t budgets[] = {0, 0x20000, 0x20000, 0x40000, 0x60000, 0xc0000, 0x100000};
+        ps_probe_put32(p, 0x10c, budgets[l->resolution < 7 ? l->resolution : 0]);
         p[0x128] = 1;
         ps_probe_put32(p, 0x12c, 0x19);
         ps_probe_put64(p, 0x188, 0x10);
