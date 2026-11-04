@@ -10,6 +10,7 @@ export prefix="$root/out/deps"
 export work=${DEPS_WORK:-/tmp/prospero-deps}
 export jobs=$(nproc)
 dl="$root/.cache/deps/dl"
+mirror=${DEPS_MIRROR:-https://github.com/Darkatek7/ProsperoSunshine/releases/download/deps-mirror}
 srcroot="$root/.cache/deps/src"
 mkdir -p "$dl" "$srcroot" "$prefix/include" "$prefix/lib" "$prefix/licenses" "$work"
 
@@ -22,7 +23,13 @@ while read -r name ver sha url; do
     ext=${url##*/}; ext=${ext#*.}
     [[ "$ext" == tar.* ]] || ext=tar.gz
     file="$dl/$name-$ver.$ext"
-    [[ -f "$file" ]] || curl -fsSL -o "$file" "$url"
+    if [[ ! -f "$file" ]] && ! curl -fsSL --retry 2 -o "$file" "$url"; then
+        # Archives from servers outside GitHub are mirrored in this repository's deps-mirror release (checked below
+        # against deps.lock like any other download).
+        echo "Download of $name failed, trying the mirror"
+        rm -f "$file"
+        curl -fsSL --retry 2 -o "$file" "$mirror/${url##*/}"
+    fi
     echo "$sha  $file" | sha256sum -c --quiet -
     dir="$srcroot/$name"
     patches=("$root/patches/$name"/*.patch)

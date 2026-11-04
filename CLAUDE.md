@@ -51,7 +51,9 @@ Toolchain: PS5 Payload SDK v0.45 in the Docker image `prosperosunshine-sdk:v0.45
   Test tools take the console address from `PS5_HOST`. Grep the diff before every commit.
 - Firmware 13.00 and 10.20 are verified. Capture refuses other versions unless the ResourceArbitrator calls
   resolve by NID, and then logs them as unverified; see `docs/firmware-porting.md` before porting.
-- New or changed third-party sources: pin them in `deps.lock` (SHA256), patch via `patches/<dep>/`.
+- New or changed third-party sources: pin them in `deps.lock` (SHA256), patch via `patches/<dep>/`. Archives from servers
+  outside GitHub (today ffmpeg and Opus) are mirrored in the `deps-mirror` pre-release, which `scripts/deps.sh` falls back
+  to; upload the new archive there under its original file name when bumping one (needs the owner's OK, it publishes).
 - `STATUS.md` records only what was verified live, with how it was measured. Plans go in `ROADMAP.md`.
 - Commit only when asked; never push without being asked.
 - Do not test rest mode on the console without asking first (risk to the homebrew environment). One test
