@@ -116,11 +116,10 @@ std::string ControlServer::handle(const std::string &line) {
     }
     if (command == "STREAMS") {
         const auto devices = devices_by_cert();
-        std::optional<CaptureFacts> capture;
-        if (const auto running = video::running_capture()) {
-            capture = CaptureFacts{running->cert,         running->joined, running->width,
-                                   running->height,       running->fps,    static_cast<int>(running->average / 1000),
-                                   running->video_format, running->hdr};
+        std::vector<CaptureFacts> captures;
+        for (const auto &running : video::running_captures()) {
+            captures.push_back(CaptureFacts{running.channel, running.cert, running.joined, running.width, running.height, running.fps,
+                                            static_cast<int>(running.average / 1000), running.video_format, running.hdr});
         }
         const auto now = std::chrono::steady_clock::now();
         std::string out;
@@ -131,7 +130,7 @@ std::string ControlServer::handle(const std::string &line) {
                                     session.gamepads};
             const auto device = devices.find(session.client_cert);
             const bool known = device != devices.end();
-            out += stream_line(facts, capture, known ? device->second.first : std::string(),
+            out += stream_line(facts, captures, known ? device->second.first : std::string(),
                                known ? device->second.second : std::string()) +
                    '\n';
         }

@@ -21,6 +21,7 @@ run_capture_test() {
 }
 run_capture_test capture_records_test "-DGOLDEN=\"$root/tests/capture_records.golden\""
 run_capture_test capture_open_test
+run_capture_test capture_slots_test
 run_test experimental_test
 run_test video_test
 run_test capture_session_test "$root/src/capture/capture_session.cpp"
@@ -31,6 +32,7 @@ run_test listener_watch_test
 run_test device_modes_test
 run_test stream_list_test
 run_test capture_mode_test
+run_test channel_choice_test
 run_test hdr10_metadata_test
 run_test titles_test "$root/src/apps/titles.cpp"
 run_test mdns_test "$root/src/net/mdns.cpp"

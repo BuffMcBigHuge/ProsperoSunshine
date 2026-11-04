@@ -71,7 +71,10 @@ static int fake_load(const char *name, size_t args, const void *argp, uint32_t f
     (void)name; (void)args; (void)argp; (void)flags; (void)option; (void)result;
     return 0;
 }
-static int fake_void(void) { return 0; }
+// How often Avcap2 was initialized and terminated.
+static int fake_initialized, fake_terminated;
+static int fake_initialize(void) { ++fake_initialized; return 0; }
+static int fake_terminate(void) { ++fake_terminated; return 0; }
 // The output's mode; 0 = none, as while a title starts or closes.
 static int fake_output = 0x13c;
 static int fake_mode(int *mode) { *mode = fake_output; return 0; }
@@ -120,8 +123,8 @@ intptr_t kernel_dynlib_dlsym(pid_t pid, uint32_t handle, const char *symbol)
     (void)pid; (void)handle;
     const struct { const char *name; intptr_t address; } table[] = {
         {"sceKernelLoadStartModule", (intptr_t)fake_load},
-        {"sceAvcap2Initialize", (intptr_t)fake_void},
-        {"sceAvcap2Terminate", (intptr_t)fake_void},
+        {"sceAvcap2Initialize", (intptr_t)fake_initialize},
+        {"sceAvcap2Terminate", (intptr_t)fake_terminate},
         {"sceAvcap2GetVideoOutMode", (intptr_t)fake_mode},
         {"sceAvcap2OpenVideo", (intptr_t)fake_open_video},
         {"sceAvcap2Start", (intptr_t)fake_start},

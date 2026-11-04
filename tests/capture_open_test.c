@@ -200,7 +200,7 @@ int main(void)
     assert(fake_opens == 2);
     assert(logged("variant=minimal error=-1 rc=0x81950001 step=OpenVideo") && logged("variant=full error=-1 rc=0x81950001 step=OpenVideo"));
     assert(logged("experimental disabled feature=hevc\n"));
-    assert(!ps_capture_hevc_allowed() && atomic_load(&video_codec) == 0);
+    assert(!ps_capture_hevc_allowed() && atomic_load(&video_codec[0]) == 0);
     fake_decide = NULL;
     fake_opens = 0;
     fake_log[0] = 0;
@@ -223,12 +223,12 @@ int main(void)
     fake_decide = open_always_fails;
     assert(open_and_close() == PS_CAPTURE_ERROR);
     assert(logged("trial=hdr codec=hevc bits=10") && logged("experimental disabled feature=hdr\n") && !logged("feature=hevc"));
-    assert(!ps_capture_hdr_allowed() && ps_capture_hevc_allowed() && atomic_load(&video_ten_bit) == 0 && atomic_load(&video_codec) == 1);
+    assert(!ps_capture_hdr_allowed() && ps_capture_hevc_allowed() && atomic_load(&video_ten_bit[0]) == 0 && atomic_load(&video_codec[0]) == 1);
     setup(0x13600000u, 0, 1, 0, 1, 1, 4);
     assert(ps_capture_hevc_allowed());
     fake_decide = open_always_fails;
     assert(open_and_close() == PS_CAPTURE_ERROR);
-    assert(!ps_capture_hdr_allowed() && !ps_capture_hevc_allowed() && atomic_load(&video_codec) == 0);
+    assert(!ps_capture_hdr_allowed() && !ps_capture_hevc_allowed() && atomic_load(&video_codec[0]) == 0);
 
     // A larger mode that fails gives 1080p in the same stream, and stays off.
     setup(0x13600000u, 0, 0, 1, 0, 0, 6);
@@ -527,14 +527,14 @@ int main(void)
     setup(0x12400000u, 0, 0, 0, 1, 0, 4);
     memset(standard, 0, sizeof standard);
     memset(variant, 0, sizeof variant);
-    configure(standard, 0x13c, PS_EXP_STANDARD);
-    configure(variant, 0x13c, PS_EXP_FULL);
+    configure(0, standard, 0x13c, PS_EXP_STANDARD);
+    configure(0, variant, 0x13c, PS_EXP_FULL);
     assert(!memcmp(standard, variant, sizeof standard));
     setup(0x10400000u, 0, 0, 0, 1, 0, 4);
     memset(standard, 0, sizeof standard);
     memset(variant, 0, sizeof variant);
-    configure(standard, 0x13c, PS_EXP_STANDARD);
-    configure(variant, 0x13c, PS_EXP_MINIMAL);
+    configure(0, standard, 0x13c, PS_EXP_STANDARD);
+    configure(0, variant, 0x13c, PS_EXP_MINIMAL);
     assert(!memcmp(standard, variant, sizeof standard));
     unlink(marker);
 

@@ -5,6 +5,7 @@
 #include "capture/capture_session.hpp"
 #include "platform/ps5/capture.h"
 #include "video/capture_mode.hpp"
+#include "video/channel_choice.hpp"
 #include "video/hdr10_metadata.hpp"
 #include "src/config.h"
 #include "src/globals.h"
@@ -66,20 +67,27 @@ std::chrono::steady_clock::time_point capture_time(const prospero::CaptureSessio
 // if it fails, while H.264 may still run, so it takes a switch in the app, and a function that fails is off until the
 // host restarts: the client's next stream sees that here (serverinfo and RTSP read these for each stream).
 // hevc_mode = 1 in sunshine.conf turns it off, 2 turns off HDR.
-// While a stream runs, a device that joins gets its picture, so only its codec and dynamic range are offered: Moonlight
-// then picks them. It can't be made to pick HEVC, so a client set to H.264 is still turned away from an HEVC stream.
-std::atomic_int running_format{-1};  // the running stream's videoFormat, -1 while none runs
-std::atomic_bool running_hdr{false};
+// A device that wants another codec or dynamic range than the running streams gets a capture channel of its own while one
+// is free, so then everything is offered. With both channels busy it has to join one and gets its picture, so only their
+// codecs and dynamic ranges are offered: Moonlight then picks one of them. It can't be made to pick HEVC, so a client set
+// to H.264 is still turned away while both channels run HEVC.
+static_assert(prospero::capture_channels == PS_CAPTURE_SLOTS);
+std::atomic_int running_format[PS_CAPTURE_SLOTS] = {-1, -1};  // each channel's videoFormat, -1 while no stream holds it
+std::atomic_bool running_hdr[PS_CAPTURE_SLOTS] = {false, false};
 void update_offers() {
     const int hevc_mode = config::video.hevc_mode;
-    active_hevc_mode = hevc_mode == 1 || !ps_capture_hevc_allowed() ? 1 : hevc_mode == 2 || !ps_capture_hdr_allowed() ? 2 : 3;
-    if (running_format == 0) active_hevc_mode = 1;
-    else if (running_format == 1 && !running_hdr) active_hevc_mode = std::min(active_hevc_mode, 2);
+    const int allowed = hevc_mode == 1 || !ps_capture_hevc_allowed() ? 1 : hevc_mode == 2 || !ps_capture_hdr_allowed() ? 2 : 3;
+    prospero::Channels running{};
+    for (int slot = 0; slot < PS_CAPTURE_SLOTS; slot++) {
+        const int format = running_format[slot];
+        running[slot] = {format >= 0, format, running_hdr[slot], 0};
+    }
+    active_hevc_mode = prospero::offered_hevc_mode(allowed, running);
     last_encoder_probe_supported_dynamic_range_for_codec[1] = active_hevc_mode == 3;
 }
 
-// A stream that joined the one holding the capture (a second player). It lives on its own capture thread and is only
-// touched under the owner's mutex.
+// A stream that joined a channel another stream holds (a second player). It lives on its own capture thread and is only
+// touched under captures.mutex.
 struct joined_stream {
     stream::session_t *session;
     std::string cert;
@@ -88,56 +96,89 @@ struct joined_stream {
     bool keyframe_seen = false;  // its frames start at an IDR
 };
 
-// One encoder channel for every stream. The first stream opens it, reads the frames and hands each one to the streams
+// One capture channel (capture.h's slots). The stream that opens it reads the frames and hands each one to the streams
 // that joined since; a second session reading the same Avcap2 ring would starve the first.
-struct {
-    std::mutex mutex;
-    std::condition_variable changed;  // the capture was let go, or a joined stream left
-    bool streaming = false;
+struct channel_t {
+    bool streaming = false;  // a stream holds the channel
     std::string cert;
     safe::mail_raw_t::event_t<bool> shutdown;
     int video_format = 0;
     bool hdr = false;
     prospero::CaptureMode delivered{};
-    // What the stream holding the capture opened it with. A joined stream that takes the capture over keeps it.
+    // What the stream holding the channel opened it with. A joined stream that takes the channel over keeps it.
     prospero::CaptureMode mode{};
     bool low_rate = false;
     uint32_t requested = 0;  // bit/s
     uint32_t average = 0;    // bit/s the channel opens with
     std::vector<joined_stream *> joined;
     bool keyframe_wanted = false;  // a joined stream asked for one
-} owner;
+};
 
-// Whether a stream from this device runs, holding the capture or joined. Caller holds owner.mutex.
+// Up to two channels, each with its own mode: a second one on profile 175 runs next to the first, up to 1080p (STATUS.md).
+// Streams that want the same codec, dynamic range and size share a channel: two would deliver the same stream twice.
+struct {
+    std::mutex mutex;
+    std::condition_variable changed;  // a channel was let go, or a joined stream left
+    channel_t channels[PS_CAPTURE_SLOTS];
+} captures;
+
+// Whether a stream from this device runs, holding a channel or joined. Caller holds captures.mutex.
 bool streams_from(const std::string &cert) {
     if (cert.empty()) return false;
-    if (owner.streaming && owner.cert == cert) return true;
-    return std::any_of(owner.joined.begin(), owner.joined.end(), [&](const joined_stream *j) { return j->cert == cert; });
+    for (const channel_t &ch : captures.channels) {
+        if (ch.streaming && ch.cert == cert) return true;
+        if (std::any_of(ch.joined.begin(), ch.joined.end(), [&](const joined_stream *j) { return j->cert == cert; })) return true;
+    }
+    return false;
 }
 
 std::string_view stream_kind(int video_format, bool hdr) {
     return video_format == 1 ? (hdr ? "HEVC HDR"sv : "HEVC"sv) : "H.264"sv;
 }
+
+// "HEVC HDR 1920x1080@60", for the log.
+std::string describe(int video_format, bool hdr, const prospero::CaptureMode &mode, bool low_rate) {
+    return std::string(stream_kind(video_format, hdr)) + ' ' + std::to_string(mode.width) + 'x' + std::to_string(mode.height) + '@' +
+           (low_rate ? "30" : "60");
 }
 
-std::optional<bool> running_stream_hdr() {
-    if (running_format < 0) return std::nullopt;
-    return running_hdr.load();
+std::string describe(const channel_t &ch) { return describe(ch.video_format, ch.hdr, ch.delivered, ch.low_rate); }
+
+// The channels as choose_channel sees them. Caller holds captures.mutex.
+prospero::Channels channel_states() {
+    prospero::Channels states{};
+    for (int slot = 0; slot < PS_CAPTURE_SLOTS; slot++) {
+        const channel_t &ch = captures.channels[slot];
+        states[slot] = {ch.streaming, ch.video_format, ch.hdr, ch.delivered.height};
+    }
+    return states;
+}
 }
 
-std::optional<running_capture_t> running_capture() {
-    std::lock_guard lock(owner.mutex);
-    if (!owner.streaming) return std::nullopt;
-    running_capture_t capture;
-    capture.cert = owner.cert;
-    for (const auto *j : owner.joined) capture.joined.push_back(j->cert);
-    capture.video_format = owner.video_format;
-    capture.hdr = owner.hdr;
-    capture.width = owner.delivered.width;
-    capture.height = owner.delivered.height;
-    capture.fps = owner.low_rate ? 30 : 60;
-    capture.average = owner.average;
-    return capture;
+std::optional<bool> hdr_conflict(bool hdr) {
+    std::lock_guard lock(captures.mutex);
+    return prospero::hdr_conflict(channel_states(), hdr);
+}
+
+std::vector<running_capture_t> running_captures() {
+    std::lock_guard lock(captures.mutex);
+    std::vector<running_capture_t> result;
+    for (int slot = 0; slot < PS_CAPTURE_SLOTS; slot++) {
+        const channel_t &ch = captures.channels[slot];
+        if (!ch.streaming) continue;
+        running_capture_t capture;
+        capture.channel = slot;
+        capture.cert = ch.cert;
+        for (const auto *j : ch.joined) capture.joined.push_back(j->cert);
+        capture.video_format = ch.video_format;
+        capture.hdr = ch.hdr;
+        capture.width = ch.delivered.width;
+        capture.height = ch.delivered.height;
+        capture.fps = ch.low_rate ? 30 : 60;
+        capture.average = ch.average;
+        result.push_back(std::move(capture));
+    }
+    return result;
 }
 
 int probe_encoders() {
@@ -163,11 +204,14 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     // Avcap2 encodes at 30 or 60 fps. On 13.00 and 10.20 360p, 540p and 720p start as well (STATUS.md), so a client that
     // asks for less gets less to receive and decode.
     const bool hevc = config.videoFormat == 1;
-    bool low_rate = config.framerate > 0 && config.framerate <= 30;
-    auto mode =
+    const bool low_rate_wanted = config.framerate > 0 && config.framerate <= 30;
+    const auto wanted =
         prospero::choose_capture_mode(config.height, ps_capture_large_modes_allowed(), ps_capture_small_modes_allowed());
     BOOST_LOG(info) << "PS5 capture requested "sv << config.width << 'x' << config.height << '@' << config.framerate
-                    << ", delivering "sv << mode.width << 'x' << mode.height << '@' << (low_rate ? 30 : 60);
+                    << ", delivering "sv << wanted.width << 'x' << wanted.height << '@' << (low_rate_wanted ? 30 : 60);
+    // What this stream gets: its own request, or the mode of the channel it joined or took over.
+    auto mode = wanted;
+    bool low_rate = low_rate_wanted;
     int delivered_height = 0;
     const auto announce_mode = [&](const prospero::CaptureMode &delivered) {
         if (delivered.height == delivered_height) return;
@@ -199,9 +243,10 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     } else {
         hdr_event->raise(std::make_unique<hdr_info_raw_t>(false));
     }
+    int slot = 0;  // the channel this stream holds or joined
     // The session falls back to 1080p when the system refuses a larger or smaller mode.
     const auto check_fallback = [&] {
-        const auto delivered = prospero::capture_mode_of(ps_capture_video_resolution());
+        const auto delivered = prospero::capture_mode_of(ps_capture_slot_video_resolution(slot));
         if (delivered.height != delivered_height) {
             if (delivered.height == mode.height)
                 BOOST_LOG(info) << "PS5 capture: back to "sv << delivered.width << 'x' << delivered.height;
@@ -210,202 +255,238 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
                                    << " mode refused by the system, delivering "sv << delivered.width << 'x' << delivered.height;
         }
         announce_mode(delivered);
-        std::lock_guard lock(owner.mutex);
-        owner.delivered = delivered;  // for the streams that join
+        std::lock_guard lock(captures.mutex);
+        captures.channels[slot].delivered = delivered;  // for the streams that join
     };
 
     // A new stream from a device that streams already ends its old one and takes its place: a client that retries, like
     // Moonlight Web when its browser didn't get the picture, would otherwise wait until the old session timed out.
-    // A stream from another device joins the running one (a second player) and gets its picture: same codec and dynamic
-    // range, since there is one encoder. When the stream holding the capture ends, a joined one takes it over.
+    // A stream from another device joins a running channel with its codec, dynamic range and size (a second player) and
+    // gets its picture, or gets a channel of its own (choose_channel). When the stream holding a channel ends, a stream
+    // that joined it takes it over.
     const std::string cert = channel_data ? stream::session::client_cert(*channel_data) : std::string{};
     int64_t next_index = 0;  // per stream, across a takeover of the capture
-    bool took_over = false;
-    std::unique_lock lock(owner.mutex);
+    std::unique_lock lock(captures.mutex);
     if (streams_from(cert)) {
         BOOST_LOG(info) << "PS5 capture: the same device started a new stream, ending its old one"sv;
-        if (owner.streaming && owner.cert == cert) owner.shutdown->raise(true);
-        for (auto *j : owner.joined)
-            if (j->cert == cert) j->shutdown->raise(true);
-        owner.changed.wait_for(lock, 5s, [&] { return !streams_from(cert); });
+        for (channel_t &ch : captures.channels) {
+            if (ch.streaming && ch.cert == cert) ch.shutdown->raise(true);
+            for (auto *j : ch.joined)
+                if (j->cert == cert) j->shutdown->raise(true);
+        }
+        captures.changed.wait_for(lock, 5s, [&] { return !streams_from(cert); });
         if (streams_from(cert)) {
             BOOST_LOG(warning) << "PS5 capture: the old stream did not end; ending the new one"sv;
             shutdown_event->raise(true);
             return;
         }
     }
-    while (owner.streaming) {
-        if (owner.video_format != config.videoFormat || owner.hdr != hdr) {
-            BOOST_LOG(warning) << "PS5 capture busy with a "sv << stream_kind(owner.video_format, owner.hdr)
-                               << " stream; this device asked for "sv << stream_kind(config.videoFormat, hdr)
-                               << ", ending its stream"sv;
+    bool second_usable = true;  // false once the second channel failed to open for this stream
+    for (;;) {
+        if (!lock.owns_lock()) lock.lock();
+        // Which channel: choose_channel (channel_choice.hpp) has the rules.
+        const auto pick = prospero::choose_channel(channel_states(), config.videoFormat, hdr, wanted, second_usable);
+        if (pick.kind == prospero::ChannelPick::refuse) {
+            std::string running;
+            for (const channel_t &ch : captures.channels)
+                if (ch.streaming) running += (running.empty() ? "" : ", ") + describe(ch);
+            BOOST_LOG(warning) << "PS5 capture busy with "sv << running << "; this device asked for "sv
+                               << stream_kind(config.videoFormat, hdr) << ", ending its stream"sv;
             shutdown_event->raise(true);
             return;
         }
-        joined_stream me{channel_data, cert, shutdown_event, next_index};
-        owner.joined.push_back(&me);
-        owner.keyframe_wanted = true;
-        BOOST_LOG(info) << "PS5 capture: another device joined the running stream ("sv << owner.joined.size() + 1
-                        << " streams)"sv;
-        if (owner.delivered.height != mode.height)
-            BOOST_LOG(info) << "PS5 capture: the running stream delivers "sv << owner.delivered.width << 'x'
-                            << owner.delivered.height;
-        while (!shutdown_event->peek() && owner.streaming) {
-            announce_mode(owner.delivered);
+        slot = pick.channel;
+        channel_t &ch = captures.channels[slot];
+        bool took_over = false;
+        if (pick.kind == prospero::ChannelPick::join) {
+            joined_stream me{channel_data, cert, shutdown_event, next_index};
+            ch.joined.push_back(&me);
+            ch.keyframe_wanted = true;
+            BOOST_LOG(info) << "PS5 capture: another device joined the running stream on channel "sv << slot << " ("sv
+                            << ch.joined.size() + 1 << " streams there)"sv;
+            if (ch.delivered.height != wanted.height)
+                BOOST_LOG(info) << "PS5 capture: the running stream delivers "sv << ch.delivered.width << 'x' << ch.delivered.height;
+            // Another joined stream may take the channel over when its holder ends; this one then goes on with it.
+            while (!shutdown_event->peek() && ch.streaming) {
+                announce_mode(ch.delivered);
+                if (idr_events->peek()) {
+                    idr_events->pop();
+                    ch.keyframe_wanted = true;
+                }
+                captures.changed.wait_for(lock, 20ms);
+            }
+            std::erase(ch.joined, &me);
+            next_index = me.next_index;
+            captures.changed.notify_all();
+            if (shutdown_event->peek()) return;
+            BOOST_LOG(info) << "PS5 capture: the stream holding channel "sv << slot << " ended, this one takes it over"sv;
+            took_over = true;
+        }
+        // config.bitrate is in kbit/s. The channel opens with its bitrate in the config: raising it later above the
+        // opening value stops the encoder (docs/re/hevc.md). Peak as Remote Play: H.264 average * 1.12, HEVC * 1.10.
+        // Above 50 Mbit/s is measured on firmware 13.00 only (docs/re/hevc.md); elsewhere it takes a switch in the app.
+        const uint32_t default_average = 6'000'000, max_average = ps_capture_high_bitrate_allowed() ? 150'000'000 : 50'000'000;
+        uint32_t requested = config.bitrate > 0 ? static_cast<uint32_t>(config.bitrate) * 1000u : default_average;
+        mode = wanted;
+        low_rate = low_rate_wanted;
+        // A takeover keeps the running mode: the others keep the picture they had, and a friend on a slow link gets no more
+        // than before.
+        if (took_over) {
+            mode = ch.mode;
+            low_rate = ch.low_rate;
+            requested = ch.requested;
+            BOOST_LOG(info) << "PS5 capture: keeping the running mode "sv << mode.width << 'x' << mode.height << '@'
+                            << (low_rate ? 30 : 60) << ", "sv << requested / 1000 << " kbit/s"sv;
+        } else if (slot == 1 && mode.resolution > prospero::mode_1080p.resolution) {
+            // Profile 175 grants up to 1080p.
+            mode = prospero::mode_1080p;
+            BOOST_LOG(info) << "PS5 capture: the second channel delivers up to 1920x1080"sv;
+        }
+        announce_mode(mode);
+        const uint32_t average = std::min({requested, max_average, prospero::max_average_of(mode, low_rate)});
+        ch.mode = mode;
+        ch.low_rate = low_rate;
+        ch.requested = requested;
+        ch.average = average;
+        ch.streaming = true;
+        ch.cert = cert;
+        ch.shutdown = shutdown_event;
+        ch.video_format = config.videoFormat;
+        ch.hdr = hdr;
+        ch.delivered = mode;
+        ch.keyframe_wanted = false;
+        running_hdr[slot] = hdr;
+        running_format[slot] = config.videoFormat;
+        update_offers();
+        std::string opening;
+        if (slot == 1) {
+            opening = "PS5 capture: second channel on profile 175 for " + describe(ch) + ", " + std::to_string(average / 1000) + " kbit/s";
+            if (captures.channels[0].streaming) opening += ", next to " + describe(captures.channels[0]);
+        }
+        lock.unlock();
+        const auto release = util::fail_guard([slot] {
+            {
+                std::lock_guard lock(captures.mutex);
+                channel_t &held = captures.channels[slot];
+                held.streaming = false;
+                held.shutdown.reset();
+                running_format[slot] = -1;
+                update_offers();
+            }
+            captures.changed.notify_all();
+        });
+        if (!opening.empty()) BOOST_LOG(info) << opening;
+
+        ps_capture_slot_set_opening_bitrate(slot, average, average / 100 * (hevc ? 110 : 112));
+        ps_capture_slot_set_codec(slot, hevc ? 1 : 0);
+        ps_capture_slot_set_ten_bit(slot, hdr);
+        ps_capture_slot_set_video_mode(slot, mode.resolution, low_rate ? 0 : 1);
+        const auto codec = hevc ? prospero::Codec::hevc : prospero::Codec::h264;
+        prospero::CaptureSession session(prospero::make_ps5_capture_backend(codec, slot), codec);
+        const int start_rc = session.start();
+        update_offers();
+        if (start_rc) {
+            if (slot == 1) {
+                // The first channel may still take this stream: a channel with its codec and dynamic range to join, or
+                // the first one when it is free.
+                BOOST_LOG(warning) << "PS5 capture: the second channel failed to open: "sv << start_rc << ", trying the first"sv;
+                second_usable = false;
+                continue;
+            }
+            BOOST_LOG(error) << "PS5 capture failed to start: "sv << start_rc;
+            shutdown_event->raise(true);
+            return;
+        }
+        check_fallback();
+        {
+            std::lock_guard lock(captures.mutex);
+            ch.average = ps_capture_slot_opening_average(slot);
+        }
+        BOOST_LOG(info) << "PS5 capture "sv << (hdr ? "HEVC HDR"sv : hevc ? "HEVC"sv : "H.264"sv) << (slot ? " (second channel)"sv : ""sv)
+                        << " bitrate "sv << ps_capture_slot_opening_average(slot) / 1000 << " kbit/s (requested "sv << requested / 1000
+                        << ')';
+        // The audio thread may have opened the channel earlier, and the next periodic IDR can be ten seconds away.
+        if (session.request_keyframe())
+            BOOST_LOG(warning) << "PS5 capture: first keyframe request failed"sv;
+        // Every IDR is a large frame for every stream, so requests that come before the last one was served count once.
+        std::optional<std::chrono::steady_clock::time_point> keyframe_requested;
+        const auto request_keyframe = [&] {
+            const auto now = std::chrono::steady_clock::now();
+            if (keyframe_requested && now - *keyframe_requested < 200ms) return;
+            keyframe_requested = now;
+            if (session.request_keyframe())
+                BOOST_LOG(warning) << "PS5 capture: keyframe request failed, next periodic IDR within ten seconds"sv;
+        };
+        prospero::EncodedFrame frame;
+        prospero::CaptureSession::Descriptor desc{};
+        // Moonlight asks for an IDR after loss; Avcap2 delivers one within 2-3 frames (R1).
+        while (!shutdown_event->peek()) {
+            bool keyframe = false;
             if (idr_events->peek()) {
                 idr_events->pop();
-                owner.keyframe_wanted = true;
+                keyframe = true;
             }
-            owner.changed.wait_for(lock, 20ms);
-        }
-        std::erase(owner.joined, &me);
-        next_index = me.next_index;
-        owner.changed.notify_all();
-        if (shutdown_event->peek()) return;
-        BOOST_LOG(info) << "PS5 capture: the stream holding the capture ended, this one takes it over"sv;
-        took_over = true;
-    }
-    // config.bitrate is in kbit/s. The channel opens with its bitrate in the config: raising it later above the
-    // opening value stops the encoder (docs/re/hevc.md). Peak as Remote Play: H.264 average * 1.12, HEVC * 1.10.
-    // Above 50 Mbit/s is measured on firmware 13.00 only (docs/re/hevc.md); elsewhere it takes a switch in the app.
-    const uint32_t default_average = 6'000'000, max_average = ps_capture_high_bitrate_allowed() ? 150'000'000 : 50'000'000;
-    uint32_t requested = config.bitrate > 0 ? static_cast<uint32_t>(config.bitrate) * 1000u : default_average;
-    // A takeover keeps the running mode: the others keep the picture they had, and a friend on a slow link gets no more
-    // than before.
-    if (took_over) {
-        mode = owner.mode;
-        low_rate = owner.low_rate;
-        requested = owner.requested;
-        BOOST_LOG(info) << "PS5 capture: keeping the running mode "sv << mode.width << 'x' << mode.height << '@'
-                        << (low_rate ? 30 : 60) << ", "sv << requested / 1000 << " kbit/s"sv;
-    }
-    const uint32_t average = std::min({requested, max_average, prospero::max_average_of(mode, low_rate)});
-    owner.mode = mode;
-    owner.low_rate = low_rate;
-    owner.requested = requested;
-    owner.average = average;
-    owner.streaming = true;
-    owner.cert = cert;
-    owner.shutdown = shutdown_event;
-    owner.video_format = config.videoFormat;
-    owner.hdr = hdr;
-    owner.delivered = mode;
-    owner.keyframe_wanted = false;
-    running_hdr = hdr;
-    running_format = config.videoFormat;
-    update_offers();
-    lock.unlock();
-    const auto release = util::fail_guard([] {
-        {
-            std::lock_guard lock(owner.mutex);
-            owner.streaming = false;
-            owner.shutdown.reset();
-            running_format = -1;
-            update_offers();
-        }
-        owner.changed.notify_all();
-    });
-
-    ps_capture_set_opening_bitrate(average, average / 100 * (hevc ? 110 : 112));
-    ps_capture_set_codec(hevc ? 1 : 0);
-    ps_capture_set_ten_bit(hdr);
-    ps_capture_set_video_mode(mode.resolution, low_rate ? 0 : 1);
-    const auto codec = hevc ? prospero::Codec::hevc : prospero::Codec::h264;
-    prospero::CaptureSession session(prospero::make_ps5_capture_backend(codec), codec);
-    const int start_rc = session.start();
-    update_offers();
-    if (start_rc) {
-        BOOST_LOG(error) << "PS5 capture failed to start: "sv << start_rc;
-        shutdown_event->raise(true);
-        return;
-    }
-    check_fallback();
-    {
-        std::lock_guard lock(owner.mutex);
-        owner.average = ps_capture_opening_average();
-    }
-    BOOST_LOG(info) << "PS5 capture "sv << (hdr ? "HEVC HDR"sv : hevc ? "HEVC"sv : "H.264"sv) << " bitrate "sv << ps_capture_opening_average() / 1000 << " kbit/s (requested "sv
-                    << requested / 1000 << ')';
-    // The audio thread may have opened the channel earlier, and the next periodic IDR can be ten seconds away.
-    if (session.request_keyframe())
-        BOOST_LOG(warning) << "PS5 capture: first keyframe request failed"sv;
-    // Every IDR is a large frame for every stream, so requests that come before the last one was served count once.
-    std::optional<std::chrono::steady_clock::time_point> keyframe_requested;
-    const auto request_keyframe = [&] {
-        const auto now = std::chrono::steady_clock::now();
-        if (keyframe_requested && now - *keyframe_requested < 200ms) return;
-        keyframe_requested = now;
-        if (session.request_keyframe())
-            BOOST_LOG(warning) << "PS5 capture: keyframe request failed, next periodic IDR within ten seconds"sv;
-    };
-    prospero::EncodedFrame frame;
-    prospero::CaptureSession::Descriptor desc{};
-    // Moonlight asks for an IDR after loss; Avcap2 delivers one within 2-3 frames (R1).
-    while (!shutdown_event->peek()) {
-        bool keyframe = false;
-        if (idr_events->peek()) {
-            idr_events->pop();
-            keyframe = true;
-        }
-        {
-            std::lock_guard lock(owner.mutex);
-            keyframe |= std::exchange(owner.keyframe_wanted, false);
-        }
-        if (keyframe) request_keyframe();
-        const auto status = session.read(frame, 100ms, {}, &desc);
-        if (status == prospero::CaptureStatus::timeout) continue;
-        if (status != prospero::CaptureStatus::frame) {
-            // Starting or closing a game takes the capture resource away for a moment; reopen
-            // instead of ending the stream. The first frame after a reopen is an IDR.
-            BOOST_LOG(warning) << "PS5 capture lost ("sv << static_cast<int>(status) << "), reopening"sv;
-            const auto lost_at = std::chrono::steady_clock::now();
-            bool recovered = false;
-            // Below 1080p the client may not decode more (a PS Vita), and the title that took the capture leaves the
-            // output without a mode for up to about 2 s (10.20). So each reopen asks for the client's mode again, also
-            // after a fall back, and for 6 s doesn't fall back while the output isn't settled; not once a switch on
-            // trial went off for it. From 1080p up nothing changes: there a fall back stays for the stream, as before.
-            while (!shutdown_event->peek() && std::chrono::steady_clock::now() - lost_at < 20s) {
-                std::this_thread::sleep_for(250ms);
-                const bool small = mode.resolution < 4 && ps_capture_small_modes_allowed();
-                if (small) ps_capture_set_video_mode(mode.resolution, low_rate ? 0 : 1);
-                ps_capture_set_reopening(small && std::chrono::steady_clock::now() - lost_at < 6s);
-                if (session.start() == 0) {
-                    recovered = true;
+            {
+                std::lock_guard lock(captures.mutex);
+                keyframe |= std::exchange(ch.keyframe_wanted, false);
+            }
+            if (keyframe) request_keyframe();
+            const auto status = session.read(frame, 100ms, {}, &desc);
+            if (status == prospero::CaptureStatus::timeout) continue;
+            if (status != prospero::CaptureStatus::frame) {
+                // Starting or closing a game takes the capture resource away for a moment; reopen
+                // instead of ending the stream. The first frame after a reopen is an IDR.
+                BOOST_LOG(warning) << "PS5 capture lost ("sv << static_cast<int>(status) << "), reopening"sv;
+                const auto lost_at = std::chrono::steady_clock::now();
+                bool recovered = false;
+                // Below 1080p the client may not decode more (a PS Vita), and the title that took the capture leaves the
+                // output without a mode for up to about 2 s (10.20). So each reopen asks for the client's mode again, also
+                // after a fall back, and for 6 s doesn't fall back while the output isn't settled; not once a switch on
+                // trial went off for it. From 1080p up nothing changes: there a fall back stays for the stream, as before.
+                while (!shutdown_event->peek() && std::chrono::steady_clock::now() - lost_at < 20s) {
+                    std::this_thread::sleep_for(250ms);
+                    const bool small = mode.resolution < 4 && ps_capture_small_modes_allowed();
+                    if (small) ps_capture_slot_set_video_mode(slot, mode.resolution, low_rate ? 0 : 1);
+                    ps_capture_slot_set_reopening(slot, small && std::chrono::steady_clock::now() - lost_at < 6s);
+                    if (session.start() == 0) {
+                        recovered = true;
+                        break;
+                    }
+                }
+                ps_capture_slot_set_reopening(slot, 0);
+                if (!recovered) {
+                    BOOST_LOG(error) << "PS5 capture could not be reopened; ending the session"sv;
+                    shutdown_event->raise(true);
                     break;
                 }
+                BOOST_LOG(info) << "PS5 capture reopened after "sv
+                                << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
+                                                                                         lost_at).count()
+                                << " ms"sv;
+                check_fallback();
+                continue;
             }
-            ps_capture_set_reopening(0);
-            if (!recovered) {
-                BOOST_LOG(error) << "PS5 capture could not be reopened; ending the session"sv;
-                shutdown_event->raise(true);
-                break;
+            if (frame.idr) keyframe_requested.reset();
+            const auto timestamp = capture_time(desc, frame.read_time, hevc);
+            {
+                std::lock_guard lock(captures.mutex);
+                for (auto *j : ch.joined) {
+                    if (!j->keyframe_seen && !frame.idr) continue;
+                    j->keyframe_seen = true;
+                    auto copy = std::make_unique<packet_raw_generic>(std::vector<uint8_t>(frame.bytes), j->next_index++, frame.idr);
+                    copy->channel_data = j->session;
+                    copy->frame_timestamp = timestamp;
+                    packets->raise(std::move(copy));
+                }
             }
-            BOOST_LOG(info) << "PS5 capture reopened after "sv
-                            << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
-                                                                                     lost_at).count()
-                            << " ms"sv;
-            check_fallback();
-            continue;
+            auto packet = std::make_unique<packet_raw_generic>(std::move(frame.bytes), next_index++, frame.idr);
+            packet->channel_data = channel_data;
+            packet->frame_timestamp = timestamp;
+            packets->raise(std::move(packet));
+            frame.bytes = {};
         }
-        if (frame.idr) keyframe_requested.reset();
-        const auto timestamp = capture_time(desc, frame.read_time, hevc);
-        {
-            std::lock_guard lock(owner.mutex);
-            for (auto *j : owner.joined) {
-                if (!j->keyframe_seen && !frame.idr) continue;
-                j->keyframe_seen = true;
-                auto copy = std::make_unique<packet_raw_generic>(std::vector<uint8_t>(frame.bytes), j->next_index++, frame.idr);
-                copy->channel_data = j->session;
-                copy->frame_timestamp = timestamp;
-                packets->raise(std::move(copy));
-            }
-        }
-        auto packet = std::make_unique<packet_raw_generic>(std::move(frame.bytes), next_index++, frame.idr);
-        packet->channel_data = channel_data;
-        packet->frame_timestamp = timestamp;
-        packets->raise(std::move(packet));
-        frame.bytes = {};
+        session.stop();
+        return;
     }
-    session.stop();
 }
 }

@@ -52,7 +52,7 @@ int ps_capture_fall_back_mode(void);
 void ps_capture_set_opening_bitrate(uint32_t average, uint32_t peak);
 // The average set for the next open: ps_capture_open_or_fall_back lowers it when a high rate fails.
 uint32_t ps_capture_opening_average(void);
-// Research, for other firmwares: the resource for the next open (ps_capture_set_video_mode sets the default for the
+// Research, for other firmwares: the resource for slot 0's next open (ps_capture_set_video_mode sets the default for the
 // mode, so call this after it), and one more 32-bit config field to write after all others (field 0 = none).
 void ps_capture_set_resource(int id);
 void ps_capture_override_config(size_t field, uint32_t value);
@@ -72,7 +72,7 @@ ptrdiff_t ps_capture_record_shift(void);
 // Research: raw result of the last sceAvcap2OpenVideo, and sceAvcap2ChangeScanInResolution at runtime.
 int ps_capture_last_open_rc(void);
 int ps_capture_change_scan_in(ps_capture *session, uint32_t resolution);
-// One session per process. Measured FW 13.00 / AVC / SDR configuration.
+// One session per slot (slot 0 here, see ps_capture_slot_open). Measured FW 13.00 / AVC / SDR configuration.
 // On failure *out is NULL and any acquired resources have had cleanup attempted.
 int ps_capture_open(ps_capture **out);
 // ps_capture_open, then ps_capture_fall_back_mode and once more, and with a switch on the variants and the first frame
@@ -81,8 +81,25 @@ int ps_capture_open_or_fall_back(ps_capture **out);
 // Whether the next opens reopen a running stream's capture. Then a refusal of a mode below 1080p while the output had no
 // mode or changed it, as while a title starts or closes, fails instead of falling back to 1080p.
 void ps_capture_set_reopening(int on);
-// Whether the session was opened with the mode set now. NULL counts as not current.
+// Whether the session was opened with the mode set now for its slot. NULL counts as not current.
 int ps_capture_mode_current(const ps_capture *session);
+
+// Two channels at once, each with its own mode (STATUS.md, dual_open_probe). Slot 0 is the one the calls above set and
+// open: ResourceArbitrator profile 180, 182 above 1080p. Slot 1 is a second channel next to it on profile 175, which grants
+// up to 1080p: its ps_capture_slot_set_video_mode refuses larger modes. Each slot has its own settings for the next open,
+// at most one session, and its own answers from the arbitrator. Avcap2 is initialized with the first session and
+// terminated with the last. Opens run one at a time. These do what the calls above do, for the given slot.
+enum { PS_CAPTURE_SLOTS = 2 };
+int ps_capture_slot_set_video_mode(int slot, uint32_t resolution, uint32_t timing);
+int ps_capture_slot_set_codec(int slot, uint32_t codec);
+void ps_capture_slot_set_ten_bit(int slot, uint32_t ten_bit);
+void ps_capture_slot_set_opening_bitrate(int slot, uint32_t average, uint32_t peak);
+uint32_t ps_capture_slot_opening_average(int slot);
+uint32_t ps_capture_slot_video_resolution(int slot);
+int ps_capture_slot_fall_back_mode(int slot);
+void ps_capture_slot_set_reopening(int slot, int on);
+int ps_capture_slot_open(int slot, ps_capture **out);
+int ps_capture_slot_open_or_fall_back(int slot, ps_capture **out);
 // Annex-B parameter sets, for HEVC in the order VPS, SPS, PPS; returns bytes written or a negative error.
 int ps_capture_headers(ps_capture *session, void *destination, size_t capacity);
 // Nonblocking: >0 encoded bytes, 0 means try again, <0 error/revocation.

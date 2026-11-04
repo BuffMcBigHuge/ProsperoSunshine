@@ -16,15 +16,22 @@
 #include <unistd.h>
 #include <ps5/kernel.h>
 
+// Two channels can run at once (dual_open_probe, STATUS.md): slot 0 on profile 180, 182 above 1080p, and slot 1 on 175, up
+// to 1080p; the arbitrator refuses 185 next to 180. Each slot has its own settings for the next open, its own session and
+// its own answers from the arbitrator; slot 0 does what the single channel did before.
 // The resource the next open asks for, and the one of the session opened last, which events and the config refer to.
-static _Atomic int resource_id = 180, session_resource = 180;
+static _Atomic int resource_id[PS_CAPTURE_SLOTS] = {180, 175}, session_resource[PS_CAPTURE_SLOTS] = {180, 175};
 #define AGAIN ((int)0x81950002)
 #define RESOURCE_NOT_ACTIVE ((int)0x81950008)
 #define LOG(...) ps_diag_log("ProsperoSunshine: capture " __VA_ARGS__)
+// Slot 1's lines say "capture2": the app's report reads slot 0's "capture" lines as the outcome of the host's capture.
+#define SLOG(slot, format, ...) ps_diag_log("ProsperoSunshine: capture%s " format, (slot) ? "2" : "", ##__VA_ARGS__)
+static int valid_slot(int slot) { return slot >= 0 && slot < PS_CAPTURE_SLOTS; }
 typedef int (*load_fn)(const char *, size_t, const void *, uint32_t, void *, int *);
 typedef int (*handle_fn)(intptr_t);
 
 struct ps_capture {
+    int slot;
     intptr_t handle;
     int registered, requested, initialized, opened, started;
     int resource;  // close and audio must use what this session registered, whatever is set for the next open
@@ -52,29 +59,39 @@ struct ps_capture {
 };
 
 // Callback ABI currently has no verified instance context, so resource ownership
-// is explicitly exclusive. The callback touches only process-lifetime atomics.
-static atomic_flag owned = ATOMIC_FLAG_INIT;
-static atomic_int granted;
-static atomic_int revoked;
-static atomic_int refused;
-static atomic_int refused_value;  // data[0] of the answer that refused
+// is explicitly exclusive per slot. The callback touches only process-lifetime atomics and tells the slots apart by the
+// resource, as dual_open_probe does: each slot registers its own.
+static atomic_flag owned[PS_CAPTURE_SLOTS] = {ATOMIC_FLAG_INIT, ATOMIC_FLAG_INIT};
+static atomic_int granted[PS_CAPTURE_SLOTS];
+static atomic_int revoked[PS_CAPTURE_SLOTS];
+static atomic_int refused[PS_CAPTURE_SLOTS];
+static atomic_int refused_value[PS_CAPTURE_SLOTS];  // data[0] of the answer that refused
 // The last open was refused while the output had no mode or changed it; the next opens reopen a running stream's capture.
-static atomic_int unsettled, reopening;
+static atomic_int unsettled[PS_CAPTURE_SLOTS], reopening[PS_CAPTURE_SLOTS];
 static int resource_event(int id, int event, const uint8_t *data)
 {
-    if (id == atomic_load(&session_resource) && event == 1 && data) {
-        atomic_store(&granted, data[0] == 1);
-        if (data[0] != 1) {
-            atomic_store(&refused_value, data[0]);
-            atomic_store(&refused, 1);
+    for (int slot = 0; slot < PS_CAPTURE_SLOTS; slot++) {
+        if (id != atomic_load(&session_resource[slot])) continue;
+        if (event == 1 && data) {
+            atomic_store(&granted[slot], data[0] == 1);
+            if (data[0] != 1) {
+                atomic_store(&refused_value[slot], data[0]);
+                atomic_store(&refused[slot], 1);
+            }
         }
-    }
-    if (id == atomic_load(&session_resource) && event == 2) {
-        atomic_store(&revoked, 1);
-        atomic_store(&granted, 0);
+        if (event == 2) {
+            atomic_store(&revoked[slot], 1);
+            atomic_store(&granted[slot], 0);
+        }
     }
     return 0;
 }
+
+// Opens one at a time: kernel_dynlib_dlsym is not safe from several threads at once, and the ResourceArbitrator calls are
+// resolved on the first open. Avcap2 is initialized once for both channels and terminated when the last one closes, as
+// dual_open_probe ran them.
+static pthread_mutex_t open_lock = PTHREAD_MUTEX_INITIALIZER, init_lock = PTHREAD_MUTEX_INITIALIZER;
+static int initialized_sessions;  // under init_lock
 
 static uint32_t module(load_fn load, const char *name)
 {
@@ -92,27 +109,40 @@ static uint32_t module(load_fn load, const char *name)
 static void u32(uint8_t *p, size_t at, uint32_t value) { memcpy(p + at, &value, 4); }
 static void u64(uint8_t *p, size_t at, uint64_t value) { memcpy(p + at, &value, 8); }
 
-static _Atomic uint32_t video_resolution = 4, video_timing = 1, video_codec = 0, video_ten_bit = 0;
+static _Atomic uint32_t video_resolution[PS_CAPTURE_SLOTS] = {4, 4}, video_timing[PS_CAPTURE_SLOTS] = {1, 1},
+                        video_codec[PS_CAPTURE_SLOTS], video_ten_bit[PS_CAPTURE_SLOTS];
 static _Atomic int last_open_rc = 0;
 
-static _Atomic uint32_t opening_average = 6000000, opening_peak = 0;
+static _Atomic uint32_t opening_average[PS_CAPTURE_SLOTS] = {6000000, 6000000}, opening_peak[PS_CAPTURE_SLOTS];
 
-void ps_capture_set_opening_bitrate(uint32_t average, uint32_t peak)
+void ps_capture_slot_set_opening_bitrate(int slot, uint32_t average, uint32_t peak)
 {
-    atomic_store(&opening_average, average);
-    atomic_store(&opening_peak, peak);
+    if (!valid_slot(slot)) return;
+    atomic_store(&opening_average[slot], average);
+    atomic_store(&opening_peak[slot], peak);
 }
 
-uint32_t ps_capture_opening_average(void) { return atomic_load(&opening_average); }
+void ps_capture_set_opening_bitrate(uint32_t average, uint32_t peak) { ps_capture_slot_set_opening_bitrate(0, average, peak); }
 
-int ps_capture_set_codec(uint32_t codec)
+uint32_t ps_capture_slot_opening_average(int slot) { return valid_slot(slot) ? atomic_load(&opening_average[slot]) : 0; }
+
+uint32_t ps_capture_opening_average(void) { return ps_capture_slot_opening_average(0); }
+
+int ps_capture_slot_set_codec(int slot, uint32_t codec)
 {
-    if (codec > 1) return PS_CAPTURE_ERROR;
-    atomic_store(&video_codec, codec);
+    if (!valid_slot(slot) || codec > 1) return PS_CAPTURE_ERROR;
+    atomic_store(&video_codec[slot], codec);
     return 0;
 }
 
-void ps_capture_set_ten_bit(uint32_t ten_bit) { atomic_store(&video_ten_bit, ten_bit != 0); }
+int ps_capture_set_codec(uint32_t codec) { return ps_capture_slot_set_codec(0, codec); }
+
+void ps_capture_slot_set_ten_bit(int slot, uint32_t ten_bit)
+{
+    if (valid_slot(slot)) atomic_store(&video_ten_bit[slot], ten_bit != 0);
+}
+
+void ps_capture_set_ten_bit(uint32_t ten_bit) { ps_capture_slot_set_ten_bit(0, ten_bit); }
 
 int ps_capture_last_open_rc(void) { return atomic_load(&last_open_rc); }
 
@@ -166,48 +196,56 @@ int ps_capture_small_modes_allowed(void)
     return ps_capture_small_modes_verified() || ps_exp_small_offered(&now);
 }
 
-static void mode_snapshot(uint32_t mode[7])
+static void mode_snapshot(int slot, uint32_t mode[7])
 {
-    mode[5] = atomic_load(&video_ten_bit);
-    mode[0] = atomic_load(&video_resolution);
-    mode[1] = atomic_load(&video_timing);
-    mode[2] = atomic_load(&video_codec);
-    mode[3] = atomic_load(&opening_average);
-    mode[4] = atomic_load(&opening_peak);
+    mode[5] = atomic_load(&video_ten_bit[slot]);
+    mode[0] = atomic_load(&video_resolution[slot]);
+    mode[1] = atomic_load(&video_timing[slot]);
+    mode[2] = atomic_load(&video_codec[slot]);
+    mode[3] = atomic_load(&opening_average[slot]);
+    mode[4] = atomic_load(&opening_peak[slot]);
     const ps_experiment now = experiment_now();
     mode[6] = (uint32_t)ps_exp_variant_for(&now, mode[2], mode[5]);
 }
 
 int ps_capture_mode_current(const ps_capture *s)
 {
+    if (!s) return 0;
     uint32_t mode[7];
-    mode_snapshot(mode);
-    return s && !memcmp(mode, s->mode, sizeof mode);
+    mode_snapshot(s->slot, mode);
+    return !memcmp(mode, s->mode, sizeof mode);
 }
 
-int ps_capture_set_video_mode(uint32_t resolution, uint32_t timing)
+int ps_capture_slot_set_video_mode(int slot, uint32_t resolution, uint32_t timing)
 {
-    if (resolution < 1 || resolution > 6 || timing > 1) return PS_CAPTURE_ERROR;
-    atomic_store(&video_resolution, resolution);
-    atomic_store(&video_timing, timing);
+    // Slot 1 has profile 175, which grants scanin[2K] only.
+    if (!valid_slot(slot) || resolution < 1 || resolution > (slot ? 4u : 6u) || timing > 1) return PS_CAPTURE_ERROR;
+    atomic_store(&video_resolution[slot], resolution);
+    atomic_store(&video_timing[slot], timing);
     // Profile 180 grants scanin[2K], 182 scanin[4K] and more of the encoder (docs/re/avcap2-exports.md).
-    atomic_store(&resource_id, resolution >= 5 ? 182 : 180);
+    atomic_store(&resource_id[slot], slot ? 175 : resolution >= 5 ? 182 : 180);
     return 0;
 }
 
-uint32_t ps_capture_video_resolution(void) { return atomic_load(&video_resolution); }
+int ps_capture_set_video_mode(uint32_t resolution, uint32_t timing) { return ps_capture_slot_set_video_mode(0, resolution, timing); }
 
-int ps_capture_fall_back_mode(void)
+uint32_t ps_capture_slot_video_resolution(int slot) { return valid_slot(slot) ? atomic_load(&video_resolution[slot]) : 0; }
+
+uint32_t ps_capture_video_resolution(void) { return ps_capture_slot_video_resolution(0); }
+
+int ps_capture_slot_fall_back_mode(int slot)
 {
-    if (!atomic_load(&refused) || !ps_exp_mode_may_fall_back(atomic_load(&video_resolution))) return 0;
-    ps_capture_set_video_mode(4, atomic_load(&video_timing));
+    if (!valid_slot(slot) || !atomic_load(&refused[slot]) || !ps_exp_mode_may_fall_back(atomic_load(&video_resolution[slot]))) return 0;
+    ps_capture_slot_set_video_mode(slot, 4, atomic_load(&video_timing[slot]));
     return 1;
 }
+
+int ps_capture_fall_back_mode(void) { return ps_capture_slot_fall_back_mode(0); }
 
 static _Atomic size_t override_field;
 static _Atomic uint32_t override_value;
 
-void ps_capture_set_resource(int id) { atomic_store(&resource_id, id); }
+void ps_capture_set_resource(int id) { atomic_store(&resource_id[0], id); }
 
 void ps_capture_override_config(size_t field, uint32_t value)
 {
@@ -319,16 +357,16 @@ void ps_capture_build_config(uint8_t *p, const ps_capture_video_config *c, uint3
     }
 }
 
-static void configure(uint8_t *p, uint32_t mode, int variant)
+static void configure(int slot, uint8_t *p, uint32_t mode, int variant)
 {
     const ps_capture_video_config c = {
-        .resolution = atomic_load(&video_resolution),
-        .timing = atomic_load(&video_timing),
-        .codec = atomic_load(&video_codec),
-        .ten_bit = atomic_load(&video_ten_bit),
-        .average = atomic_load(&opening_average),
-        .peak = atomic_load(&opening_peak),
-        .resource = atomic_load(&session_resource),
+        .resolution = atomic_load(&video_resolution[slot]),
+        .timing = atomic_load(&video_timing[slot]),
+        .codec = atomic_load(&video_codec[slot]),
+        .ten_bit = atomic_load(&video_ten_bit[slot]),
+        .average = atomic_load(&opening_average[slot]),
+        .peak = atomic_load(&opening_peak[slot]),
+        .resource = atomic_load(&session_resource[slot]),
     };
     ps_capture_build_config(p, &c, mode, variant);
     if (atomic_load(&override_field)) u32(p, atomic_load(&override_field), atomic_load(&override_value));
@@ -339,34 +377,40 @@ static void configure(uint8_t *p, uint32_t mode, int variant)
 int ps_capture_close(ps_capture *s)
 {
     if (!s) return 0;
+    const int slot = s->slot;
     int failed = 0, rc;
 #define CLEANUP(flag, expression, name) do { \
-    if (flag) { rc = (expression); LOG(name " rc=%#x\n", rc); if (rc < 0) failed = 1; } \
+    if (flag) { rc = (expression); SLOG(slot, name " rc=%#x\n", rc); if (rc < 0) failed = 1; } \
 } while (0)
     if (ps_capture_audio_close(s)) failed = 1;
     CLEANUP(s->started, s->stop(s->handle), "Stop");
     CLEANUP(s->opened, s->close(s->handle), "Close");
     CLEANUP(s->has_memory, s->free_memory(s->memory, s->memory + 0x20), "free encoder memory");
-    CLEANUP(s->initialized, s->terminate(), "Terminate");
+    if (s->initialized) {
+        pthread_mutex_lock(&init_lock);
+        if (--initialized_sessions == 0) CLEANUP(1, s->terminate(), "Terminate");
+        else SLOG(slot, "Terminate left to the other channel\n");
+        pthread_mutex_unlock(&init_lock);
+    }
     CLEANUP(s->requested, s->request(s->resource, "STOP", NULL, getpid()), "STOP");
     int unregistered = 1;
     if (s->registered) {
         rc = s->unregister(s->resource);
-        LOG("unregister rc=%#x\n", rc);
+        SLOG(slot, "unregister rc=%#x\n", rc);
         if (rc) { failed = 1; unregistered = 0; }
     }
 #undef CLEANUP
     free(s);
-    // If unregister failed, keep the process guard closed: do not start a new
+    // If unregister failed, keep the slot's guard closed: do not start a new
     // session while an old callback registration might still exist.
-    if (unregistered && !failed) atomic_flag_clear(&owned);
+    if (unregistered && !failed) atomic_flag_clear(&owned[slot]);
     return failed ? PS_CAPTURE_ERROR : 0;
 }
 
-// For the attempt's outcome line: where the last open stopped, its raw code, and whether it got as far as the encoder.
-static const char *_Atomic failure_step = "";
-static _Atomic int failure_rc, reached_encoder;
-static _Atomic int check_first_frame;
+// For the attempt's outcome line: where the slot's last open stopped, its raw code, and whether it got as far as the encoder.
+static const char *_Atomic failure_step[PS_CAPTURE_SLOTS] = {"", ""};
+static _Atomic int failure_rc[PS_CAPTURE_SLOTS], reached_encoder[PS_CAPTURE_SLOTS];
+static _Atomic int check_first_frame[PS_CAPTURE_SLOTS];
 
 // How long a first frame may take before an unproven open counts as failed. A frame takes 17 ms at 60 fps.
 #ifndef PS_FIRST_FRAME_MS
@@ -394,7 +438,7 @@ static int first_frame(ps_capture *s, const char **step)
                 waited += 2;
             }
         }
-        LOG("first frame rc=%#x after %d ms\n", rc, waited);
+        SLOG(s->slot, "first frame rc=%#x after %d ms\n", rc, waited);
         rc = rc > 0 ? 0 : rc ? rc : PS_CAPTURE_ERROR;
     } else if (!rc) {
         rc = PS_CAPTURE_ERROR;
@@ -416,27 +460,27 @@ static int active_resources(int (*list)(int32_t *), char *out, size_t size, char
     return rc;
 }
 
-int ps_capture_open(ps_capture **out)
+// Caller holds open_lock.
+static int open_slot(int slot, ps_capture **out)
 {
-    if (!out) return PS_CAPTURE_ERROR;
-    *out = NULL;
-    atomic_store(&failure_rc, 0);
-    atomic_store(&reached_encoder, 0);
-    atomic_store(&unsettled, 0);
-    atomic_store(&failure_step, "in use");
-    if (atomic_flag_test_and_set(&owned)) return PS_CAPTURE_BUSY;
+    atomic_store(&failure_rc[slot], 0);
+    atomic_store(&reached_encoder[slot], 0);
+    atomic_store(&unsettled[slot], 0);
+    atomic_store(&failure_step[slot], "in use");
+    if (atomic_flag_test_and_set(&owned[slot])) return PS_CAPTURE_BUSY;
     ps_capture *s = calloc(1, sizeof *s);
-    if (!s) { atomic_flag_clear(&owned); return PS_CAPTURE_ERROR; }
+    if (!s) { atomic_flag_clear(&owned[slot]); return PS_CAPTURE_ERROR; }
+    s->slot = slot;
     // The app's report tells from "open start", "open ok" and "open failed" how this attempt ended, also
     // when a step takes the process down (no outcome line then).
-    LOG("open start codec=%u resource=%d\n", atomic_load(&video_codec), atomic_load(&resource_id));
-    s->resource = atomic_load(&resource_id);
-    atomic_store(&session_resource, s->resource);
+    SLOG(slot, "open start codec=%u resource=%d\n", atomic_load(&video_codec[slot]), atomic_load(&resource_id[slot]));
+    s->resource = atomic_load(&resource_id[slot]);
+    atomic_store(&session_resource[slot], s->resource);
     const char *step = "system modules";
-    atomic_store(&granted, 0);
-    atomic_store(&revoked, 0);
-    atomic_store(&refused, 0);
-    atomic_store(&refused_value, -1);
+    atomic_store(&granted[slot], 0);
+    atomic_store(&revoked[slot], 0);
+    atomic_store(&refused[slot], 0);
+    atomic_store(&refused_value[slot], -1);
     int error = PS_CAPTURE_ERROR;
     load_fn load = NULL;
     const char *kernels[] = {"libkernel_web.sprx", "libkernel_sys.sprx", "libkernel.sprx"};
@@ -452,7 +496,7 @@ int ps_capture_open(ps_capture **out)
     // Firmware gate: the four ResourceArbitrator calls are exported only under NIDs whose names are
     // unknown, so they are resolved by NID and checked against the offsets verified per firmware
     // (ra_resolve.c, docs/firmware-porting.md). Resolved once per process (opens are serialised by
-    // `owned`); a refusal is final.
+    // open_lock); a refusal is final.
     static ps_ra_functions ra_calls;
     static int ra_state; // 0 not yet resolved, 1 resolved, -1 refused
     if (!ra_state) ra_state = ps_ra_resolve(ra, &ra_calls) ? -1 : 1;
@@ -473,7 +517,7 @@ int ps_capture_open(ps_capture **out)
         int listed = 0;
         for (size_t i = 0; i < 32; i++) if (active[i] == s->resource) listed = 1;
         if (!listed) {
-            if (attempt) LOG("resource free after %d ms\n", attempt * 20);
+            if (attempt) SLOG(slot, "resource free after %d ms\n", attempt * 20);
             break;
         }
         if (attempt == 40) { error = PS_CAPTURE_BUSY; goto fail; }
@@ -501,34 +545,45 @@ int ps_capture_open(ps_capture **out)
         goto fail;
     step = "register";
     int rc = reg(s->resource, (void *)resource_event, NULL);
-    LOG("register rc=%#x\n", rc);
+    SLOG(slot, "register rc=%#x\n", rc);
     if (rc) goto fail;
     s->registered = 1;
     s->requested = 1; // STOP is attempted even if the RUNNING request reports failure.
     step = "RUNNING";
     rc = s->request(s->resource, "RUNNING", NULL, getpid());
-    LOG("RUNNING rc=%#x\n", rc);
+    SLOG(slot, "RUNNING rc=%#x\n", rc);
     if (rc < 0) goto fail;
     // The open runs once the client's first ping came, and Moonlight waits 10 s for the first video packet
     // (FIRST_FRAME_TIMEOUT_SEC, moonlight-common-c). On 13.60 the grant once took longer than 2 s twice in a row, and the
     // same request went through right away ten seconds later (GitHub issue 1).
     int waited_ms = 0;
-    for (; waited_ms < 6000 && !atomic_load(&granted) && !atomic_load(&revoked) && !atomic_load(&refused); waited_ms += 10) usleep(10000);
-    if (waited_ms >= 500 && atomic_load(&granted) && !atomic_load(&revoked)) LOG("RUNNING granted after %d ms\n", waited_ms);
-    if (!atomic_load(&granted) || atomic_load(&revoked)) {
+    for (; waited_ms < 6000 && !atomic_load(&granted[slot]) && !atomic_load(&revoked[slot]) && !atomic_load(&refused[slot]); waited_ms += 10)
+        usleep(10000);
+    if (waited_ms >= 500 && atomic_load(&granted[slot]) && !atomic_load(&revoked[slot])) SLOG(slot, "RUNNING granted after %d ms\n", waited_ms);
+    if (!atomic_load(&granted[slot]) || atomic_load(&revoked[slot])) {
         // The app's report reads this line (parse_host_log): no answer, refused or taken away are different problems.
         char ids[32 * 12];
         const int list_rc = active_resources(list, ids, sizeof ids, ',');
-        LOG("RUNNING outcome=%s value=%d waited_ms=%d list_rc=%#x active=%s\n",
-            atomic_load(&revoked) ? "revoked" : atomic_load(&refused) ? "refused" : "timeout", atomic_load(&refused_value), waited_ms,
-            list_rc, ids[0] ? ids : "none");
+        SLOG(slot, "RUNNING outcome=%s value=%d waited_ms=%d list_rc=%#x active=%s\n",
+             atomic_load(&revoked[slot]) ? "revoked" : atomic_load(&refused[slot]) ? "refused" : "timeout", atomic_load(&refused_value[slot]),
+             waited_ms, list_rc, ids[0] ? ids : "none");
         goto fail;
     }
     step = "Initialize";
-    rc = init();
-    LOG("Initialize rc=%#x\n", rc);
+    pthread_mutex_lock(&init_lock);
+    if (initialized_sessions) {
+        rc = 0;
+        SLOG(slot, "Initialize done by the other channel\n");
+    } else {
+        rc = init();
+        SLOG(slot, "Initialize rc=%#x\n", rc);
+    }
+    if (!rc) {
+        initialized_sessions++;
+        s->initialized = 1;
+    }
+    pthread_mutex_unlock(&init_lock);
     if (rc) goto fail;
-    s->initialized = 1;
     step = "video out mode";
     int output = 0;
     // While a title comes up the output has no mode (0) for about a second, and the service refuses a config whose mode isn't
@@ -536,18 +591,18 @@ int ps_capture_open(ps_capture **out)
     for (int attempt = 0; attempt < 50; attempt++) {
         if (mode(&output)) goto fail;
         if (output) {
-            if (attempt) LOG("video out mode appeared after %d ms\n", attempt * 20);
+            if (attempt) SLOG(slot, "video out mode appeared after %d ms\n", attempt * 20);
             break;
         }
         usleep(20000);
     }
-    LOG("video out mode %#x\n", output);
+    SLOG(slot, "video out mode %#x\n", output);
     if (output & 3) { error = PS_CAPTURE_VR; goto fail; }
-    atomic_store(&reached_encoder, 1);
+    atomic_store(&reached_encoder[slot], 1);
     uint8_t config[0x2e8] = {0};
-    mode_snapshot(s->mode);
-    configure(config, (uint32_t)output, (int)s->mode[6]);
-    if (atomic_load(&video_codec) == 1 && record_shift() >= 0 && s->mode[6] != PS_EXP_MINIMAL) {
+    mode_snapshot(slot, s->mode);
+    configure(slot, config, (uint32_t)output, (int)s->mode[6]);
+    if (atomic_load(&video_codec[slot]) == 1 && record_shift() >= 0 && s->mode[6] != PS_EXP_MINIMAL) {
         // Memory Mode 1 as Remote Play sets it up (SceRemotePlay 0x6fb83..0x6fc65).
         step = "encoder memory";
         const ptrdiff_t high = s->mode[6] == PS_EXP_FULL ? record_shift() : 0;
@@ -561,8 +616,8 @@ int ps_capture_open(ps_capture **out)
         u64(config, 0x198 + high, 0x50);
         u32(config, 0x1a0 + high, 1);
         rc = reserve(request, config + 0x1a8 + high, config + 0x1c8 + high);
-        LOG("encoder memory rc=%#x\n", rc);
-        if (rc) { atomic_store(&last_open_rc, rc); atomic_store(&failure_rc, rc); goto fail; }
+        SLOG(slot, "encoder memory rc=%#x\n", rc);
+        if (rc) { atomic_store(&last_open_rc, rc); atomic_store(&failure_rc[slot], rc); goto fail; }
         memcpy(s->memory, config + 0x1a8 + high, sizeof s->memory);
         s->has_memory = 1;
     }
@@ -571,56 +626,69 @@ int ps_capture_open(ps_capture **out)
     // moment; stay below the 2 s a client waits for the stream (Initial Ping Timeout). A larger mode gets the same code
     // when the console's output is too small for it, and needs the time left for the open at 1080p, as does a smaller one.
     // It also answers this when the output's mode changed since it was read, as while a title comes up, so that is read anew.
-    const int repeats = atomic_load(&video_resolution) != 4 ? 5 : 25;
+    const int repeats = atomic_load(&video_resolution[slot]) != 4 ? 5 : 25;
     int changed = 0;
     for (int attempt = 0;; attempt++) {
         rc = open_video(&s->handle, config, 0);
-        if (rc != RESOURCE_NOT_ACTIVE || attempt == repeats || atomic_load(&revoked)) {
-            if (attempt) LOG("OpenVideo repeated %d times\n", attempt);
+        if (rc != RESOURCE_NOT_ACTIVE || attempt == repeats || atomic_load(&revoked[slot])) {
+            if (attempt) SLOG(slot, "OpenVideo repeated %d times\n", attempt);
             break;
         }
         usleep(40000);
         const int before = output;
         if (mode(&output) == 0 && output != before) {
-            LOG("video out mode now %#x\n", output);
+            SLOG(slot, "video out mode now %#x\n", output);
             changed = 1;
             u32(config, 0x2a0 + record_shift(), (uint32_t)output);
         }
     }
-    atomic_store(&unsettled, rc && (changed || !output));
+    atomic_store(&unsettled[slot], rc && (changed || !output));
     atomic_store(&last_open_rc, rc);
-    atomic_store(&failure_rc, rc);
-    LOG("OpenVideo rc=%#x\n", rc);
-    if (rc) atomic_store(&refused, 1);
+    atomic_store(&failure_rc[slot], rc);
+    SLOG(slot, "OpenVideo rc=%#x\n", rc);
+    if (rc) atomic_store(&refused[slot], 1);
     if (rc == RESOURCE_NOT_ACTIVE) {
         // For the app's report: is our resource listed, and which others are?
         char ids[32 * 12];
         const int list_rc = active_resources(list, ids, sizeof ids, ' ');
-        LOG("active resources rc=%#x:%s%s\n", list_rc, ids[0] ? " " : "", ids);
+        SLOG(slot, "active resources rc=%#x:%s%s\n", list_rc, ids[0] ? " " : "", ids);
     }
     if (rc) goto fail;
     s->opened = 1;
     step = "Start";
     rc = start(s->handle);
-    LOG("Start rc=%#x\n", rc);
-    atomic_store(&failure_rc, rc);
-    if (rc) { atomic_store(&refused, 1); goto fail; }
+    SLOG(slot, "Start rc=%#x\n", rc);
+    atomic_store(&failure_rc[slot], rc);
+    if (rc) { atomic_store(&refused[slot], 1); goto fail; }
     s->started = 1;
-    if (!atomic_load(&granted) || atomic_load(&revoked)) { error = PS_CAPTURE_REVOKED; goto fail; }
-    if (atomic_load(&check_first_frame)) {
+    if (!atomic_load(&granted[slot]) || atomic_load(&revoked[slot])) { error = PS_CAPTURE_REVOKED; goto fail; }
+    if (atomic_load(&check_first_frame[slot])) {
         rc = first_frame(s, &step);
         if (rc == PS_CAPTURE_REVOKED) { error = PS_CAPTURE_REVOKED; goto fail; }
-        if (rc) { atomic_store(&refused, 1); goto fail; }
+        if (rc) { atomic_store(&refused[slot], 1); goto fail; }
     }
     *out = s;
-    LOG("open ok\n");
+    SLOG(slot, "open ok\n");
     return 0;
 fail:
-    atomic_store(&failure_step, step);
-    LOG("open failed step=%s error=%d rc=%#x\n", step, error, atomic_load(&last_open_rc));
+    atomic_store(&failure_step[slot], step);
+    SLOG(slot, "open failed step=%s error=%d rc=%#x\n", step, error, atomic_load(&last_open_rc));
     ps_capture_close(s);
     return error;
 }
+
+int ps_capture_slot_open(int slot, ps_capture **out)
+{
+    if (!out) return PS_CAPTURE_ERROR;
+    *out = NULL;
+    if (!valid_slot(slot)) return PS_CAPTURE_ERROR;
+    pthread_mutex_lock(&open_lock);
+    const int rc = open_slot(slot, out);
+    pthread_mutex_unlock(&open_lock);
+    return rc;
+}
+
+int ps_capture_open(ps_capture **out) { return ps_capture_slot_open(0, out); }
 
 // host_diag.log gets a line for each attempt while a switch counts, and the app's parser reads them
 // (parse_host_log in app/src/psapp/diag.cpp), so its field names and this have to agree.
@@ -724,12 +792,13 @@ void ps_capture_set_experimental(const int switches[PS_EXP_SWITCH_COUNT], const 
     pthread_mutex_unlock(&experiment_lock);
 }
 
-int ps_capture_open_or_fall_back(ps_capture **out)
+// One attempt at a time, for the marker file. Caller holds attempt_lock.
+static int open_or_fall_back(int slot, ps_capture **out)
 {
     for (;;) {
-        const uint32_t codec = atomic_load(&video_codec), ten_bit = atomic_load(&video_ten_bit);
-        const uint32_t resolution = atomic_load(&video_resolution), timing = atomic_load(&video_timing);
-        const uint32_t average = atomic_load(&opening_average);
+        const uint32_t codec = atomic_load(&video_codec[slot]), ten_bit = atomic_load(&video_ten_bit[slot]);
+        const uint32_t resolution = atomic_load(&video_resolution[slot]), timing = atomic_load(&video_timing[slot]);
+        const uint32_t average = atomic_load(&opening_average[slot]);
         const ps_experiment before = experiment_now();
         const int logged = ps_exp_any(&before);
         const int unproven = ps_exp_unproven_codec(&before, codec, ten_bit) || ps_exp_unproven_mode(&before, resolution) ||
@@ -740,13 +809,13 @@ int ps_capture_open_or_fall_back(ps_capture **out)
             ps_diag_log("ProsperoSunshine: experimental attempt %s\n", fields);
             if (unproven) marker_write(fields);
         }
-        atomic_store(&check_first_frame, unproven);
-        const int rc = ps_capture_open(out);
-        atomic_store(&check_first_frame, 0);
+        atomic_store(&check_first_frame[slot], unproven);
+        const int rc = ps_capture_slot_open(slot, out);
+        atomic_store(&check_first_frame[slot], 0);
         if (logged) {
             if (rc)
                 ps_diag_log("ProsperoSunshine: experimental result=failed %s error=%d rc=%#x step=%s\n", fields, rc,
-                            (unsigned)atomic_load(&failure_rc), atomic_load(&failure_step));
+                            (unsigned)atomic_load(&failure_rc[slot]), atomic_load(&failure_step[slot]));
             else
                 ps_diag_log("ProsperoSunshine: experimental result=ok %s error=0 rc=0 step=none\n", fields);
             if (unproven) marker_clear();
@@ -754,9 +823,9 @@ int ps_capture_open_or_fall_back(ps_capture **out)
         pthread_mutex_lock(&experiment_lock);
         enum ps_exp_next next = PS_EXP_GIVE_UP;
         if (rc) {
-            const int attributable = rc == PS_CAPTURE_ERROR && atomic_load(&reached_encoder);
+            const int attributable = rc == PS_CAPTURE_ERROR && atomic_load(&reached_encoder[slot]);
             next = ps_exp_failed(&experiment, codec, ten_bit, resolution, average, attributable,
-                                 atomic_load(&refused) && ps_exp_mode_may_fall_back(resolution));
+                                 atomic_load(&refused[slot]) && ps_exp_mode_may_fall_back(resolution));
         } else {
             ps_exp_succeeded(&experiment, codec, ten_bit, resolution, average);
         }
@@ -767,29 +836,49 @@ int ps_capture_open_or_fall_back(ps_capture **out)
         if (next == PS_EXP_NEXT_VARIANT) continue;
         if (next == PS_EXP_LOWER_RATE) {
             // The peak keeps its share of the average. The client needs no word of this: it gets fewer bits, nothing else.
-            const uint64_t peak = atomic_load(&opening_peak);
-            atomic_store(&opening_peak, (uint32_t)(peak * PS_EXP_SAFE_AVERAGE / average));
-            atomic_store(&opening_average, PS_EXP_SAFE_AVERAGE);
+            const uint64_t peak = atomic_load(&opening_peak[slot]);
+            atomic_store(&opening_peak[slot], (uint32_t)(peak * PS_EXP_SAFE_AVERAGE / average));
+            atomic_store(&opening_average[slot], PS_EXP_SAFE_AVERAGE);
             continue;
         }
         // A title starting or closing leaves the output without a mode for up to about 2 s (10.20), longer than the opens
         // above wait. A refusal then says nothing about a mode below 1080p, which the client may need: a reopen in a
         // running stream fails instead of falling back, and its loop tries the same mode again.
-        if (next == PS_EXP_FALL_BACK && atomic_load(&reopening) && atomic_load(&unsettled) && resolution < 4) {
-            LOG("output not settled: resolution %u kept for the next reopen\n", resolution);
+        if (next == PS_EXP_FALL_BACK && atomic_load(&reopening[slot]) && atomic_load(&unsettled[slot]) && resolution < 4) {
+            SLOG(slot, "output not settled: resolution %u kept for the next reopen\n", resolution);
             return rc;
         }
-        if (next == PS_EXP_FALL_BACK && ps_capture_fall_back_mode()) continue;
+        if (next == PS_EXP_FALL_BACK && ps_capture_slot_fall_back_mode(slot)) continue;
         // Audio may open next, for the stream that is about to end: not with what just failed.
         if (after.failed[PS_EXP_HEVC] != before.failed[PS_EXP_HEVC] || after.failed[PS_EXP_HDR] != before.failed[PS_EXP_HDR]) {
-            atomic_store(&video_ten_bit, 0);
-            if (!ps_capture_hevc_allowed()) atomic_store(&video_codec, 0);
+            atomic_store(&video_ten_bit[slot], 0);
+            if (!ps_capture_hevc_allowed()) atomic_store(&video_codec[slot], 0);
         }
         return rc;
     }
 }
 
-void ps_capture_set_reopening(int on) { atomic_store(&reopening, on != 0); }
+static pthread_mutex_t attempt_lock = PTHREAD_MUTEX_INITIALIZER;
+
+int ps_capture_slot_open_or_fall_back(int slot, ps_capture **out)
+{
+    if (!out) return PS_CAPTURE_ERROR;
+    *out = NULL;
+    if (!valid_slot(slot)) return PS_CAPTURE_ERROR;
+    pthread_mutex_lock(&attempt_lock);
+    const int rc = open_or_fall_back(slot, out);
+    pthread_mutex_unlock(&attempt_lock);
+    return rc;
+}
+
+int ps_capture_open_or_fall_back(ps_capture **out) { return ps_capture_slot_open_or_fall_back(0, out); }
+
+void ps_capture_slot_set_reopening(int slot, int on)
+{
+    if (valid_slot(slot)) atomic_store(&reopening[slot], on != 0);
+}
+
+void ps_capture_set_reopening(int on) { ps_capture_slot_set_reopening(0, on); }
 
 int ps_capture_change_scan_in(ps_capture *s, uint32_t resolution)
 {
@@ -803,11 +892,11 @@ int ps_capture_change_scan_in(ps_capture *s, uint32_t resolution)
 int ps_capture_headers(ps_capture *s, void *destination, size_t capacity)
 {
     if (!s || !destination || !s->started) return PS_CAPTURE_ERROR;
-    if (!atomic_load(&granted) || atomic_load(&revoked)) return PS_CAPTURE_REVOKED;
+    if (!atomic_load(&granted[s->slot]) || atomic_load(&revoked[s->slot])) return PS_CAPTURE_REVOKED;
     uint8_t nal[0x1a8] = {0};
     u64(nal, 0, sizeof nal);
     int rc = s->headers(s->handle, nal);
-    if (rc) { atomic_store(&failure_rc, rc); LOG("headers rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
+    if (rc) { atomic_store(&failure_rc[s->slot], rc); SLOG(s->slot, "headers rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
     size_t used = 0;
     // The console lists HEVC's as SPS, PPS, VPS; decoders and moonlight-common-c want the VPS first.
     static const size_t order[][3] = {{0x10, 0x98, 0x120}, {0x120, 0x10, 0x98}};
@@ -827,24 +916,24 @@ int ps_capture_headers(ps_capture *s, void *destination, size_t capacity)
 int ps_capture_read(ps_capture *s, void *destination, size_t capacity, uint8_t descriptor[0x70])
 {
     if (!s || !destination || !capacity || !descriptor || !s->started) return PS_CAPTURE_ERROR;
-    if (!atomic_load(&granted) || atomic_load(&revoked)) return PS_CAPTURE_REVOKED;
+    if (!atomic_load(&granted[s->slot]) || atomic_load(&revoked[s->slot])) return PS_CAPTURE_REVOKED;
     memset(descriptor, 0, 0x70);
     u64(descriptor, 0, 0x70);
     int rc = s->read(s->handle, destination, capacity, descriptor, 1);
     if (rc == AGAIN || rc == 0) return 0;
-    if (rc < 0 || (size_t)rc > capacity) { atomic_store(&failure_rc, rc); LOG("ReadVideo rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
+    if (rc < 0 || (size_t)rc > capacity) { atomic_store(&failure_rc[s->slot], rc); SLOG(s->slot, "ReadVideo rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
     return rc;
 }
 
 int ps_capture_read2(ps_capture *s, void *destination, size_t capacity, uint8_t descriptor[0x88])
 {
     if (!s || !destination || !capacity || !descriptor || !s->started || !s->read2) return PS_CAPTURE_ERROR;
-    if (!atomic_load(&granted) || atomic_load(&revoked)) return PS_CAPTURE_REVOKED;
+    if (!atomic_load(&granted[s->slot]) || atomic_load(&revoked[s->slot])) return PS_CAPTURE_REVOKED;
     memset(descriptor, 0, 0x88);
     u64(descriptor, 0, 0x88);
     int rc = s->read2(s->handle, destination, capacity, descriptor, 1);
     if (rc == AGAIN || rc == 0) return 0;
-    if (rc < 0 || (size_t)rc > capacity) { atomic_store(&failure_rc, rc); LOG("ReadVideo2 rc=%#x\n", rc); return rc < 0 ? rc : PS_CAPTURE_ERROR; }
+    if (rc < 0 || (size_t)rc > capacity) { atomic_store(&failure_rc[s->slot], rc); SLOG(s->slot, "ReadVideo2 rc=%#x\n", rc); return rc < 0 ? rc : PS_CAPTURE_ERROR; }
     return rc;
 }
 
@@ -852,7 +941,7 @@ int ps_capture_request_keyframe(ps_capture *s)
 {
     if (!s || !s->started || !s->request_keyframe) return PS_CAPTURE_ERROR;
     int rc = s->request_keyframe(s->handle);
-    if (rc < 0) { LOG("RequestKeyFrame rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
+    if (rc < 0) { SLOG(s->slot, "RequestKeyFrame rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
     return 0;
 }
 
@@ -864,7 +953,7 @@ int ps_capture_set_bitrate(ps_capture *s, uint32_t average, uint32_t peak)
     u32(request, 8, average);
     u32(request, 0xc, peak);
     int rc = s->set_bitrate(s->handle, request);
-    if (rc < 0) { LOG("SetVideoBitrate rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
+    if (rc < 0) { SLOG(s->slot, "SetVideoBitrate rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
     return 0;
 }
 
@@ -890,11 +979,11 @@ int ps_capture_audio_open_ex(ps_capture *s, uint32_t encoder, uint32_t bitrate, 
     u32(config, 0x28, bitrate);
     u32(config, 0x30, frame_index);
     int rc = s->open_audio(&s->audio, config, flag);
-    LOG("OpenAudio encoder=%u purpose=%u 1c=%#x flag=%u rc=%#x\n", encoder, purpose, field_1c, flag, rc);
+    SLOG(s->slot, "OpenAudio encoder=%u purpose=%u 1c=%#x flag=%u rc=%#x\n", encoder, purpose, field_1c, flag, rc);
     if (rc) return rc < 0 ? rc : PS_CAPTURE_ERROR;
     s->audio_opened = 1;
     rc = s->start(s->audio);
-    LOG("audio Start rc=%#x\n", rc);
+    SLOG(s->slot, "audio Start rc=%#x\n", rc);
     if (rc) { ps_capture_audio_close(s); return PS_CAPTURE_ERROR; }
     s->audio_started = 1;
     return 0;
@@ -903,12 +992,12 @@ int ps_capture_audio_open_ex(ps_capture *s, uint32_t encoder, uint32_t bitrate, 
 int ps_capture_audio_read(ps_capture *s, void *destination, size_t capacity, uint8_t header[0x10])
 {
     if (!s || !s->audio_started || !s->read_audio || !destination || !header) return PS_CAPTURE_ERROR;
-    if (!atomic_load(&granted) || atomic_load(&revoked)) return PS_CAPTURE_REVOKED;
+    if (!atomic_load(&granted[s->slot]) || atomic_load(&revoked[s->slot])) return PS_CAPTURE_REVOKED;
     memset(header, 0, 0x10);
     u64(header, 0, 0x10);
     int rc = s->read_audio(s->audio, destination, capacity, header, 1);
     if (rc == AGAIN || rc == 0) return 0;
-    if (rc < 0 || (size_t)rc > capacity) { LOG("ReadAudio rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
+    if (rc < 0 || (size_t)rc > capacity) { SLOG(s->slot, "ReadAudio rc=%#x\n", rc); return PS_CAPTURE_ERROR; }
     return rc;
 }
 
@@ -918,12 +1007,12 @@ int ps_capture_audio_close(ps_capture *s)
     int failed = 0, rc;
     if (s->audio_started) {
         rc = s->stop(s->audio);
-        LOG("audio Stop rc=%#x\n", rc);
+        SLOG(s->slot, "audio Stop rc=%#x\n", rc);
         failed |= rc < 0;
     }
     if (s->audio_opened) {
         rc = s->close(s->audio);
-        LOG("audio Close rc=%#x\n", rc);
+        SLOG(s->slot, "audio Close rc=%#x\n", rc);
         failed |= rc < 0;
     }
     s->audio_started = s->audio_opened = 0;

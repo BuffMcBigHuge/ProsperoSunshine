@@ -22,9 +22,9 @@ int main() {
     first.pads = 1;
 
     // No capture yet: what the client asked for.
-    assert(stream_line(first, std::nullopt, "UUID-A", "Living room PC") ==
+    assert(stream_line(first, {}, "UUID-A", "Living room PC") ==
            "OK uuid=UUID-A address=192.168.1.20 codec=HEVC hdr=1 mode=1280x720@30 kbps=10000 secs=754 pads=1 "
-           "role=starting name=Living room PC");
+           "role=starting channel=- name=Living room PC");
 
     // The stream that holds the capture: what is delivered.
     CaptureFacts capture;
@@ -36,9 +36,9 @@ int main() {
     capture.kbps = 20000;
     capture.video_format = 1;
     capture.hdr = false;
-    assert(stream_line(first, capture, "UUID-A", "Living room PC") ==
+    assert(stream_line(first, {capture}, "UUID-A", "Living room PC") ==
            "OK uuid=UUID-A address=192.168.1.20 codec=HEVC hdr=0 mode=1920x1080@60 kbps=20000 secs=754 pads=1 "
-           "role=capture name=Living room PC");
+           "role=capture channel=0 name=Living room PC");
 
     // A device that joined gets the same picture, whatever it asked for.
     StreamFacts second;
@@ -50,9 +50,32 @@ int main() {
     second.kbps = 5000;
     second.seconds = 5;
     second.pads = 2;
-    assert(stream_line(second, capture, "UUID-B", "Steam Deck") ==
+    assert(stream_line(second, {capture}, "UUID-B", "Steam Deck") ==
            "OK uuid=UUID-B address=192.168.1.21 codec=HEVC hdr=0 mode=1920x1080@60 kbps=20000 secs=5 pads=2 "
-           "role=joined name=Steam Deck");
+           "role=joined channel=0 name=Steam Deck");
+
+    // A second channel next to the first: the device that holds it and one that joined it get its own mode.
+    CaptureFacts second_channel;
+    second_channel.channel = 1;
+    second_channel.cert = "cert-d";
+    second_channel.joined = {"cert-e"};
+    second_channel.width = 1280;
+    second_channel.height = 720;
+    second_channel.fps = 30;
+    second_channel.kbps = 8000;
+    second_channel.video_format = 0;
+    StreamFacts fourth;
+    fourth.cert = "cert-d";
+    fourth.video_format = 1;
+    fourth.hdr = true;
+    assert(stream_line(fourth, {capture, second_channel}, "UUID-D", "Phone") ==
+           "OK uuid=UUID-D address=- codec=H.264 hdr=0 mode=1280x720@30 kbps=8000 secs=0 pads=0 role=capture channel=1 name=Phone");
+    StreamFacts fifth;
+    fifth.cert = "cert-e";
+    assert(stream_line(fifth, {capture, second_channel}, "UUID-E", "Tablet").find(" mode=1280x720@30 ") != std::string::npos);
+    assert(stream_line(fifth, {capture, second_channel}, "UUID-E", "Tablet").find(" role=joined channel=1 ") != std::string::npos);
+    // The first channel's streams stay on it.
+    assert(stream_line(second, {capture, second_channel}, "UUID-B", "Steam Deck").find(" role=joined channel=0 ") != std::string::npos);
 
     // Neither holding nor joined (it is still setting up, or about to be turned away): its own values.
     StreamFacts third;
@@ -61,20 +84,20 @@ int main() {
     third.hdr = true;  // 10 bit means nothing for H.264
     third.seconds = -3;
     third.pads = -1;
-    assert(stream_line(third, capture, "", "") ==
-           "OK uuid=- address=- codec=H.264 hdr=0 mode=- kbps=0 secs=0 pads=0 role=starting name=");
+    assert(stream_line(third, {capture}, "", "") ==
+           "OK uuid=- address=- codec=H.264 hdr=0 mode=- kbps=0 secs=0 pads=0 role=starting channel=- name=");
 
     // A session without a certificate never counts as the capture's.
     StreamFacts anonymous;
     CaptureFacts empty_cert;
-    assert(stream_line(anonymous, empty_cert, "X", "a").find(" role=starting ") != std::string::npos);
+    assert(stream_line(anonymous, {empty_cert}, "X", "a").find(" role=starting ") != std::string::npos);
 
     // A name stays on one line; an IPv6 address stays as it is.
     StreamFacts v6;
     v6.address = "fe80::1";
-    assert(stream_line(v6, std::nullopt, "U", "two\nlines\r") ==
-           "OK uuid=U address=fe80::1 codec=H.264 hdr=0 mode=- kbps=0 secs=0 pads=0 role=starting name=two lines ");
+    assert(stream_line(v6, {}, "U", "two\nlines\r") ==
+           "OK uuid=U address=fe80::1 codec=H.264 hdr=0 mode=- kbps=0 secs=0 pads=0 role=starting channel=- name=two lines ");
 
-    std::cout << "PASS: stream list (what each device asked for, what the capture delivers, unknown values, one line)\n";
+    std::cout << "PASS: stream list (what each device asked for, what each capture channel delivers, unknown values, one line)\n";
     return 0;
 }
