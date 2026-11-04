@@ -318,7 +318,7 @@ IDR angefordert, 16 Mbit/s verlangt. Auf 10.x setzt der Host dabei den Quantisie
   - Die gesendete Bitrate zählte dieser Host nicht. Gemessen ist sie mit dem iPhone in derselben Einstellung (oben).
   - Der Stream wurde auf der Vita geschlossen, ohne ihn zu beenden; der Host beendete die Sitzung beim Ping-Timeout.
 
-### Titelwechsel im Stream unter 1080p (2026-11-03, 10.20, nicht veröffentlicht)
+### Titelwechsel im Stream unter 1080p (2026-11-03, 10.20, Release 0.2.3)
 
 Gemessen auf der PS5 Pro mit 10.20, Ausgabe der Konsole in 1080p (`video out mode 0x13c`). Moonlight für Windows streamte
 „PS5 Screen“ vom Startbildschirm; während des Streams wurde Black Myth: Wukong von außen gestartet und nach etwa 30 s
@@ -563,7 +563,7 @@ eigenen. Keine Sendefehler an den Pads, Beenden und Übernahme wie oben. Zwei M�
 Modus des übernehmenden Geräts (1080p mit 35 statt 720p mit 16 Mbit/s für alle), und ein Gerät mit HDR wurde erst nach
 dem Start des Streams abgewiesen, Moonlight zeigte nur „error code -1“.
 
-**Behoben (2026-11-04, 13.00, Testclient):**
+**Behoben (2026-11-04, 13.00, Testclient, Release 0.2.3):**
 
 - **Übernahme behält den Modus:** A mit 1280x720 und 8 Mbit/s angefragt (der Host öffnete mit 5708 kbit/s), B mit 1080p
   und 20 Mbit/s angehängt. Als A ging: „keeping the running mode 1280x720@60, 5708 kbit/s“, B lief weiter in 1280x720,
