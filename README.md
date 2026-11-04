@@ -300,6 +300,14 @@ An automated Moonlight-protocol test client (pairing, smoke test, reconnects, pa
 
 ## Credits
 
+- **Special thanks to [EnriqueWood](https://github.com/EnriqueWood)**, who made firmware 10.x work and keeps testing on a
+  PS5 Pro: the 10.x capture record, HEVC and HDR on 10.20, the modes below 1080p and how they reopen, the encoder's quality
+  on 10.x, game audio that survives a capture reopen, the check before a game launch, and the option to close the game when
+  you quit in Moonlight. He also played co-op with four players over the internet, tried several controllers on one client
+  and HDR on Windows, came up with remote co-op and the PS button lock, and added ProsperoSunshine's ports to
+  [ps5-tailscale](https://github.com/holdmysocks/ps5-tailscale). Thank you!
+- Thanks to everyone who tested on their own console and firmware and reported back in the issues, and to
+  [BuffMcBigHuge](https://github.com/BuffMcBigHuge) for the surround measurements on 13.60.
 - The host is built on [Sunshine](https://github.com/LizardByte/Sunshine) and
   [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c), with the
   [PS5 Payload SDK](https://github.com/ps5-payload-dev/sdk).
