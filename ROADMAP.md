@@ -283,9 +283,8 @@ Bewusst nicht geplant: Haptik (Moonlight hat keinen Kanal dafür); harte Trigger
 ## Nächste konkrete Schritte
 
 1. Zweiter Aufnahmekanal (seit 0.2.4) weiter prüfen. Auf 13.00 gemessen: gleicher Modus teilt Kanal 0, H.264 neben HEVC,
-   1080p neben 720p und SDR neben HDR auf Kanal 1, das erste Gerät geht zuerst. Offen:
-   - ein drittes Gerät, eine Übernahme innerhalb von Kanal 1 und ein Wunsch über 1080p, solange Kanal 0 belegt ist;
-   - längerer Ton, wenn nur noch Kanal 1 läuft;
+   1080p neben 720p und SDR neben HDR auf Kanal 1, das erste Gerät geht zuerst, ein drittes Gerät, die Übernahme in
+   Kanal 1, 4K für Kanal 1 und 5 Minuten Kanal 1 allein (`STATUS.md`). Offen:
    - echtes Moonlight auf mehreren Geräten;
    - 10.x: ob Profil 175 dort neben 180 aufgeht. Schlägt es fehl, tritt das Gerät wie in 0.2.3 bei oder wird abgewiesen.
    Eine eigene Bitrate je Gerät auf demselben Kanal geht nicht, beide Kanäle teilen bei gleichem Codec und gleicher
@@ -313,5 +312,6 @@ Bewusst nicht geplant: Haptik (Moonlight hat keinen Kanal dafür); harte Trigger
    - die Matrix aus `docs/re/hdr.md`, Schritt 5 (die Einstellung ändert der Nutzer);
    - ein Gerät ohne HDR, das einem HDR-Stream beitritt.
    Außerdem Touch und Bewegung in einem Titel, der sie nutzt.
-9. Seltene Fehlstarts: 1 in 86 Starts im Docker-Client, 0 in 150 im Windows-Client (`STATUS.md`).
+9. Seltene Fehlstarts: 1 in 86 Starts im Docker-Client, 0 in 300 im Windows-Client, davon 150 mit 0.2.4 (`STATUS.md`).
+   Ohne neuen Fehlstart gibt es hier nichts zu suchen; das Docker-Netz bleibt der wahrscheinlichste Grund.
 10. Adaptive Trigger (P9.10): Moonlight für PC müsste die Effekte beim Beenden zurücksetzen (`docs/re/adaptive-triggers.md`).

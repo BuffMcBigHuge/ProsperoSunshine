@@ -103,7 +103,7 @@ Live auf der Konsole geprüft mit dem aktuellen Host (Testclient vom PC):
 **Testclient als Windows-Programm (2026-10-31):** `tools/moonlight/build_windows.sh` baut `stream_test.exe`; `NATIVE=1` nutzt es.
 
 - **Docker im Vergleich:** Gleiche Szene (Home-Bildschirm), 20 s, Bitrate-Anforderung 80 Mbit/s (der Host klemmt auf 50). Windows: H.264 1195 und 1196 Frames, HEVC 1180 Frames, jeweils 0 Lücken. Docker: 300 und 224 Frames (H.264), 365 (HEVC), längster Aussetzer bis 3,7 s. Aussagen zu Verlust und hohen Bitraten aus dem Docker-Client gelten also für dessen Netz, nicht für den Host.
-- **Fehlstarts:** Mit dem alten Schlüsselbild-Abstand 100 Starts in Folge (je 5 s, abwechselnd H.264 und HEVC, Home-Bildschirm, kein Fehlschlag, 0 Lücken, H.264 295–299 Frames, HEVC 266–269), mit dem neuen 50 Starts (kein Fehlschlag, 0 Lücken, H.264 295–297 Frames, HEVC 267–287). Zusammen mit den Messungen unten: Im Docker-Client 1 Fehlschlag in 86 Starts, im Windows-Client 0 in 150. Das spricht gegen den Host als Ursache, belegt es aber nicht; die Stichprobe könnte bei dieser Rate auch zufällig fehlerfrei sein (rund 17 %). HEVC beginnt rund 0,4 s später als H.264.
+- **Fehlstarts:** Mit dem alten Schlüsselbild-Abstand 100 Starts in Folge (je 5 s, abwechselnd H.264 und HEVC, Home-Bildschirm, kein Fehlschlag, 0 Lücken, H.264 295–299 Frames, HEVC 266–269), mit dem neuen 50 Starts (kein Fehlschlag, 0 Lücken, H.264 295–297 Frames, HEVC 267–287). Zusammen mit den Messungen unten: Im Docker-Client 1 Fehlschlag in 86 Starts, im Windows-Client 0 in 150. Das spricht gegen den Host als Ursache, belegt es aber nicht; die Stichprobe könnte bei dieser Rate auch zufällig fehlerfrei sein (rund 17 %). HEVC beginnt rund 0,4 s später als H.264. Mit 0.2.4 (`f6d55610`, 2026-11-04) 150 weitere Starts im Windows-Client (`tools/moonlight/start_series.sh`, je 5 s, abwechselnd H.264 und HEVC, Home-Bildschirm): kein Fehlschlag, 0 Lücken, H.264 295–299 Bilder, HEVC 292–295. Im Windows-Client damit 0 Fehlschläge in 300 Starts.
 
 **HEVC im Host (P9.11, 2026-10-31):** Der Host bietet auf Firmware 13.00 HEVC an (`ServerCodecModeSupport` 257) und öffnet H.264 und HEVC jetzt mit der Bitrate des Clients in der Konfiguration. Grenze 50 Mbit/s statt 15. Alles gemessen mit `stream_test` (`--hevc`), Bildquelle meist die Demo von Mario 64. Echter Client siehe „Nutzertest“.
 
@@ -173,7 +173,7 @@ Noch offen:
 4. **Eigene Werkzeuge vom PC:** `PIN`/`QUIT` und `pair.py status` über den Steuer-Socket gehen vom PC aus nur noch mit der leeren Datei `/data/prosperosunshine/control_lan` (danach Host neu starten). Sonst geht der Host-Neustart über die App.
 5. **Store-Installation (P8.9):** Die Installation aus dem ProsperoStore klappt (Nutzerbericht, 2026-10-31).
 6. **Rumble je Spiel:** Im Nutzertest (2026-10-31) vibrierte der Controller in Moonlight beim Streamen. Welche Spiele den klassischen Modus nutzen und welche nur die Haptik, ist offen.
-7. **Seltene Fehlstarts:** Ein Stream direkt nach dem Schließen des ProsperoStore scheiterte (`stream_test` Exit 3: `Failed to establish ENet connection on UDP port 47999`, Fehler 11; im Host-Log `Ping Timeout` und `Initial Ping Timeout`). Der Host blieb betriebsbereit, die Wiederholung lief fehlerfrei. Nachgeprüft: 1 anderer Fehlschlag in 86 Starts (oben). Die Ursachen sind nicht geklärt; im Windows-Client kam in 150 Starts kein Fehlstart vor (oben).
+7. **Seltene Fehlstarts:** Ein Stream direkt nach dem Schließen des ProsperoStore scheiterte (`stream_test` Exit 3: `Failed to establish ENet connection on UDP port 47999`, Fehler 11; im Host-Log `Ping Timeout` und `Initial Ping Timeout`). Der Host blieb betriebsbereit, die Wiederholung lief fehlerfrei. Nachgeprüft: 1 anderer Fehlschlag in 86 Starts (oben). Die Ursachen sind nicht geklärt; im Windows-Client kam in 300 Starts kein Fehlstart vor (oben).
 8. **Weiter offen wie bisher:** Ruhemodus in den oben genannten Fällen (Tests nur mit Rückfrage), Android/TV-Clients, andere Firmwares (Checkliste in `docs/firmware-porting.md`), Wake-on-LAN (unten).
 
 - **MAC-Adresse und Wake-on-LAN:** Der Host meldet die MAC gepaarten Clients: `/serverinfo` über HTTPS mit Client-Zertifikat liefert die Adresse, die auch die ARP-Tabelle des PCs zeigt (`pair.py info`). Die frühere Angabe „MAC ist 0“ war ein Messfehler: Über HTTP gibt Sunshine für alle Clients absichtlich einen Platzhalter aus Nullen zurück (`nvhttp.cpp`). Ein Einmal-Probe auf der Konsole bestätigte die Quellen: `sceNetGetMacAddress(…, 0)`, `sceNetCtlGetInfo` und `SIOCGIFCONF` liefern dieselbe Adresse. **Aufwecken aus Moonlight am PC (2026-11-01, ein Versuch des Besitzers, im selben Netz):** Die Konsole blieb im Ruhemodus (Ping antwortet, Host-Ports zu); `ps5_wake` mit dem `WAKEUP` von Remote Play weckte sie danach. Ob das Magic Packet die Konsole erreichte, ist nicht mitgeschnitten.
@@ -534,14 +534,26 @@ fehlerfrei, und beide Geräte bekamen Ton (A ging zuerst: B 7789 Audiopakete in 
 Im `host_diag.log` öffnete, lief und schloss `capture2` viermal ohne Fehler. `Initialize` machte der andere Kanal, und
 `Terminate` blieb dem Kanal überlassen, der zuletzt schloss.
 
+**Nachgemessen am 2026-11-04 mit 0.2.4 (`f6d55610`), drei Testclients, Home-Bildschirm.** A öffnete H.264 1080p auf Kanal 0,
+B kam 10 s später mit HEVC 1080p auf Kanal 1, C weitere 10 s später. Die Zuordnung steht in `sunshine.log`:
+
+| Fall | C oder B | Ergebnis |
+| --- | --- | --- |
+| drittes Gerät, H.264 1080p | C | hängt sich an Kanal 0 (`joined the running stream on channel 0`) |
+| drittes Gerät, HEVC 1080p | C | hängt sich an Kanal 1 |
+| drittes Gerät, H.264 1280x720 | C | hängt sich an Kanal 0 und bekommt dessen 1080p (`the running stream delivers 1920x1080`) |
+| drittes Gerät, HEVC mit HDR | C | bei `/resume` abgewiesen: `Resume refused: both capture channels run without HDR` |
+| Übernahme in Kanal 1 | B geht nach 25 s, C bleibt | C übernimmt Kanal 1 im selben Modus; das Neuöffnen kostet einmal 185 ms Pause, kein fehlendes Bild |
+| 4K für Kanal 1 | B verlangt 3840x2160 | `the second channel delivers up to 1920x1080`, B dekodiert 1920x1080 |
+| Kanal 1 allein | A geht nach 25 s, B läuft 320 s | B: 19176 Bilder, längste Pause 25 ms, Ton durchgehend 200 Pakete/s (63798), keine Dekodierfehler |
+
+In allen Fällen fehlte keine Bildnummer, alle Ströme dekodierten mit ffmpeg fehlerfrei, und jedes Gerät bekam Ton.
+
 Nicht geprüft:
 
-- ein drittes Gerät: Anhängen, Ablehnen und 409;
-- die Übernahme innerhalb von Kanal 1;
-- eine Anfrage über 1080p für Kanal 1;
 - ob eigene Bitraten bei gleichem Modus etwas ändern: wohl nicht, weil das System dann einen Encoder teilt;
-- der Ton über längere Zeit, wenn nur noch Kanal 1 läuft und Kanal 0 nur für den Ton offen bleibt;
-- das echte Moonlight.
+- das echte Moonlight;
+- andere Firmware als 13.00.
 
 ### Laufende Streams in der App, `STREAMS` und `ENDSTREAM` (2026-11-04, 13.00, Release 0.2.4)
 
