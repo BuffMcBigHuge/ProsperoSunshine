@@ -10,6 +10,11 @@
   stream, after a confirmation; the game and the other devices' streams go on, and the device stays paired. For a device
   that joined another's stream, it shows the picture it really gets, not what its Moonlight asked for. The control socket
   has two new commands for it, `STREAMS` and `ENDSTREAM <uuid>`.
+- **Each device can get its own codec, dynamic range or resolution.** A second device that asks for another codec, HDR
+  where the first has none (or the other way round), or another resolution up to 1080p now gets a capture channel of its
+  own next to the first, instead of the first stream's mode or a refusal. A device that asks for the same mode as a running
+  stream still shares its picture. There are at most two channels; a third device joins the one with its codec and dynamic
+  range. `STREAMS` tells which channel each stream uses (`channel=0|1`).
 
 ### Changed
 

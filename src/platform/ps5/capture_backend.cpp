@@ -6,10 +6,10 @@ namespace prospero {
 namespace {
 class Ps5CaptureBackend final : public CaptureBackend {
 public:
-    explicit Ps5CaptureBackend(Codec codec) : codec_(codec) {}
+    Ps5CaptureBackend(Codec codec, int slot) : codec_(codec), slot_(slot) {}
     int open() override {
         int rc = 0;
-        shared_ = SharedCapture::acquire(rc);
+        shared_ = SharedCapture::acquire(rc, slot_);
         return rc;
     }
     int headers(void *destination, size_t capacity) override {
@@ -38,11 +38,12 @@ public:
 
 private:
     Codec codec_;
+    int slot_;
     std::shared_ptr<SharedCapture> shared_;
 };
 }
 
-std::unique_ptr<CaptureBackend> make_ps5_capture_backend(Codec codec) {
-    return std::make_unique<Ps5CaptureBackend>(codec);
+std::unique_ptr<CaptureBackend> make_ps5_capture_backend(Codec codec, int slot) {
+    return std::make_unique<Ps5CaptureBackend>(codec, slot);
 }
 }

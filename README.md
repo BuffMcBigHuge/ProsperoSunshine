@@ -113,10 +113,14 @@ back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is
   test client on wired LAN and a noise image at 4K, not yet with Moonlight or in a game. Games may stay well below what you set.
   With H.264, extreme images can exceed the setting: full-screen random noise reached about 140 Mbit/s at 4K and 35 Mbit/s at
   1080p, whatever was set.
-- A second device can join a running stream as another player. It gets the same picture and sound, in the mode the first
-  stream opened, and keeps it when the first one leaves. While a stream runs, the host offers only its codec and dynamic
-  range, so Moonlight picks them; a device whose Moonlight still asks for another dynamic range is refused with a message,
-  and one set to H.264 can't join an HEVC stream. A contributor played with four players on 10.20. Each controller is new
+- A second device can join a running stream as another player, with the same sound. Each device can get its own codec,
+  dynamic range or resolution up to 1080p: the console runs a second capture channel next to the first for it. A device that
+  asks for the same codec, dynamic range and resolution as a running stream shares that stream's picture, which costs the
+  console nothing more. There are at most two channels: once both run, the host offers only their codecs and dynamic
+  ranges, a further device joins the one with its codec and dynamic range and gets that channel's mode, and one whose
+  Moonlight still asks for another dynamic range is refused with a message; one set to H.264 can't join while both run
+  HEVC. A device asking for more than 1080p gets 1080p on the second channel. A stream that joined keeps the mode when the
+  device holding the channel leaves. A contributor played with four players on 10.20. Each controller is new
   to the console, which asks "Who's using this controller?": pick a user, or Add User and then Quick Play for a guest. Every
   controller after the first is asked this way, also a second one on the same client. The console sends one copy of the
   stream per player, so a friend over the internet doubles its upload. While another device streams, quitting the app in

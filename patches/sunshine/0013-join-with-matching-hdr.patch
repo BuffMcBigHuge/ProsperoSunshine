@@ -1,24 +1,24 @@
-ProsperoSunshine: a device that joins a running stream with another dynamic range is turned away at /resume
+ProsperoSunshine: a device that can neither join a running stream nor get a capture channel of its own is turned away at /resume
 
-A second device joins the stream that runs and gets its picture. One whose Moonlight asked for HDR while the running
-stream has none, or the other way round, was ended after its stream had started, and Moonlight showed only "error code
--1". /resume now refuses it with 409 and a message Moonlight shows. video::running_stream_hdr() comes from the PS5's
-video_ps5.cpp.
+A second device joins a running stream with its dynamic range and gets its picture, or gets the second capture channel
+while that is free. One whose Moonlight asked for HDR while both channels run without, or the other way round, was ended
+after its stream had started, and Moonlight showed only "error code -1". /resume now refuses it with 409 and a message
+Moonlight shows. video::hdr_conflict() comes from the PS5's video_ps5.cpp.
 
 --- a/src/nvhttp.cpp
 +++ b/src/nvhttp.cpp
 @@ -1571,6 +1571,24 @@
        return;
      }
- 
+
 +#ifdef __SCE__
-+    // A device that joins another device's stream gets its picture. One that asks for another dynamic range is turned
-+    // away here, where Moonlight shows the reason, and not after its stream has started.
-+    if (const auto running_hdr = video::running_stream_hdr();
-+        running_hdr && rtsp_stream::session_count_except_cert(last_verified_client_cert) > 0) {
++    // A device that joins another device's stream gets its picture, unless a capture channel of its own is free. One that
++    // asks for another dynamic range than every running stream while none is free is turned away here, where Moonlight
++    // shows the reason, and not after its stream has started.
++    if (rtsp_stream::session_count_except_cert(last_verified_client_cert) > 0) {
 +      const bool wants_hdr = util::from_view(get_arg(args, "hdrMode", "0")) != 0;
-+      if (wants_hdr != *running_hdr) {
-+        BOOST_LOG(warning) << "Resume refused: another device streams "sv << (*running_hdr ? "in HDR"sv : "without HDR"sv);
++      if (const auto running_hdr = video::hdr_conflict(wants_hdr)) {
++        BOOST_LOG(warning) << "Resume refused: both capture channels run "sv << (*running_hdr ? "in HDR"sv : "without HDR"sv);
 +        tree.put("root.resume", 0);
 +        tree.put("root.<xmlattr>.status_code", 409);
 +        tree.put("root.<xmlattr>.status_message", *running_hdr ?
@@ -35,25 +35,26 @@ video_ps5.cpp.
 --- a/src/video.h
 +++ b/src/video.h
 @@ -6,6 +6,7 @@
- 
+
  // standard includes
  #include <chrono>
 +#include <optional>
  #include <string_view>
- 
+
  // local includes
-@@ -746,6 +747,16 @@
+@@ -746,6 +747,17 @@
     */
    int probe_encoders();
- 
+
 +#ifdef __SCE__
 +  /**
-+   * @brief Whether the stream that holds the capture is in HDR, or nothing while no stream runs.
++   * @brief Whether a device that asks for this dynamic range can stream next to the running streams.
 +   *
-+   * A device that joins a running stream gets its picture, so it has to ask for the same dynamic range.
-+   * @return The running stream's HDR flag, if a stream runs.
++   * It joins a running stream with the same dynamic range and gets its picture, or gets a capture channel of its own while one is free.
++   * @param hdr Whether the device asks for HDR.
++   * @return Nothing when it can; otherwise whether the running streams are in HDR.
 +   */
-+  std::optional<bool> running_stream_hdr();
++  std::optional<bool> hdr_conflict(bool hdr);
 +#endif
 +
    // Several NTSC standard refresh rates are hardcoded here, because their

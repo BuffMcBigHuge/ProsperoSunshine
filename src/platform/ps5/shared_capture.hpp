@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// One Avcap2 session per process, shared by the video backend and the audio microphone, which
-// Sunshine runs on separate threads. The session closes when the last user releases it.
+// One Avcap2 session per capture slot (capture.h), shared by the video backend and the audio microphone, which
+// Sunshine runs on separate threads. The session closes when the last user releases it. Audio always uses slot 0's;
+// slot 1 is a second video channel next to it, for a device that wants another mode.
 //
 // The system can take the capture resource away (starting a game does). A user that sees a read
 // fail marks the session failed; the next acquire() then closes and reopens it in place, and the
@@ -18,9 +19,9 @@ public:
     // Returns the open session, opening or reopening it if needed; on failure null and rc holds
     // the error. Audio usually gets here first, so a session whose mode differs from what was set
     // since (codec, bitrate, frame rate) is reopened; audio follows through generation().
-    static std::shared_ptr<SharedCapture> acquire(int &rc);
+    static std::shared_ptr<SharedCapture> acquire(int &rc, int slot = 0);
     // The open session if there is one, without opening it or waiting for an open in progress; else null.
-    static std::shared_ptr<SharedCapture> attach();
+    static std::shared_ptr<SharedCapture> attach(int slot = 0);
     ~SharedCapture();
     SharedCapture(const SharedCapture &) = delete;
     SharedCapture &operator=(const SharedCapture &) = delete;
@@ -40,10 +41,11 @@ public:
     unsigned generation() const { return generation_; }
 
 private:
-    explicit SharedCapture(ps_capture *session) : session_(session) {}
+    SharedCapture(ps_capture *session, int slot) : session_(session), slot_(slot) {}
     int reopen();  // caller holds mutex_ exclusively
 
     ps_capture *session_;
+    int slot_;
     std::shared_mutex mutex_;
     std::atomic_bool failed_{false};
     std::atomic<unsigned> generation_{0};

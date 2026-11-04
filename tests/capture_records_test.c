@@ -8,7 +8,7 @@
 
 // The code before the switches passes no variant.
 #ifndef CONFIGURE
-#define CONFIGURE(record, output) configure(record, output, PS_EXP_STANDARD)
+#define CONFIGURE(record, output) configure(0, record, output, PS_EXP_STANDARD)
 #endif
 
 static uint64_t fnv1a(const uint8_t *bytes, size_t size)
@@ -44,12 +44,12 @@ int main(int argc, char **argv)
                         ps_capture_set_video_mode(resolution, timing);
                         const uint32_t average = rates[r];
                         ps_capture_set_opening_bitrate(average, average / 100 * 112);
-                        atomic_store(&session_resource, atomic_load(&resource_id));
+                        atomic_store(&session_resource[0], atomic_load(&resource_id[0]));
                         uint8_t configured[0x2e8] = {0};
                         CONFIGURE(configured, 0x13c);
                         // The probes' builder with the same values must write the same record.
                         const ps_capture_video_config explicit_values = {resolution, timing, codec, ten_bit, average, average / 100 * 112,
-                                                                         atomic_load(&resource_id)};
+                                                                         atomic_load(&resource_id[0])};
                         uint8_t built[0x2e8] = {0};
                         ps_capture_build_config(built, &explicit_values, 0x13c, PS_EXP_STANDARD);
                         if (memcmp(built, configured, sizeof built)) {

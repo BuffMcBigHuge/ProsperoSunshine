@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Co-op research: can one process hold two ResourceArbitrator profiles and two Avcap2 video channels at once, so that
-// each device gets its own mode? The host has one channel (capture.c), so every device gets the same mode today.
+// each device gets its own mode? It does (STATUS.md); the host now opens a second channel on 175 (capture.c's slot 1).
 // Per variant: waits until both profiles are free, registers both, asks RUNNING for each and waits for each grant, then
 // Initialize, OpenVideo and Start for both channels, reads both side by side for `seconds`, and closes everything again
 // (Stop, Close, encoder memory, Terminate, STOP, unregister) before the next variant. Logs to

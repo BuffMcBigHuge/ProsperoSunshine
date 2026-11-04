@@ -26,7 +26,8 @@ public:
     virtual int set_bitrate(uint32_t, uint32_t) { return -1; }
 };
 
-std::unique_ptr<CaptureBackend> make_ps5_capture_backend(Codec codec = Codec::h264);
+// slot: the capture channel (capture.h, PS_CAPTURE_SLOTS), 0 unless a second channel runs next to the first.
+std::unique_ptr<CaptureBackend> make_ps5_capture_backend(Codec codec = Codec::h264, int slot = 0);
 
 enum class CaptureStatus { frame, timeout, stopped, revoked, error };
 
