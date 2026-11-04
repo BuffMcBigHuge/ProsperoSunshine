@@ -262,7 +262,15 @@ static void cl_rumble(unsigned short n, unsigned short lo, unsigned short hi) {
   tlog("rumble pad=%u low=%u high=%u\n", n, lo, hi);
 }
 static void cl_status(int st) { tlog("connection status: %s\n", st == CONN_STATUS_OKAY ? "OKAY" : "POOR"); }
-static void cl_hdr(bool on) { tlog("hdr mode: %d\n", (int) on); }
+static void cl_hdr(bool on) {
+  tlog("hdr mode: %d\n", (int) on);
+  SS_HDR_METADATA m;
+  if (on && LiGetHdrMetadata(&m))
+    tlog("hdr metadata: primaries %u,%u %u,%u %u,%u white %u,%u lum %u/%u cll %u fall %u fullframe %u\n",
+         m.displayPrimaries[0].x, m.displayPrimaries[0].y, m.displayPrimaries[1].x, m.displayPrimaries[1].y,
+         m.displayPrimaries[2].x, m.displayPrimaries[2].y, m.whitePoint.x, m.whitePoint.y, m.maxDisplayLuminance,
+         m.minDisplayLuminance, m.maxContentLightLevel, m.maxFrameAverageLightLevel, m.maxFullFrameLuminance);
+}
 static void cl_rumble_trig(uint16_t n, uint16_t l, uint16_t r) { tlog("rumble triggers pad=%u l=%u r=%u\n", n, l, r); }
 static void cl_motion(uint16_t n, uint8_t type, uint16_t hz) { tlog("motion state pad=%u type=%u hz=%u\n", n, type, hz); }
 static void cl_led(uint16_t n, uint8_t r, uint8_t g, uint8_t b) { tlog("led pad=%u rgb=%u,%u,%u\n", n, r, g, b); }

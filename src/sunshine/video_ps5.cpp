@@ -4,6 +4,7 @@
 #include "capture/capture_session.hpp"
 #include "platform/ps5/capture.h"
 #include "video/capture_mode.hpp"
+#include "video/hdr10_metadata.hpp"
 #include "src/config.h"
 #include "src/globals.h"
 #include "src/input.h"
@@ -160,9 +161,27 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
         touch_port_event->raise(port);
     };
     announce_mode(mode);
-    // Avcap2 reports no mastering metadata, and all zero means unknown. The stream itself says BT.2020 and PQ in its SPS.
+    // Avcap2 reports no mastering metadata, and the stream says only BT.2020 and PQ in its SPS. Zeros reach the client's
+    // display as zero primaries and a zero peak, so an HDR stream announces the usual HDR10 values (hdr10_metadata.hpp).
     const bool hdr = hevc && config.dynamicRange > 0 && ps_capture_hdr_allowed();
-    hdr_event->raise(std::make_unique<hdr_info_raw_t>(hdr));
+    if (hdr) {
+        constexpr auto values = prospero::hdr10_default_metadata();
+        SS_HDR_METADATA metadata{};
+        for (int i = 0; i < 3; i++) {
+            metadata.displayPrimaries[i].x = values.primaries[i].x;
+            metadata.displayPrimaries[i].y = values.primaries[i].y;
+        }
+        metadata.whitePoint.x = values.white_point.x;
+        metadata.whitePoint.y = values.white_point.y;
+        metadata.maxDisplayLuminance = values.max_display_luminance;
+        metadata.minDisplayLuminance = values.min_display_luminance;
+        metadata.maxContentLightLevel = values.max_content_light_level;
+        metadata.maxFrameAverageLightLevel = values.max_frame_average_light_level;
+        metadata.maxFullFrameLuminance = values.max_full_frame_luminance;
+        hdr_event->raise(std::make_unique<hdr_info_raw_t>(true, metadata));
+    } else {
+        hdr_event->raise(std::make_unique<hdr_info_raw_t>(false));
+    }
     // The session falls back to 1080p when the system refuses a larger or smaller mode.
     const auto check_fallback = [&] {
         const auto delivered = prospero::capture_mode_of(ps_capture_video_resolution());
