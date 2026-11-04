@@ -501,6 +501,12 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### Release 0.3.1 auf der Konsole (2026-11-04, 13.00)
+
+App aus `build/app` kopiert und neu registriert, sie zeigt `v01.000.017`; nach „Restart host“ meldet `host_diag.log`
+`version=0.3.1 commit=8fa42cd5`. Testclient, Home-Bildschirm, Surround aus: H.264 und HEVC 1080p je 20 s mit 1194 und 1193
+Bildern, ohne Lücke, längste Pause 28 und 21 ms, fehlerfrei dekodiert, je 3812 Tonpakete.
+
 ### Für 0.3.1 (2026-11-04, 13.00, Testclient, Home-Bildschirm)
 
 **Welcher der 12 Kanäle welcher Lautsprecher ist, ließ sich hier nicht messen.**
