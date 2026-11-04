@@ -143,6 +143,11 @@ static int count_reads(const char *step, const uint8_t *record)
     if (!strcmp(step, "read")) reads++;
     return 0;
 }
+// 10.x firmware that doesn't know the slice fields: Start fails while cfg+0x44 is set.
+static int start_refuses_slices(const char *step, const uint8_t *record)
+{
+    return !strcmp(step, "Start") && record[0x44] ? START_FAILED : 0;
+}
 static int marker_seen;
 static int look_for_marker(const char *step, const uint8_t *record)
 {
@@ -252,7 +257,7 @@ int main(void)
     assert(ps_capture_small_modes_allowed() && !ps_capture_large_modes_allowed());
     fake_decide = small_fails;
     assert(open_and_close() == 0);
-    assert(fake_opens == 2 && ps_capture_video_resolution() == 4 && record_u32(0x18) == 4);
+    assert(fake_opens == 3 && ps_capture_video_resolution() == 4 && record_u32(0x18) == 4);
     assert(logged("trial=small codec=h264 bits=8 mode=960x540") && logged("experimental disabled feature=small\n"));
     assert(!ps_capture_small_modes_allowed());
     // It runs: the record asks for the mode, with the resource 1080p uses.
@@ -265,7 +270,7 @@ int main(void)
     fake_log[0] = 0;
     fake_decide = small_fails;
     assert(open_and_close() == 0);
-    assert(fake_opens == 2 && ps_capture_video_resolution() == 4 && record_u32(0x18) == 4);
+    assert(fake_opens == 3 && ps_capture_video_resolution() == 4 && record_u32(0x18) == 4);
     assert(logged("trial=none") && !logged("disabled"));
     assert(ps_capture_small_modes_allowed());
     // 10.20 has them verified: no switch, no trial and no frame read; a refusal gives 1080p, as on every firmware.
@@ -274,11 +279,11 @@ int main(void)
     reads = 0;
     fake_decide = count_reads;
     assert(open_and_close() == 0);
-    assert(reads == 0 && fake_opens == 1 && record_u32(0x18) == 3 && !logged("experimental"));
+    assert(reads == 1 && fake_opens == 1 && record_u32(0x18) == 3 && !logged("experimental"));
     setup_small(0x10200006u, 0, 0, 3);
     fake_decide = small_fails;
     assert(open_and_close() == 0);
-    assert(fake_opens == 2 && ps_capture_video_resolution() == 4 && record_u32(0x18) == 4);
+    assert(fake_opens == 3 && ps_capture_video_resolution() == 4 && record_u32(0x18) == 4);
     assert(!logged("experimental") && ps_capture_small_modes_allowed());
     // A reopen while the output has no mode, as while a title starts or closes: below 1080p it keeps the mode, and the
     // next reopen, once the title's mode is there, gets it.
@@ -302,7 +307,7 @@ int main(void)
     fake_decide = small_fails;
     ps_capture_set_reopening(1);
     assert(open_and_close() == 0);
-    assert(fake_opens == 2 && ps_capture_video_resolution() == 4 && !logged("output not settled"));
+    assert(fake_opens == 3 && ps_capture_video_resolution() == 4 && !logged("output not settled"));
     // From 1080p up a reopen falls back as before.
     setup(0x13000040u, 1, 0, 0, 1, 0, 6);
     fake_output = 0;
@@ -326,7 +331,8 @@ int main(void)
         }
     }
 
-    // From 1080p up the switch changes nothing: the same record, one open, no first-frame check, also where it counts (10.40).
+    // From 1080p up the switch changes nothing: the same record, one open, no first-frame check (but for H.264 on 10.x, for
+    // the slice fields), also where it counts (10.40).
     {
         static const uint32_t firmwares[] = {0x13000040u, 0x10200006u, 0x10400000u};
         for (size_t f = 0; f < sizeof firmwares / sizeof firmwares[0]; f++)
@@ -340,10 +346,33 @@ int main(void)
                     reads = 0;
                     fake_decide = count_reads;
                     assert(open_and_close() == 0);
-                    assert(fake_opens == 1 && reads == 0 && !memcmp(without, fake_record, sizeof without));
+                    assert(fake_opens == 1 && reads == (firmwares[f] < 0x13000000u && codec == 0) && !memcmp(without, fake_record, sizeof without));
                     assert(!logged("trial=small") && ps_capture_video_resolution() == resolution);
                 }
     }
+
+    // H.264 on 10.x asks for 4 slices per frame. Where the firmware refuses that, the same open goes on without the fields,
+    // and they stay off; a failure that has another cause keeps them. 13.00 and HEVC never get them.
+    setup(0x10200006u, 0, 0, 0, 0, 0, 4);
+    assert(open_and_close() == 0);
+    assert(fake_opens == 1 && record_u32(0x40) == 1 && record_u32(0x44) == 4 && record_u32(0x48) == 1);
+    assert(logged("first frame has"));
+    setup(0x10200006u, 0, 0, 0, 0, 0, 4);
+    fake_decide = open_always_fails;
+    assert(open_and_close() == PS_CAPTURE_ERROR);
+    assert(fake_opens == 2 && logged("failed without them too, kept") && !atomic_load(&slices_refused));
+    setup(0x10200006u, 0, 0, 0, 0, 0, 4);
+    fake_decide = start_refuses_slices;
+    assert(open_and_close() == 0);
+    assert(fake_opens == 2 && record_u32(0x44) == 0 && logged("refused, left out from now on"));
+    fake_opens = 0;
+    assert(open_and_close() == 0);
+    assert(fake_opens == 1 && record_u32(0x40) == 0 && record_u32(0x44) == 0);
+    atomic_store(&slices_refused, 0);
+    setup(0x13000040u, 0, 0, 0, 0, 0, 4);
+    assert(open_and_close() == 0 && record_u32(0x44) == 0);
+    setup(0x10200006u, 0, 0, 0, 1, 0, 4);
+    assert(open_and_close() == 0 && record_u32(0x40) == 0 && record_u32(0x44) == 0);
 
     // HEVC at 4K fails everywhere: HEVC is off, and 1440p and 4K are still unproven with H.264.
     setup(0x13600000u, 1, 0, 1, 1, 0, 6);

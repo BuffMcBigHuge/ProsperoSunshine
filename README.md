@@ -5,7 +5,7 @@
 A native, Sunshine-compatible game-stream host for the PlayStation 5. Add your console to Moonlight and stream
 the PS5 screen, game audio and controller input over your LAN.
 
-> **Status: 0.3.0 ([changelog](CHANGELOG.md)).** Pairing, H.264, HEVC and HDR from 360p up to 4K at 30 or 60 fps, game audio, controller, keyboard and mouse input work end to end
+> **Status: 0.3.1 ([changelog](CHANGELOG.md)).** Pairing, H.264, HEVC and HDR from 360p up to 4K at 30 or 60 fps, game audio, controller, keyboard and mouse input work end to end
 > with Moonlight on PC, in the browser (Moonlight Web) and on iPhone. Sessions of 30 minutes and ten reconnects
 > were tested without errors on firmware 13.00. Firmware 10.20 was tested by a contributor at 1080p. Users report streams on
 > 13.60, not measured here. A second device can join a running stream as another player, in its own codec, dynamic range or resolution up to 1080p. Not every client or game has
@@ -17,7 +17,8 @@ ProsperoSunshine builds [Sunshine](https://github.com/LizardByte/Sunshine) (pinn
 patches) for the console and replaces the parts that talk to PC hardware:
 
 - **Video:** the console's hardware encoder (Avcap2) delivers H.264 or HEVC, 8 bit or HDR, straight into Sunshine's packetiser.
-- **Audio:** game audio as PCM from the same capture service, encoded by Sunshine's Opus path.
+- **Audio:** game audio as PCM from the same capture service, encoded by Sunshine's Opus path. Stereo, or 5.1 and 7.1 with
+  the experimental Surround switch.
 - **Input:** a native virtual DualSense per Moonlight gamepad, with touchpad and motion sensors, and a virtual keyboard and
   mouse for Moonlight's keyboard and mouse.
 - **App list:** "PS5 Screen" and the console's installed games, with their covers. There is no web UI.
@@ -173,9 +174,13 @@ Tips:
   stream ends. The console takes keys in its menus and in text fields once the on-screen keyboard is open. The mouse works
   only in games that support one (Planet Zoo does); the console's browser ignores it. Keys are sent by position as on a
   US keyboard, and the console's keyboard language setting decides what they type. Tested on 13.00 only.
+- Sound is stereo unless you turn on **Surround** under Experimental in the app's Settings. With it, a Moonlight that asks for
+  5.1 or 7.1 gets the console's own multichannel sound. Which channel goes to which speaker is a guess so far (the order of the
+  console's 8-channel audio output): the console used for testing outputs stereo, and then only front left and right carry
+  sound. If you have a 5.1 or 7.1 system, see [Testing other firmware](#testing-other-firmware) for how to help.
 - No AV1, touchscreen or microphone.
 - HDR has been seen on one real setup so far: Moonlight on an HDR TV, 4K, one game. The capture provides no HDR metadata, so the
-  host sends none, and other screens may handle that differently.
+  host sends the usual HDR10 values, and screens may handle that differently.
 - The pad's touchpad and motion sensors are measured with the test client only, not yet with a real Moonlight client or in a game
   that uses them. Motion has no orientation, because Moonlight sends none.
 - Rumble is the classic two-motor kind only. Games that drive the DualSense's haptics send nothing to your controller.
@@ -216,7 +221,7 @@ HEVC, HDR, 1440p and 4K, and the modes below 1080p stay locked on firmware where
 console, you can turn them on yourself and help find out. Nothing here has been seen working on an untested firmware yet, so
 expect it to fail.
 
-1. In the app, open **Settings**. Under **Experimental**, turn on what you want to try: HEVC (8 bit), HDR (HEVC 10 bit), 1440p
+1. In the app, open **Settings**. Under **Experimental**, turn on what you want to try: HEVC (8 bit), HDR (10 bit), 1440p
    and 4K, a bitrate cap of 150 instead of 50 Mbit/s, or 720p, 540p and 360p. On firmware where a function is verified, its switch
    says it isn't needed. HDR also offers HEVC. The bitrate switch has no effect on firmware 10.x, because the encoder takes no
    bitrate there, and says so.
@@ -226,6 +231,15 @@ expect it to fail.
 4. Open the app's **Diagnostics** page and post the report in a [GitHub issue](https://github.com/Darkatek7/ProsperoSunshine/issues),
    whether it worked or not. Add your Moonlight client and what you saw on the screen. The report has no addresses, device names
    or ids in it.
+
+**H.264 on firmware 10.x:** 10.x used to cut every 1080p frame into 34 slices, and Moonlight on Windows then showed a white
+picture with hardware decoding. Since 0.3.1 the host asks for 4 slices per frame. Nobody has tried that on 10.x yet: if you can,
+stream H.264 and look for `first frame has N slices` in `sunshine.log` or the kernel log, and tell us the number and whether
+the picture came. Until then, HEVC is the safe choice there.
+
+**Surround:** turn on **Surround** under Experimental, set Moonlight to 5.1 or 7.1 and play a game with surround sound for a
+minute. `sunshine.log` gets a line `12-channel levels` every 30 seconds; post a few of them with what you heard from which
+speaker. That shows which channel is which.
 
 **When it fails:** the host tries each function in more than one way. If every way fails, it turns that function off until it
 restarts and offers H.264, 1080p and 50 Mbit/s again. A high bitrate falls back to 50 Mbit/s and a larger or smaller mode to 1080p within

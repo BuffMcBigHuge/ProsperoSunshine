@@ -77,6 +77,10 @@ const std::vector<OptionSpec> &option_specs()
             const ps_exp_switch_info *info = ps_exp_switch_at(i);
             list.push_back({info->key, info->label, info->help, OptionKind::toggle, "Off", {}, 0, 0, 1, 0});
         }
+        // The host reads this one too (src/sunshine/platform_ps5.cpp). In the Experimental row, but no firmware check locks it.
+        list.push_back({"surround_sound", "Surround",
+                        "5.1 or 7.1 sound for devices that ask for it. The speaker order is not verified yet.",
+                        OptionKind::toggle, "Off", {}, 0, 0, 1, 0});
         return list;
     }();
     return specs;

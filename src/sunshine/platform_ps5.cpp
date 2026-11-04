@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Sunshine's platf:: layer for the PS5: networking, game audio from Avcap2, the native virtual pad, keyboard
 // and mouse, and placeholders for what is not forwarded (touch screen, pen).
+#include "audio/channel_map.hpp"
 #include "input/gamepad_map.hpp"
 #include "input/keyboard_map.hpp"
 #include "input/pad_touch.hpp"
@@ -207,7 +208,9 @@ private:
 };
 
 // Game audio from Avcap2 as raw PCM: float32, stereo, 48 kHz, 1024 frames per packet (R2). Sunshine's
-// own Opus encoder then cuts the frames Moonlight negotiated (5 ms by default).
+// own Opus encoder then cuts the frames Moonlight negotiated (5 ms by default). With the app's "Surround 5.1/7.1"
+// (surround_sound) and a client that asks for 5.1 or 7.1, the channel is read as encoder type 3, 12 channels, and each
+// microphone gets its own layout from it (audio/channel_map.hpp). Without the setting, or when type 3 fails, stereo.
 //
 // When the capture session is lost (a game start takes the resource), replaced by a reopen, or not
 // there yet as the stream starts, the audio channel is gone; the microphone then delivers paced
@@ -223,15 +226,21 @@ struct audio_hub {
     std::condition_variable arrived;
     std::vector<avcap_mic *> mics;
     avcap_mic *reader = nullptr;
+    int source_channels = 2;  // of the channel the reader opened: 2 (type 0) or 12 (type 3)
+    // Type 3's level per channel, logged every 30 s: which channels carry sound on a console with surround output.
+    std::array<double, prospero::kAvcapSurroundChannels> squares{};
+    std::size_t frames = 0;
+    std::chrono::steady_clock::time_point levels_at{};
 };
 
 class avcap_mic final : public mic_t {
 public:
-    static std::unique_ptr<mic_t> open(int channels, std::uint32_t sample_rate, std::uint32_t frame_size) {
+    static std::unique_ptr<mic_t> open(int channels, std::uint32_t sample_rate, std::uint32_t frame_size, bool surround) {
         int rc = 0;
         auto shared = prospero::SharedCapture::acquire(rc);
         if (!shared) BOOST_LOG(warning) << "PS5 audio: capture session unavailable: "sv << rc << ", retrying"sv;
         auto mic = std::unique_ptr<avcap_mic>(new avcap_mic(std::move(shared), channels, sample_rate, frame_size));
+        mic->surround_ = surround && channels > 2;
         // A title started with the stream can hold the capture for a moment. Returning no microphone here left the
         // whole stream silent: Sunshine only asks for a new one after a reinit, which the silent fallback never sends.
         if (mic->another_reads()) BOOST_LOG(info) << "PS5 audio: sharing the channel another stream reads"sv;
@@ -246,7 +255,7 @@ public:
     }
 
     capture_e sample(std::vector<float> &frame_buffer) override {
-        const size_t needed = static_cast<size_t>(frame_size_) * 2;
+        const size_t needed = static_cast<size_t>(frame_size_) * static_cast<size_t>(channels_);
         const auto start = std::chrono::steady_clock::now();
         for (;;) {
             bool follower = false;
@@ -309,12 +318,16 @@ private:
         }
     }
 
-    // Every microphone gets the packet. One that falls behind keeps the last 200 ms, so its stream doesn't lag.
+    // Every microphone gets the packet, in its own layout. One that falls behind keeps the last 200 ms, so its stream
+    // doesn't lag.
     void hand_out(const float *samples, size_t count) {
-        constexpr size_t most = 48000 * 2 / 5;
         std::lock_guard lock(hub_.mutex);
+        const int source = hub_.source_channels;
+        const size_t frames = count / static_cast<size_t>(source);
+        if (source == prospero::kAvcapSurroundChannels) log_levels(samples, frames);
         for (avcap_mic *mic : hub_.mics) {
-            mic->pending_.insert(mic->pending_.end(), samples, samples + count);
+            const size_t most = 48000 / 5 * static_cast<size_t>(mic->channels_);
+            prospero::map_channels(samples, source, frames, mic->channels_, mic->pending_);
             if (mic->pending_.size() > most)
                 mic->pending_.erase(mic->pending_.begin(),
                                     mic->pending_.begin() + static_cast<std::ptrdiff_t>(mic->pending_.size() - most));
@@ -322,16 +335,34 @@ private:
         hub_.arrived.notify_all();
     }
 
-    // Caller holds hub_.mutex.
+    // Caller holds hub_.mutex. pending_ is in this microphone's layout already.
     capture_e take(std::vector<float> &frame_buffer, size_t needed) {
         next_ = std::chrono::steady_clock::now();
-        // Stereo from the console; any further requested channels stay silent.
-        frame_buffer.assign(static_cast<size_t>(frame_size_) * channels_, 0.0f);
-        for (std::uint32_t i = 0; i < frame_size_; ++i)
-            for (int c = 0; c < std::min(channels_, 2); ++c)
-                frame_buffer[i * channels_ + c] = pending_[i * 2 + c];
+        frame_buffer.assign(pending_.begin(), pending_.begin() + static_cast<std::ptrdiff_t>(needed));
         pending_.erase(pending_.begin(), pending_.begin() + static_cast<std::ptrdiff_t>(needed));
         return capture_e::ok;
+    }
+
+    // Caller holds hub_.mutex.
+    static void log_levels(const float *samples, size_t frames) {
+        constexpr int n = prospero::kAvcapSurroundChannels;
+        for (size_t i = 0; i < frames; ++i)
+            for (int c = 0; c < n; ++c) hub_.squares[c] += static_cast<double>(samples[i * n + c]) * samples[i * n + c];
+        hub_.frames += frames;
+        const auto now = std::chrono::steady_clock::now();
+        if (now < hub_.levels_at) return;
+        if (hub_.levels_at != std::chrono::steady_clock::time_point{} && hub_.frames) {
+            std::string line;
+            for (int c = 0; c < n; ++c) {
+                char level[16];
+                std::snprintf(level, sizeof level, " %.4f", std::sqrt(hub_.squares[c] / static_cast<double>(hub_.frames)));
+                line += level;
+            }
+            BOOST_LOG(info) << "PS5 audio: 12-channel levels (RMS, channel 0 to 11):"sv << line;
+        }
+        hub_.squares = {};
+        hub_.frames = 0;
+        hub_.levels_at = now + 30s;
     }
 
     bool open_channel() {
@@ -339,13 +370,30 @@ private:
         // starting) left the channel on the new session marked with the old generation: the next sample() then dropped
         // it without closing it, and every later open failed on the channel already there.
         unsigned generation = 0;
+        int source = 2, surround_rc = 0;
         const int rc = shared_->exclusive([&](ps_capture *s) {
             generation = shared_->generation();
+            if (surround_) {
+                surround_rc = ps_capture_audio_open(s, 3, 0, 0);
+                if (!surround_rc) {
+                    source = prospero::kAvcapSurroundChannels;
+                    return 0;
+                }
+            }
             return ps_capture_audio_open(s, 0, 0, 0);
         });
         if (rc) {
             BOOST_LOG(warning) << "PS5 audio: OpenAudio failed: "sv << rc;
             return false;
+        }
+        if (surround_ && surround_rc)
+            BOOST_LOG(warning) << "PS5 audio: 12 channels refused ("sv << surround_rc << "), stereo"sv;
+        else if (surround_)
+            BOOST_LOG(info) << "PS5 audio: 12 channels from the console for "sv << channels_ << " speakers"sv;
+        {
+            std::lock_guard lock(hub_.mutex);
+            hub_.source_channels = source;
+            hub_.levels_at = {};
         }
         generation_ = generation;
         set_open(true);
@@ -381,6 +429,7 @@ private:
     static inline audio_hub hub_;
     std::shared_ptr<prospero::SharedCapture> shared_;
     int channels_;
+    bool surround_ = false;  // reads 12 channels when it opens the channel
     std::uint32_t frame_size_;
     std::chrono::nanoseconds period_;
     std::vector<uint8_t> packet_;
@@ -398,7 +447,11 @@ public:
     std::unique_ptr<mic_t> microphone(const std::uint8_t *, int channels, std::uint32_t sample_rate,
                                       std::uint32_t frame_size, bool, bool) override {
         if (sample_rate == 48000) {
-            if (auto mic = avcap_mic::open(channels, sample_rate, frame_size)) {
+            // The app's "Surround 5.1/7.1" (off by default). Sunshine doesn't know the key and leaves it alone.
+            const auto settings = config::parse_config(file_handler::read_file(config::sunshine.config_file.c_str()));
+            const auto setting = settings.find("surround_sound");
+            const bool surround = setting != settings.end() && setting->second == "1";
+            if (auto mic = avcap_mic::open(channels, sample_rate, frame_size, surround)) {
                 BOOST_LOG(info) << "PS5 audio: game audio via Avcap2, "sv << channels << " channels, "sv << frame_size
                                 << " frames per packet"sv;
                 return mic;

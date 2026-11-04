@@ -15,7 +15,7 @@
 //       --gfe 3.23.0.74 --codec-mode 1 --out out/moonlight-test.h264 \
 //       [--duration 20] [--bitrate 6000] [--audio-out file.s16] [--no-encryption]
 //       [--timing-log file.csv] [--ui-ticks N [--tick-interval-ms 1500] [--tick-hold-ms 120]
-//       [--tick-kind dpad|ps|back] [--tick-seq right,cross,...] [--tick-start S]] [--no-script] [--hevc] [--hevc10]
+//       [--tick-kind dpad|ps|back] [--tick-seq right,cross,...] [--tick-start S]] [--no-script] [--hevc] [--hevc10] [--surround 51|71]
 //       [--touch-motion] [--kbm-seq step,step,... [--tick-start S] [--tick-interval-ms N] [--tick-hold-ms N]]
 //
 // --touch-motion announces a controller with touchpad and sensors and, from 3 s on, moves two fingers without a click and
@@ -170,6 +170,7 @@ static int vsubmit(PDECODE_UNIT du) {
 static struct {
   uint64_t packets, bytes, decoded_samples, decode_errors;
   double sumsq;
+  double channel_sumsq[AUDIO_CONFIGURATION_MAX_CHANNEL_COUNT];
   double peak;
   OpusMSDecoder *dec;
   int channels, spf, rate;
@@ -218,6 +219,7 @@ static void adecode(char *data, int len) {
   for (size_t i = 0; i < cnt; i++) {
     double s = pcm[i] / 32768.0;
     A.sumsq += s * s;
+    A.channel_sumsq[i % (size_t) A.channels] += s * s;
     psumsq += s * s;
     if (fabs(s) > A.peak) A.peak = fabs(s);
     if (fabs(s) > ppeak) ppeak = fabs(s);
@@ -401,6 +403,7 @@ int main(int argc, char **argv) {
   int hevc = 0, hevc10 = 0, touch_motion = 0;
   char *kbm_seq = NULL;
   int pads = 1;  // --pads N: controllers 0..N-1 arrive, one a second, as with several gamepads on one client
+  int surround = 0;  // --surround 51|71: ask for 5.1 or 7.1 sound instead of stereo
   int tick_pad = 0;  // --tick-pad N: the UI ticks come from controller N (with --pads above N)
 
   static const struct option opts[] = {
@@ -411,7 +414,7 @@ int main(int argc, char **argv) {
     {"ui-ticks", 1, 0, 'U'}, {"tick-interval-ms", 1, 0, 'T'}, {"tick-start", 1, 0, 'S'}, {"tick-kind", 1, 0, 'K'},
     {"timing-log", 1, 0, 'L'}, {"no-script", 0, 0, 'N'}, {"tick-hold-ms", 1, 0, 'M'}, {"tick-seq", 1, 0, 'Q'},
     {"hevc", 0, 0, 'E'},     {"hevc10", 0, 0, 'X'},     {"touch-motion", 0, 0, 'Y'}, {"kbm-seq", 1, 0, 'Z'},
-    {"pads", 1, 0, 'P'}, {"tick-pad", 1, 0, 'J'},
+    {"pads", 1, 0, 'P'}, {"tick-pad", 1, 0, 'J'}, {"surround", 1, 0, 'R'},
     {0, 0, 0, 0}};
   int c;
   while ((c = getopt_long(argc, argv, "", opts, NULL)) != -1) {
@@ -446,6 +449,7 @@ int main(int argc, char **argv) {
       case 'Z': kbm_seq = optarg; break;
       case 'P': pads = atoi(optarg); break;
       case 'J': tick_pad = atoi(optarg); break;
+      case 'R': surround = atoi(optarg); break;
       default: return 2;
     }
   }
@@ -506,7 +510,9 @@ int main(int argc, char **argv) {
   sc.bitrate = bitrate;
   sc.packetSize = 1024;
   sc.streamingRemotely = STREAM_CFG_LOCAL;
-  sc.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
+  sc.audioConfiguration = surround == 71 ? AUDIO_CONFIGURATION_71_SURROUND
+                           : surround == 51 ? AUDIO_CONFIGURATION_51_SURROUND
+                                            : AUDIO_CONFIGURATION_STEREO;
   sc.supportedVideoFormats = hevc ? VIDEO_FORMAT_H264 | VIDEO_FORMAT_H265 : VIDEO_FORMAT_H264;
   if (hevc10) sc.supportedVideoFormats |= VIDEO_FORMAT_H265_MAIN10;
   sc.clientRefreshRateX100 = fps * 100;
@@ -713,6 +719,10 @@ int main(int argc, char **argv) {
     if (A.decoded_samples) {
       printf("audio_rms             %.5f (%.1f dBFS), peak %.5f\n", sqrt(A.sumsq / (double) A.decoded_samples),
              20.0 * log10(sqrt(A.sumsq / (double) A.decoded_samples) + 1e-12), A.peak);
+      printf("audio_channel_rms    ");
+      for (int ch = 0; ch < A.channels; ch++)
+        printf(" %.5f", sqrt(A.channel_sumsq[ch] * A.channels / (double) A.decoded_samples));
+      printf("\n");
     }
     printf("rtp_audio             packets=%u fec=%u recovered=%u fec_failed=%u oos=%u invalid=%u\n",
            as->packetCountAudio, as->packetCountFec, as->packetCountFecRecovered, as->packetCountFecFailed,

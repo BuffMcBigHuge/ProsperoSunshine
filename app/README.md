@@ -83,10 +83,11 @@ it only when it starts, so use **Save and restart host** (or Restart host later)
 | Encryption over the internet | `wan_encryption_mode` | as above | 1 |
 | Base port | `port` | 1025 to 65514 | 47989 |
 | HEVC (8 bit) | `experimental_hevc` | 1 on | off |
-| HDR (HEVC 10 bit) | `experimental_hdr` | 1 on | off |
+| HDR (10 bit) | `experimental_hdr` | 1 on | off |
 | 1440p and 4K | `experimental_large_modes` | 1 on | off |
-| Up to 150 Mbit/s | `experimental_high_bitrate` | 1 on | off (cap 50 Mbit/s; 150 on firmware 13.00 anyway) |
+| 150 Mbit/s | `experimental_high_bitrate` | 1 on | off (cap 50 Mbit/s; 150 on firmware 13.00 anyway) |
 | Below 1080p | `experimental_small_modes` | 1 on | off (1080p for smaller requests; on firmware 13.00 and 10.20 those modes anyway) |
+| Surround | `surround_sound` | 1 on | off (stereo; with it, 5.1 and 7.1 for clients that ask, speaker order unverified) |
 
 The names, ranges and defaults are Sunshine's (`src/config.cpp` at a679b059), except for the `experimental_` keys, which the host
 reads itself. Every other line of the file, comments included, is kept as it is. Sunshine uses the first line of a key; when the app

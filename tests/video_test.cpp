@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "video/annex_b.hpp"
 #include "video/frame_queue.hpp"
+#include "video/nal_slices.h"
 #include <cassert>
 #include <iostream>
 using namespace std::chrono_literals;
@@ -51,5 +52,12 @@ int main() {
     assert(q.needs_idr());
     assert(!q.push(frame(11, true, 13))); // A single oversized frame cannot grow the queue.
     assert(q.bytes() == 0);
-    std::cout << "PASS: Annex B, decoder startup, frame loss, count/byte/age limits and IDR recovery\n";
+    // Slices: SPS, PPS and SEI don't count, IDR and non-IDR slices do; HEVC counts VCL types only (VPS 32 doesn't).
+    const uint8_t h264_frame[] = {0, 0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2, 0, 0, 1, 0x06, 3, 0, 0, 1, 0x65, 4, 0, 0, 1, 0x65, 5,
+                                  0, 0, 1, 0x41, 6};
+    assert(ps_nal_slices(h264_frame, sizeof h264_frame, 0) == 3);
+    const uint8_t hevc_frame[] = {0, 0, 1, 0x40, 1, 0, 0, 1, 0x28, 1, 0, 0, 1, 0x02, 1};
+    assert(ps_nal_slices(hevc_frame, sizeof hevc_frame, 1) == 2);
+    assert(ps_nal_slices(truncated, sizeof truncated, 0) == 0);
+    std::cout << "PASS: Annex B, decoder startup, frame loss, slices, count/byte/age limits and IDR recovery\n";
 }

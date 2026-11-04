@@ -31,14 +31,14 @@ static inline int ps_exp_never(uint32_t firmware) { (void)firmware; return 0; }
     X(HEVC, "experimental_hevc", "hevc", "HEVC", "HEVC (8 bit)",                                                               \
       "Offers HEVC on this firmware. If it fails, H.264 again until the host restarts.",                                       \
       ps_exp_hevc_verified, ps_exp_never, "", "")                                                                              \
-    X(HDR, "experimental_hdr", "hdr", "HDR", "HDR (HEVC 10 bit)",                                                              \
+    X(HDR, "experimental_hdr", "hdr", "HDR", "HDR (10 bit)",                                                                   \
       "Offers HDR, and HEVC with it, on this firmware. If it fails, off until the host restarts.",                             \
       ps_exp_hevc_verified, ps_exp_never, "", "")                                                                              \
     X(LARGE, "experimental_large_modes", "large", "1440p/4K", "1440p and 4K",                                                  \
       "Offers modes above 1080p on this firmware. If they fail, 1080p until the host restarts.",                               \
       ps_exp_large_verified, ps_exp_never, "", "")                                                                             \
     /* 10.x's record has no rate fields: the encoder keeps its own rate whatever is asked for. */                              \
-    X(BITRATE, "experimental_high_bitrate", "bitrate", "high bitrate", "Up to 150 Mbit/s",                                     \
+    X(BITRATE, "experimental_high_bitrate", "bitrate", "high bitrate", "150 Mbit/s",                                           \
       "Raises the bitrate cap from 50 to 150 Mbit/s on this firmware. If it fails, 50 until the host restarts.",               \
       ps_exp_bitrate_verified, ps_exp_is_10x, "No effect on 10.x",                                                             \
       "The encoder keeps its own rate on firmware 10.x, so this switch would change nothing.")                                 \

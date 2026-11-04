@@ -88,6 +88,7 @@ prospero_probe(mode_spike prospero_capture)
 prospero_probe(small_mode_probe prospero_capture)
 prospero_probe(slice_rate_probe prospero_capture)
 prospero_probe(surround_probe prospero_capture)
+prospero_probe(channel_map_probe prospero_capture SceAudioOut SceUserService)
 prospero_probe(hevc_spike prospero_capture)
 prospero_probe(close_probe prospero_ra SceSystemService SceUserService)
 prospero_probe(udp_burst_spike)
@@ -161,8 +162,8 @@ if(EXISTS "${PROSPERO_DEPS}/include/boost" AND EXISTS "${PROSPERO_DEPS}/lib/liba
         set(PROSPERO_COMMIT "unknown")
     endif()
     target_compile_definitions(prospero_sunshine PRIVATE
-        PROJECT_NAME="ProsperoSunshine" PROJECT_VERSION="0.3.0" PROJECT_VERSION_MAJOR="0"
-        PROJECT_VERSION_MINOR="3" PROJECT_VERSION_PATCH="0" PROJECT_VERSION_COMMIT="${PROSPERO_COMMIT}"
+        PROJECT_NAME="ProsperoSunshine" PROJECT_VERSION="0.3.1" PROJECT_VERSION_MAJOR="0"
+        PROJECT_VERSION_MINOR="3" PROJECT_VERSION_PATCH="1" PROJECT_VERSION_COMMIT="${PROSPERO_COMMIT}"
         PROJECT_FQDN="dev.prosperosunshine" SUNSHINE_ASSETS_DIR="/data/prosperosunshine/assets"
         SUNSHINE_PUBLISHER_NAME="ProsperoSunshine" SUNSHINE_PUBLISHER_WEBSITE=""
         SUNSHINE_PUBLISHER_ISSUE_URL="" SUNSHINE_TRAY=0 BOOST_ALL_NO_LIB)

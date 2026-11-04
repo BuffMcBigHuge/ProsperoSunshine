@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.1 (2026-11-04)
+
+### Added
+
+- **Surround sound, as an experimental switch.** Turn on **Surround** under **Experimental** in the app's Settings, and a
+  Moonlight that asks for 5.1 or 7.1 gets the console's multichannel sound instead of stereo. Which of the console's channels
+  goes to which speaker is not verified yet: the console here outputs stereo, so in every test only front left and right
+  carried sound. With a 5.1 or 7.1 system you can help: the host logs the level of each of the console's 12 channels every
+  30 seconds. Off by default; a client that asks for stereo, or a second device next to a surround one, gets stereo as before.
+
+### Changed
+
+- **H.264 on firmware 10.x asks for 4 slices per frame.** 10.x cut every 1080p frame into 34 slices, more than the hardware
+  decoders on Windows take (a white picture there). The host now sets the slice fields Remote Play uses. If the firmware
+  refuses them, the host opens the stream without them as before and leaves them out until it restarts. Not tested on 10.x
+  yet: the log says `first frame has N slices`, and a report with that line helps.
+- **The Experimental row has room for six switches.** "HDR (10 bit)" and "150 Mbit/s" are the shorter names of two of them.
+
 ## 0.3.0 (2026-11-04)
 
 ### Added

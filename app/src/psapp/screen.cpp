@@ -44,7 +44,9 @@ const Icon kOptionIcons[] = {Icon::tag, Icon::log, Icon::timer, Icon::plug, Icon
 // option_specs(): two rows of four, then a row with the Experimental switches
 constexpr int kRowLength = 4;
 constexpr int kFirstSwitch = 8;
-constexpr int kTiles = kFirstSwitch + PS_EXP_SWITCH_COUNT;
+// The Experimental row: the firmware switches, then surround sound, which no firmware check locks.
+constexpr int kSwitchTiles = PS_EXP_SWITCH_COUNT + 1;
+constexpr int kTiles = kFirstSwitch + kSwitchTiles;
 
 float approach(float value, float target, float dt, float speed)
 {
@@ -115,7 +117,8 @@ std::string Screen::value_text(int index) const
 
 bool Screen::switch_not_needed(int index) const
 {
-    return index >= kFirstSwitch && !diag::experimental_needed(snap_.firmware, option_specs()[static_cast<std::size_t>(index)].key);
+    return index >= kFirstSwitch && index < kFirstSwitch + PS_EXP_SWITCH_COUNT &&
+           !diag::experimental_needed(snap_.firmware, option_specs()[static_cast<std::size_t>(index)].key);
 }
 
 int Screen::visible_pairings() const
@@ -174,7 +177,7 @@ Rect Screen::tile_rect(int index) const
     // The gap before the switches holds the section's caption.
     if (index >= kFirstSwitch)
     {
-        const float width = (1728.0f - 20.0f * static_cast<float>(PS_EXP_SWITCH_COUNT - 1)) / static_cast<float>(PS_EXP_SWITCH_COUNT);
+        const float width = (1728.0f - 20.0f * static_cast<float>(kSwitchTiles - 1)) / static_cast<float>(kSwitchTiles);
         return {96.0f + static_cast<float>(index - kFirstSwitch) * (width + 20.0f), 594.0f, width, 124.0f};
     }
     constexpr float kNarrow = (1728.0f - 3.0f * 24.0f) / 4.0f;
@@ -439,7 +442,7 @@ void Screen::handle_settings(const hui::InputFrame &input, hui::ui::Feedback &fe
             const bool switches = tile_ >= kFirstSwitch, second = !switches && tile_ >= kRowLength;
             const int col = switches ? tile_ - kFirstSwitch : tile_ % kRowLength;
             // Up and down go to the nearest tile: the two rows of four line up; the switches' row has its own count.
-            const int last_switch = PS_EXP_SWITCH_COUNT - 1;
+            const int last_switch = kSwitchTiles - 1;
             const int to_switch = kFirstSwitch + (col * last_switch + (kRowLength - 1) / 2) / (kRowLength - 1);
             const int from_switch = kRowLength + (col * (kRowLength - 1) + last_switch / 2) / std::max(last_switch, 1);
             if (input.nav == Direction::left)
@@ -459,7 +462,7 @@ void Screen::handle_settings(const hui::InputFrame &input, hui::ui::Feedback &fe
             else if (input.nav == Direction::right)
                 next = index < 2 ? tile_ + 1 : -1;
             else if (input.nav == Direction::up)
-                next = kFirstSwitch + std::min(index, PS_EXP_SWITCH_COUNT - 1);
+                next = kFirstSwitch + std::min(index, kSwitchTiles - 1);
             else
                 next = -1;
         }
@@ -1499,7 +1502,8 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
         const float text_x = base.x + (narrow ? 62.0f : 90.0f);
         icons::draw(list, narrow ? Icon::sliders : kOptionIcons[i], base.x + (narrow ? 34.0f : 46.0f), base.cy(), narrow ? 30.0f : 34.0f,
                     inert ? kFaint : kAccent);
-        hui::ui::text(list, fonts_.semibold, spec.label, text_x, base.y + 52.0f, narrow ? 28.0f : 30.0f, inert ? kMuted : kInk);
+        hui::ui::text(list, fonts_.semibold, narrow ? shorten(fonts_.semibold, spec.label, 26.0f, base.w - 80.0f) : std::string(spec.label),
+                      text_x, base.y + 52.0f, narrow ? 26.0f : 30.0f, inert ? kMuted : kInk);
         hui::ui::text(list, fonts_.semibold, shorten(fonts_.semibold, value_text(i), 25.0f, base.w - (inert ? 80.0f : 230.0f)), text_x,
                       base.y + 94.0f, 25.0f, is_default || inert ? kMuted : mix(kInk, kAccent, 0.35f));
         if (toggle && !inert)
@@ -1510,8 +1514,9 @@ void Screen::draw_settings(hui::gfx::DrawList &list, std::uint32_t glass) const
                 list.glow(track, 19.0f, 12.0f, kAccent.with_alpha(0.35f));
             list.circle(on ? track.x + track.w - 19.0f : track.x + 19.0f, track.cy(), 15.0f, Color::rgb(0xffffff));
         }
-        // On the value's line: default or changed. A switch shows that it is off by itself.
-        const std::string tag = changed ? "UNSAVED" : is_default && !toggle ? "DEFAULT" : "";
+        // On the value's line: default or changed. A switch shows that it is off by itself, and the narrow row has no room
+        // for the tag: the Save button shows a change there.
+        const std::string tag = narrow ? "" : changed ? "UNSAVED" : is_default && !toggle ? "DEFAULT" : "";
         if (!tag.empty())
         {
             const float w = fonts_.semibold.measure(tag, 16.0f) + 34.0f;

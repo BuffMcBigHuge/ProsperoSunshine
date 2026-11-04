@@ -5,6 +5,7 @@
 #include "encoder_qp.h"
 #include "experimental.h"
 #include "ra_resolve.h"
+#include "video/nal_slices.h"
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -23,6 +24,8 @@
 static _Atomic int resource_id[PS_CAPTURE_SLOTS] = {180, 175}, session_resource[PS_CAPTURE_SLOTS] = {180, 175};
 #define AGAIN ((int)0x81950002)
 #define RESOURCE_NOT_ACTIVE ((int)0x81950008)
+// Slices per H.264 frame asked of 10.x (cfg+0x44), well below what the decoders take.
+#define PS_H264_SLICES 4
 #define LOG(...) ps_diag_log("ProsperoSunshine: capture " __VA_ARGS__)
 // Slot 1's lines say "capture2": the app's report reads slot 0's "capture" lines as the outcome of the host's capture.
 #define SLOG(slot, format, ...) ps_diag_log("ProsperoSunshine: capture%s " format, (slot) ? "2" : "", ##__VA_ARGS__)
@@ -322,6 +325,14 @@ void ps_capture_build_config(uint8_t *p, const ps_capture_video_config *c, uint3
         u32(p, 0xc8, qp.other);
         LOG("firmware 10.x: no rate fields, QP %u/%u for %u kbit/s\n", qp.idr, qp.other, average / 1000);
     }
+    if (shift < 0 && c->codec == 0 && !c->no_slices) {
+        // 10.x cuts H.264 into one slice per macroblock row, 34 at 1080p, and the hardware decoders on Windows take at most
+        // 32. Remote Play sets these three for H.264 (SceRemotePlay 0x6f9df..0x6fa32): on, slices per frame, on. 13.00
+        // sends one slice per frame anyway (STATUS.md), so they are left out there.
+        u32(p, 0x40, 1);
+        u32(p, 0x44, PS_H264_SLICES);
+        u32(p, 0x48, 1);
+    }
     u32(p, 0x2a0 + shift, mode);
     u32(p, 0x2a4 + shift, 2); // composited screen, including home menu
     u32(p, 0x2b0 + shift, 1);
@@ -357,6 +368,16 @@ void ps_capture_build_config(uint8_t *p, const ps_capture_video_config *c, uint3
     }
 }
 
+// Set when the firmware refused an open with the slice fields; the host then opens without them until it restarts.
+static _Atomic int slices_refused;
+
+static _Atomic int retry_without_slices[PS_CAPTURE_SLOTS];
+
+static int uses_slice_fields(int slot)
+{
+    return record_shift() < 0 && atomic_load(&video_codec[slot]) == 0 && !atomic_load(&slices_refused);
+}
+
 static void configure(int slot, uint8_t *p, uint32_t mode, int variant)
 {
     const ps_capture_video_config c = {
@@ -367,6 +388,7 @@ static void configure(int slot, uint8_t *p, uint32_t mode, int variant)
         .average = atomic_load(&opening_average[slot]),
         .peak = atomic_load(&opening_peak[slot]),
         .resource = atomic_load(&session_resource[slot]),
+        .no_slices = atomic_load(&slices_refused),
     };
     ps_capture_build_config(p, &c, mode, variant);
     if (atomic_load(&override_field)) u32(p, atomic_load(&override_field), atomic_load(&override_value));
@@ -439,6 +461,11 @@ static int first_frame(ps_capture *s, const char **step)
             }
         }
         SLOG(s->slot, "first frame rc=%#x after %d ms\n", rc, waited);
+        if (rc > 0) {
+            const int slices = ps_nal_slices(buffer, (size_t)rc, s->mode[2] == 1);
+            SLOG(s->slot, "first frame has %d slices%s\n", slices,
+                 s->mode[2] != 1 && slices > PS_DECODER_MAX_SLICES ? ", more than hardware decoders on Windows take" : "");
+        }
         rc = rc > 0 ? 0 : rc ? rc : PS_CAPTURE_ERROR;
     } else if (!rc) {
         rc = PS_CAPTURE_ERROR;
@@ -463,6 +490,7 @@ static int active_resources(int (*list)(int32_t *), char *out, size_t size, char
 // Caller holds open_lock.
 static int open_slot(int slot, ps_capture **out)
 {
+    int slice_fields = 0;
     atomic_store(&failure_rc[slot], 0);
     atomic_store(&reached_encoder[slot], 0);
     atomic_store(&unsettled[slot], 0);
@@ -601,6 +629,7 @@ static int open_slot(int slot, ps_capture **out)
     atomic_store(&reached_encoder[slot], 1);
     uint8_t config[0x2e8] = {0};
     mode_snapshot(slot, s->mode);
+    slice_fields = uses_slice_fields(slot);
     configure(slot, config, (uint32_t)output, (int)s->mode[6]);
     if (atomic_load(&video_codec[slot]) == 1 && record_shift() >= 0 && s->mode[6] != PS_EXP_MINIMAL) {
         // Memory Mode 1 as Remote Play sets it up (SceRemotePlay 0x6fb83..0x6fc65).
@@ -662,7 +691,8 @@ static int open_slot(int slot, ps_capture **out)
     if (rc) { atomic_store(&refused[slot], 1); goto fail; }
     s->started = 1;
     if (!atomic_load(&granted[slot]) || atomic_load(&revoked[slot])) { error = PS_CAPTURE_REVOKED; goto fail; }
-    if (atomic_load(&check_first_frame[slot])) {
+    // With the slice fields, a frame must come before the stream counts on them.
+    if (atomic_load(&check_first_frame[slot]) || slice_fields) {
         rc = first_frame(s, &step);
         if (rc == PS_CAPTURE_REVOKED) { error = PS_CAPTURE_REVOKED; goto fail; }
         if (rc) { atomic_store(&refused[slot], 1); goto fail; }
@@ -671,6 +701,11 @@ static int open_slot(int slot, ps_capture **out)
     SLOG(slot, "open ok\n");
     return 0;
 fail:
+    if (slice_fields && error != PS_CAPTURE_REVOKED && atomic_load(&reached_encoder[slot]) &&
+        !(strcmp(step, "OpenVideo") == 0 && atomic_load(&failure_rc[slot]) == RESOURCE_NOT_ACTIVE)) {
+        // The firmware may not know the fields: ps_capture_slot_open tries once more without them.
+        atomic_store(&retry_without_slices[slot], 1);
+    }
     atomic_store(&failure_step[slot], step);
     SLOG(slot, "open failed step=%s error=%d rc=%#x\n", step, error, atomic_load(&last_open_rc));
     ps_capture_close(s);
@@ -683,7 +718,14 @@ int ps_capture_slot_open(int slot, ps_capture **out)
     *out = NULL;
     if (!valid_slot(slot)) return PS_CAPTURE_ERROR;
     pthread_mutex_lock(&open_lock);
-    const int rc = open_slot(slot, out);
+    int rc = open_slot(slot, out);
+    if (rc && atomic_exchange(&retry_without_slices[slot], 0)) {
+        // Without the fields the stream works as before, only with more slices. They stay off only if they were at fault.
+        atomic_store(&slices_refused, 1);
+        rc = open_slot(slot, out);
+        if (rc) atomic_store(&slices_refused, 0);
+        SLOG(slot, "H.264 slice fields: %s\n", rc ? "the open failed without them too, kept" : "refused, left out from now on");
+    }
     pthread_mutex_unlock(&open_lock);
     return rc;
 }

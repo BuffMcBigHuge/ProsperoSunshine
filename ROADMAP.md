@@ -1,8 +1,8 @@
 # ProsperoSunshine Roadmap und Umsetzungsplan
 
-Stand: 4. November 2026, nach Release 0.3.0. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
+Stand: 4. November 2026, nach Release 0.3.1. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
 
-## Stand (4. November 2026, nach Release 0.3.0)
+## Stand (4. November 2026, nach Release 0.3.1)
 
 Seit 0.1.5 sind folgende Releases dazugekommen:
 
@@ -27,6 +27,9 @@ Seit 0.1.5 sind folgende Releases dazugekommen:
   - Die App zeigt je Gerät die tatsächliche Bitrate, die Laufzeit und Verluste.
   - Beitreten zeigt das erste Bild nach 0,4 statt 2,2 s; eine Übernahme öffnet den Kanal nicht neu.
   - README-Abschnitt zum Spielen über das Internet.
+- **0.3.1:**
+  - Raumklang 5.1/7.1 hinter dem Schalter „Surround“, Kanalreihenfolge ungeprüft.
+  - H.264 auf 10.x verlangt 4 Slices je Bild (ungeprüft auf 10.x).
 
 Firmware: 13.00 und 10.20 sind geprüft. 10.40 und 13.60 streamen laut Nutzerberichten (Issues #1 und #2), dort aber nicht
 gemessen.
@@ -285,6 +288,35 @@ gibt es seit 0.2.2. 1440p und 4K laufen seit dem 2026-10-31 (`STATUS.md`).
 
 Bewusst nicht geplant: Haptik (Moonlight hat keinen Kanal dafür); harte Trigger nach dem Stream lassen sich nur in Moonlight beheben.
 
+## Geplant: Tastatur und Maus als Controller
+
+Übernimmt ein Mitwirkender (Discord).
+
+**Tastatur und Maus als Controller.** Seit 0.2.1 kommen Tastatur und Maus als echte Tastatur und Maus an der Konsole an.
+Das hilft beim Tippen, aber nur wenige Spiele nehmen eine Maus. Neu: eine Einstellung in der App (aus per Vorgabe), mit
+der Tastatur und Maus eines Geräts stattdessen auf ein virtuelles DualSense gehen. Hat das Gerät schon ein Pad, laufen
+beide auf dieses, damit kein weiterer Spieler entsteht; sonst legt der Host eins an. Vorgeschlagene Belegung:
+
+| Taste | Controller |
+| --- | --- |
+| WASD | linker Stick |
+| Maus | rechter Stick |
+| linke / rechte Maustaste | R2 / L2 |
+| Leertaste | Kreuz |
+| Strg oder C | Kreis |
+| R | Quadrat |
+| F | Dreieck |
+| Q / E | L1 / R1 |
+| Shift / mittlere Maustaste | L3 / R3 |
+| Pfeiltasten | Steuerkreuz |
+| Enter / Backspace | Kreuz / Kreis (für Menüs) |
+| Esc / Tab | Options / Touchpad |
+| Pos1 | PS-Taste (gilt die PS-Sperre aus 0.3.0, also nur für Spieler 1) |
+
+Offen: wie die Mausbewegung in Stickausschlag umgerechnet wird (Empfindlichkeit, Totzone, Abklingen, wenn die Maus
+stillsteht); das wird beim Testen abgestimmt. Prüfen mit dem Testclient (`--kbm-seq`), das Gefühl beim Zielen am Ende mit
+echtem Moonlight beim Besitzer.
+
 ## Nächste konkrete Schritte
 
 1. Zweiter Aufnahmekanal (seit 0.2.4) weiter prüfen. Auf 13.00 gemessen: gleicher Modus teilt Kanal 0, H.264 neben HEVC,
@@ -296,16 +328,17 @@ Bewusst nicht geplant: Haptik (Moonlight hat keinen Kanal dafür); harte Trigger
    Auflösung den Encoder (`STATUS.md`).
 2. 120 fps: `cfg+0x1c = 2` lehnt OpenVideo auf 13.00 mit 0x80c70004 ab (`slice_rate_probe`, `STATUS.md`). Weitere Spuren
    nur mit einem Titel, der 120 Hz ausgibt, und über die Prüfroutine in `docs/re/avcap2-exports.md`.
-   Raumklang: Encoder-Typ 3 liefert 12 Kanäle Float (`STATUS.md`, „Für 0.3.0“). Nächster Schritt: mit einem Spiel mit 5.1/7.1
-   bestimmen, welcher Kanal welcher Lautsprecher ist (`surround_probe` während das Spiel läuft), dann bei 6 oder 8 Kanälen in
-   Moonlight Typ 3 statt Typ 0 lesen und umsortieren.
+   Raumklang: seit 0.3.1 hinter dem Schalter „Surround“, mit angenommener Reihenfolge (`STATUS.md`, „Für 0.3.1“). Offen ist,
+   welcher der 12 Kanäle welcher Lautsprecher ist; das braucht eine Konsole, die 5.1 oder 7.1 ausgibt. Der Host loggt alle
+   30 s die Pegel der 12 Kanäle (`12-channel levels`); ein Bericht damit und mit dem, was aus welchem Lautsprecher kam,
+   bestätigt oder korrigiert `src/audio/channel_map.hpp`.
 3. 13.60 (Issue #1): Der Host wartet seit 0.2.3 bis zu 6 s auf die Zuteilung und schreibt `RUNNING granted after N ms`,
    wenn es länger dauert. Ein Bericht damit zeigt, wie lang die Zuteilung dort braucht. Danach die Checkliste in
    `docs/firmware-porting.md` für 13.60.
 4. 10.x: 10.20 ist geprüft, 10.40 streamt HEVC laut Nutzerbericht (Issue #2). Offen: H.264 kommt dort in 34 Slices je
-   Bild, und die Hardware-Decoder unter Windows nehmen höchstens 32 (weißes Bild). Ob sich die Slice-Zahl einstellen
-   lässt, zeigt `slice_rate_probe` auf 10.x (auf 13.00, mit einem Slice je Bild, wirken die Felder nicht); bis dahin
-   HEVC empfehlen.
+   Bild, und die Hardware-Decoder unter Windows nehmen höchstens 32 (weißes Bild). Seit 0.3.1 verlangt der Host dort 4
+   Slices über die Felder von Remote Play und fällt ohne sie zurück, wenn die Firmware sie ablehnt. Offen: ob sie auf 10.x
+   wirken; ein Log mit `first frame has N slices` von 10.x zeigt es. Bis dahin HEVC empfehlen.
 5. Ruhemodus mit offenem Spiel und laufendem Stream: Der Neustart der Dienste endet dort nicht in `host ready`
    (`STATUS.md`). Das ist zu klären. Offen sind außerdem das Aufwecken per Controller und der einmalige Hänger im ersten
    Test. Wecken aus Moonlight geht nicht (`STATUS.md`, Issue #10). Tests nur nach Rückfrage.

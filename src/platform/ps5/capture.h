@@ -66,6 +66,8 @@ typedef struct {
     uint32_t resolution, timing, codec, ten_bit;  // as ps_capture_set_video_mode, _set_codec, _set_ten_bit
     uint32_t average, peak;                       // bit/s
     int resource;                                 // ResourceArbitrator id, cfg+0x28
+    // 10.x, H.264: 1 leaves out the slice fields (cfg+0x40/0x44/0x48), after the firmware refused them once.
+    int no_slices;
 } ps_capture_video_config;
 void ps_capture_build_config(uint8_t *record, const ps_capture_video_config *config, uint32_t output, int variant);
 ptrdiff_t ps_capture_record_shift(void);

@@ -501,6 +501,38 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### Für 0.3.1 (2026-11-04, 13.00, Testclient, Home-Bildschirm)
+
+**Welcher der 12 Kanäle welcher Lautsprecher ist, ließ sich hier nicht messen.**
+
+- `channel_map_probe` spielte aus einer Payload über `sceAudioOut` (Port MAIN, Float, 8 Kanäle in beiden Reihenfolgen, dazu
+  Stereo) nacheinander einen Ton je Kanal und las dabei Typ 3. `sceAudioOutOutput` gab 0x100 zurück, in der Aufnahme kam der
+  Ton aber nicht an, auch nicht in Stereo: Kanal 0 und 1 blieben beim Pegel des Home-Bildschirms (RMS um 0,005), 2–11 bei 0.
+  Ton einer Payload gehört also nicht zur Aufnahme. Die Porttypen BGM, VOICE und AUX lehnte `sceAudioOutOpen` mit
+  0x80260011 ab.
+- `sceAudioOutGetPortState` meldet `channels=2`: Die Konsole gibt hier Stereo aus.
+- Teardown, Hauptmenü mit Musik (`surround_probe`): Typ 0 RMS 0,083/0,083, Typ 3 nur Kanal 0 und 1 (0,078/0,070), 2–11 bei 0.
+- Solange die Konsole Stereo ausgibt, tragen nur Kanal 0 und 1 Ton. Die Toneinstellung der Konsole wurde nicht geändert. Der
+  Host nimmt deshalb für die ersten acht Kanäle die 8-Kanal-Reihenfolge von `sceAudioOut` an (L, R, C, LFE, Surround L/R,
+  hinten L/R) und lässt 8–11 weg (`src/audio/channel_map.hpp`). Belegt ist das nicht.
+
+**Raumklang im Host**, Schalter „Surround“ (`surround_sound = 1`) in der App:
+
+- 5.1, H.264 1080p, 15 s: Moonlight bekam 6 Kanäle (`streams=4 coupled=2`), RMS je Kanal 0,0095 / 0,0076 / 0 / 0 / 0 / 0, 895
+  Bilder ohne Lücke, fehlerfrei dekodiert. Hostlog: `12 channels from the console for 6 speakers`.
+- 7.1, HEVC 1080p, 15 s: 8 Kanäle, nur die vorderen zwei mit Ton, ohne Lücke, fehlerfrei dekodiert.
+- Stereo, H.264, 15 s: wie bisher, Typ 0.
+- Zwei Geräte: A mit 5.1 (25 s), B mit Stereo tritt nach 5 s bei (15 s). Beide ohne Lücke und mit Ton (A 4810, B 2814
+  Pakete); B bekommt den Mix aus denselben 12 Kanälen (`sharing the channel another stream reads`).
+- Schalter aus, 5.1 angefragt: 6 Kanäle, nur vorne links und rechts mit Ton, Typ 0 wie vor 0.3.1.
+- Die Experimentell-Reihe der App mit sechs Kacheln auf der Konsole angesehen; „Surround“ ein- und wieder ausgeschaltet und
+  gespeichert, `sunshine.conf` danach wie vorher.
+
+**Slices bei H.264 auf 10.x.** Der Host setzt dort für H.264 `cfg+0x40 = 1`, `cfg+0x44 = 4`, `cfg+0x48 = 1`. Scheitert das
+Öffnen damit, öffnet er sofort ohne sie und lässt sie bis zum Neustart weg, wenn es dann geht. Das erste Bild jedes Öffnens
+mit den Feldern wird gelesen und seine Slices geloggt (`first frame has N slices`). Geprüft nur in den Unit-Tests: Die Records
+ändern sich allein für H.264 auf 10.x (48 von 240 Zeilen der Golden-Datei), 13.00 bleibt byte-gleich. Auf 10.x nicht gemessen.
+
 ### Release 0.3.0 auf der Konsole (2026-11-04, 13.00)
 
 App aus `build/app` kopiert und neu registriert, sie zeigt `v01.000.016`; nach „Restart host“ meldet `host_diag.log`
