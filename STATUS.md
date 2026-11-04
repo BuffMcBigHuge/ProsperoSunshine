@@ -501,6 +501,16 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### Release 0.2.4 auf der Konsole (2026-11-04, 13.00)
+
+Die App aus `build/app` auf die Konsole kopiert und neu registriert; sie zeigt `v01.000.015`. Nach „Restart host“ meldet
+`host_diag.log` `version=0.2.4 commit=f6d55610`. Testclient auf dem Home-Bildschirm:
+
+- H.264 1080p, 20 s: 1194 Bilder, keine fehlende Bildnummer, längste Pause 19 ms, fehlerfrei dekodiert.
+- HEVC 1080p, 20 s: 1193 Bilder, keine fehlende Bildnummer, längste Pause 19 ms, fehlerfrei dekodiert.
+- Zwei Geräte, A mit H.264 (30 s), B mit HEVC (25 s, 10 s später): B bekam den zweiten Kanal auf Profil 175 (`sunshine.log`),
+  A 1795 und B 1492 Bilder, keine fehlende Bildnummer, längste Pause 34 bzw. 23 ms, beide dekodiert und mit Ton.
+
 ### Zweiter Aufnahmekanal im Host (2026-11-04, 13.00, Release 0.2.4)
 
 Will ein weiteres Gerät einen anderen Codec, einen anderen Dynamikbereich oder eine andere Auflösung bis 1080p, öffnet

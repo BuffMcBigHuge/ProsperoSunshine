@@ -302,7 +302,8 @@ Bewusst nicht geplant: Haptik (Moonlight hat keinen Kanal dafür); harte Trigger
 5. Ruhemodus mit offenem Spiel und laufendem Stream: Der Neustart der Dienste endet dort nicht in `host ready`
    (`STATUS.md`). Das ist zu klären. Offen sind außerdem das Aufwecken per Controller und der einmalige Hänger im ersten
    Test. Wecken aus Moonlight geht nicht (`STATUS.md`, Issue #10). Tests nur nach Rückfrage.
-6. Längere Spielsitzung in 4K mit HEVC in Moonlight (Nutzertest, Logs danach auswerten). Das fehlt für 0.3 und 0.4.
+6. Längere Spielsitzung in 4K mit HEVC in Moonlight: Am 3. November 2026 lief sie beim Besitzer länger ohne Probleme
+   (Bericht, Logs nicht ausgewertet). Für 0.3 und 0.4 fehlt noch eine Sitzung, deren Log ausgewertet wird.
 7. Weitere Clients (P9.6): Android, TV/Shield, Steam Deck. Co-op mit echtem Moonlight auf mehreren Geräten ist von einem
    Tester belegt (vier Spieler auf 10.20, Issue #11), hier nur mit dem Testclient. Noch ungeprüft ist, wie Moonlight auf dem
    Handy die Meldung bei falschem Dynamikbereich zeigt.
