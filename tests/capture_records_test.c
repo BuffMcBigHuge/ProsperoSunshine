@@ -47,6 +47,16 @@ int main(int argc, char **argv)
                         atomic_store(&session_resource, atomic_load(&resource_id));
                         uint8_t configured[0x2e8] = {0};
                         CONFIGURE(configured, 0x13c);
+                        // The probes' builder with the same values must write the same record.
+                        const ps_capture_video_config explicit_values = {resolution, timing, codec, ten_bit, average, average / 100 * 112,
+                                                                         atomic_load(&resource_id)};
+                        uint8_t built[0x2e8] = {0};
+                        ps_capture_build_config(built, &explicit_values, 0x13c, PS_EXP_STANDARD);
+                        if (memcmp(built, configured, sizeof built)) {
+                            printf("FAIL: ps_capture_build_config differs from configure() for %08x codec=%u mode=%u\n", firmwares[f],
+                                   codec, resolution);
+                            failures++;
+                        }
                         ps_capture *session = NULL;
                         memset(fake_record, 0, sizeof fake_record);
                         const int rc = ps_capture_open(&session);

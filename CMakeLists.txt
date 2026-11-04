@@ -91,6 +91,8 @@ prospero_probe(close_probe prospero_ra SceSystemService SceUserService)
 prospero_probe(udp_burst_spike)
 prospero_probe(audio_spike prospero_capture prospero_pad)
 prospero_probe(bitrate_spike prospero_capture)
+prospero_probe(bitrate_steps_probe prospero_capture)
+prospero_probe(dual_open_probe prospero_capture)
 prospero_probe(ra_nid_probe prospero_ra)
 prospero_probe(deps_probe dep::ssl dep::opus dep::enet dep::nanors)
 
