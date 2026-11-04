@@ -267,7 +267,9 @@ void ps_capture_override_extra(int slot, size_t field, uint32_t value)
 }
 
 // Firmware 13.60: the block at 0xb8 is 8 bytes larger, and what 13.00 keeps from 0x198 on sits 8 higher. Not measured
-// here, taken from two public projects that run on it (docs/firmware-porting.md).
+// here, taken from two public projects that run on it (docs/firmware-porting.md). 13.40 refused 13.00's record at OpenVideo
+// with 0x80c70010, as 13.60 did before it got this one (GitHub issues 14 and 1), so it gets 13.60's, and so does
+// anything between them. 12.70 streams with 13.00's (issue 17); where between 13.00 and 13.40 the block grew is unknown.
 // Firmware 10.x (measured on 10.20): the block is 0x18 bytes smaller, and what 13.00 keeps from 0x198 on sits 0x18 lower.
 // 13.00's rate fields land on other encoder fields there (Start returns 0x80c78000). The measured record also leaves out
 // 13.00's inner sub-block headers, so 10.x writes neither, and the encoder sets no rate. Its QP follows the client's
@@ -279,7 +281,7 @@ static ptrdiff_t record_shift(void)
 {
     const uint32_t firmware = kernel_get_fw_version();
     if ((firmware & 0xff000000u) == 0x10000000u) return -0x18;
-    return (firmware & 0xffff0000u) == 0x13600000u ? 8 : 0;
+    return firmware >= 0x13400000u && firmware < 0x14000000u ? 8 : 0;
 }
 
 ptrdiff_t ps_capture_record_shift(void) { return record_shift(); }

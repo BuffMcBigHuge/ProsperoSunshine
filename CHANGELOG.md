@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Firmware 13.40: the capture opens.** 13.40 refused 13.00's capture record at `OpenVideo` (`0x80c70010`), as 13.60 did
+  before 0.1.5. It now gets 13.60's record, as does any version between 13.40 and 13.60. Not tested on 13.40 yet; a test
+  build is out for it (issue #14). Firmware 13.00 and every other version keep their record byte for byte.
+
 ## 0.3.1 (2026-11-04)
 
 ### Added
