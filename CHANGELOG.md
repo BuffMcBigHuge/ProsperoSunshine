@@ -15,7 +15,8 @@
 - **H.264 on firmware 10.x asks for 4 slices per frame.** 10.x cut every 1080p frame into 34 slices, more than the hardware
   decoders on Windows take (a white picture there). The host now sets the slice fields Remote Play uses. If the firmware
   refuses them, the host opens the stream without them as before and leaves them out until it restarts. Not tested on 10.x
-  yet: the log says `first frame has N slices`, and a report with that line helps.
+  yet: `host_diag.log`, and with it the app's Diagnostics report, says `first frame has N slices`, and a report with that
+  line helps.
 - **The Experimental row has room for six switches.** "HDR (10 bit)" and "150 Mbit/s" are the shorter names of two of them.
 
 ## 0.3.0 (2026-11-04)

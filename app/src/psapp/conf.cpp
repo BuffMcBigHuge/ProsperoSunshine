@@ -27,7 +27,7 @@ std::string_view trim(std::string_view s)
 
 const std::vector<Choice> kEncryption = {
     {"0", "Off"},
-    {"1", "When supported"},
+    {"1", "Optional"},  // encrypted when the client supports it; "When supported" was cut off on the tile
     {"2", "Required"},
 };
 
@@ -61,7 +61,7 @@ const std::vector<OptionSpec> &option_specs()
          kEncryption, 0, 0, 1, 0},
         {"wan_encryption_mode", "Internet encryption",
          "The same for clients outside it.", OptionKind::choice,
-         "When supported", kEncryption, 0, 0, 1, 0},
+         "Optional", kEncryption, 0, 0, 1, 0},
         // Sunshine reads this one (patch 0010), as it does the options above.
         {"close_game_on_quit", "Quit closes the game",
          "On: quitting in Moonlight also closes the game the stream started or found in front, and unsaved progress is lost.",

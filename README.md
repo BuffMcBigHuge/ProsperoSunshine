@@ -121,7 +121,7 @@ Tips:
 
 - A friend whose Moonlight asks for **another resolution up to 1080p** (720p, say) or another codec gets a capture channel of
   their own, with their own bitrate. Asking for the same mode as you shares your stream, at your bitrate.
-- **Encryption over the internet** in the app's Settings is on ("When supported") by default, so a client outside your
+- **Encryption over the internet** in the app's Settings is on ("Optional") by default, so a client outside your
   network gets an encrypted stream when it supports it.
 - Instead of forwarding ports, a VPN works too, as long as something in your network routes to the console: the console can't
   run a VPN client itself. With Tailscale, for example, a PC or router at home acting as a subnet router; the friend then adds
@@ -234,8 +234,8 @@ expect it to fail.
 
 **H.264 on firmware 10.x:** 10.x used to cut every 1080p frame into 34 slices, and Moonlight on Windows then showed a white
 picture with hardware decoding. Since 0.3.1 the host asks for 4 slices per frame. Nobody has tried that on 10.x yet: if you can,
-stream H.264 and look for `first frame has N slices` in `sunshine.log` or the kernel log, and tell us the number and whether
-the picture came. Until then, HEVC is the safe choice there.
+stream H.264, then open the app's **Diagnostics** page and look for `first frame has N slices` (it is in `host_diag.log`, not
+in `sunshine.log`). Tell us the number and whether the picture came. Until then, HEVC is the safe choice there.
 
 **Surround:** turn on **Surround** under Experimental, set Moonlight to 5.1 or 7.1 and play a game with surround sound for a
 minute. `sunshine.log` gets a line `12-channel levels` every 30 seconds; post a few of them with what you heard from which

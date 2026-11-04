@@ -60,7 +60,8 @@ Toolchain: PS5 Payload SDK v0.45 in the Docker image `prosperosunshine-sdk:v0.45
   ended in a hung console that had to be switched off at the power button. Close all games first.
 - Publishing (push, GitHub release, store catalog PR, issue comments) needs the owner's OK each time. No
   attribution lines for agents in commits or PRs.
-- Don't accept terms or EULAs for the owner. Don't save games.
+- EULAs and terms of games and apps on the PS5 may be accepted for the owner; accounts, purchases and anything off the
+  console still need asking. Don't save games.
 
 ## Releasing
 
