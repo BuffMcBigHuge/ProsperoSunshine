@@ -501,7 +501,7 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
-### Zweiter Aufnahmekanal im Host (2026-11-04, 13.00, nicht veröffentlicht)
+### Zweiter Aufnahmekanal im Host (2026-11-04, 13.00, Release 0.2.4)
 
 Will ein weiteres Gerät einen anderen Codec, einen anderen Dynamikbereich oder eine andere Auflösung bis 1080p, öffnet
 der Host für dieses Gerät einen zweiten Kanal auf Profil 175. Bei gleichem Modus hängt es sich wie bisher an den laufenden
@@ -533,7 +533,7 @@ Nicht geprüft:
 - der Ton über längere Zeit, wenn nur noch Kanal 1 läuft und Kanal 0 nur für den Ton offen bleibt;
 - das echte Moonlight.
 
-### Laufende Streams in der App, `STREAMS` und `ENDSTREAM` (2026-11-04, 13.00, nicht veröffentlicht)
+### Laufende Streams in der App, `STREAMS` und `ENDSTREAM` (2026-11-04, 13.00, Release 0.2.4)
 
 Testclient A und B (zwei gekoppelte Geräte) mit dem Mario-64-Demo, Steuerkanal für den Test per `control_lan` im LAN
 geöffnet, danach wieder entfernt:
@@ -552,7 +552,7 @@ geöffnet, danach wieder entfernt:
 Nicht geprüft: die Karte „Streaming now“ in der App, solange ein Stream läuft. Ohne Stream zeigt die App die Startseite wie
 bisher. Während eines Streams entstehen keine Screenshots, weil sie die Aufnahme belegen.
 
-### HDR-Metadaten, Slices, 120 fps, zweiter Kanal (2026-11-04, 13.00, nicht veröffentlicht)
+### HDR-Metadaten, Slices, 120 fps, zweiter Kanal (2026-11-04, 13.00, Release 0.2.4)
 
 **HDR-Metadaten.** Der Host schickte bei HDR im Steuerkanal nur Nullen (`hdr_info_raw_t(true)` ohne Werte). moonlight-common-c
 meldet sie trotzdem als gültig (`LiGetHdrMetadata`), und Moonlight für Windows reicht sie an die Swapchain weiter. Ein

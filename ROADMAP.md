@@ -1,8 +1,8 @@
 # ProsperoSunshine Roadmap und Umsetzungsplan
 
-Stand: 4. November 2026, nach Release 0.2.3. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
+Stand: 4. November 2026, nach Release 0.2.4. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
 
-## Stand (4. November 2026, nach Release 0.2.3)
+## Stand (4. November 2026, nach Release 0.2.4)
 
 Seit 0.1.5 sind folgende Releases dazugekommen:
 
@@ -18,12 +18,17 @@ Seit 0.1.5 sind folgende Releases dazugekommen:
   - Ein Gerät mit falschem Dynamikbereich wird mit Meldung abgewiesen.
   - Ein Titelwechsel unter 1080p fällt nicht mehr auf 1080p zurück.
   - Der Host wartet länger auf die Zuteilung der Aufnahme.
+- **0.2.4:**
+  - Ein zweiter Aufnahmekanal: Ein Gerät bekommt einen eigenen Codec, Dynamikbereich oder eine eigene Auflösung bis 1080p.
+  - Die App zeigt, wer streamt, und beendet den Stream eines Geräts (`STREAMS`, `ENDSTREAM`).
+  - HDR-Streams senden HDR10-Metadaten statt Nullen.
 
 Firmware: 13.00 und 10.20 sind geprüft. 10.40 und 13.60 streamen laut Nutzerberichten (Issues #1 und #2), dort aber nicht
 gemessen.
 
 Co-op: Weitere Geräte hängen sich an den laufenden Stream. Ein Tester spielte auf 10.20 mit vier Spielern, auch über das
-Internet (Issue #11). Alle Geräte bekommen denselben Modus; einen eigenen Modus je Gerät zeigt Schritt 2 unten.
+Internet (Issue #11). Seit 0.2.4 gibt es zwei Aufnahmekanäle (RA-Profil 180 und 175, auf 13.00 gemessen): Ein Gerät mit
+anderem Codec, Dynamikbereich oder einer Auflösung bis 1080p bekommt den zweiten, alle weiteren teilen sich einen davon.
 
 ## Stand nach Release 0.1.5 (1. November 2026)
 
@@ -277,26 +282,23 @@ Bewusst nicht geplant: Haptik (Moonlight hat keinen Kanal dafür); harte Trigger
 
 ## Nächste konkrete Schritte
 
-1. Release 0.2.3 veröffentlichen, sobald CI wieder grün ist (am 2026-11-04 war ffmpeg.org nicht erreichbar, und CI hatte nie
-   einen Cache gespeichert; beides ist im Workflow behoben). Im Katalog die Beschreibung unter 200 Zeichen kürzen.
-2. Eigener Modus je Gerät im Co-op. Heute bekommen alle den Modus des ersten Streams. Ein Freund über das Mobilnetz trägt
-   also dieselbe Bitrate, und ein Client mit H.264 kann einem HEVC-Stream nicht beitreten.
-   - Kleiner Schritt, nur 13.00: die niedrigste Bitrate aller Geräte per `SetVideoBitrate`. Senken geht, Anheben über den
-     Wert beim Öffnen beendet den Kanal (`docs/re/hevc.md`). Ob H.264 bis zu diesem Wert wieder steigen kann, ist ungeprüft.
-     Probe: `src/bitrate_spike.cpp` erweitern.
-   - Der eigentliche Spike: ein zweiter Avcap2-Kanal mit eigener ResourceArbitrator-Id (175 oder 185, gleiche Zuteilung wie
-     180) gleichzeitig zum ersten. Er braucht eine neue Probe auf Basis von `src/open_probe.cpp` ohne die `owned`-Sperre: zwei
-     Kanäle mit H.264 in 1080p, je mit eigener Bitrate, danach H.264 neben HEVC, 1080p neben 720p und 4K (Profil 182) neben
-     1080p. Offen ist das Encoder-Budget (`vcn[20]` gegen `vcn[70]`, `docs/re/avcap2-exports.md`) und ob die Speicherpools
-     reichen (`docs/re/hevc.md`).
-   - Neu kodieren auf der Konsole ist keine Option. Der ffmpeg-Build hat keine Encoder, und der Hardware-Encoder ist nur
-     über Avcap2 erreichbar.
+1. Zweiter Aufnahmekanal (seit 0.2.4) weiter prüfen. Auf 13.00 gemessen: gleicher Modus teilt Kanal 0, H.264 neben HEVC,
+   1080p neben 720p und SDR neben HDR auf Kanal 1, das erste Gerät geht zuerst. Offen:
+   - ein drittes Gerät, eine Übernahme innerhalb von Kanal 1 und ein Wunsch über 1080p, solange Kanal 0 belegt ist;
+   - längerer Ton, wenn nur noch Kanal 1 läuft;
+   - echtes Moonlight auf mehreren Geräten;
+   - 10.x: ob Profil 175 dort neben 180 aufgeht. Schlägt es fehl, tritt das Gerät wie in 0.2.3 bei oder wird abgewiesen.
+   Eine eigene Bitrate je Gerät auf demselben Kanal geht nicht, beide Kanäle teilen bei gleichem Codec und gleicher
+   Auflösung den Encoder (`STATUS.md`).
+2. 120 fps: `cfg+0x1c = 2` lehnt OpenVideo auf 13.00 mit 0x80c70004 ab (`slice_rate_probe`, `STATUS.md`). Weitere Spuren
+   nur mit einem Titel, der 120 Hz ausgibt, und über die Prüfroutine in `docs/re/avcap2-exports.md`.
 3. 13.60 (Issue #1): Der Host wartet seit 0.2.3 bis zu 6 s auf die Zuteilung und schreibt `RUNNING granted after N ms`,
    wenn es länger dauert. Ein Bericht damit zeigt, wie lang die Zuteilung dort braucht. Danach die Checkliste in
    `docs/firmware-porting.md` für 13.60.
 4. 10.x: 10.20 ist geprüft, 10.40 streamt HEVC laut Nutzerbericht (Issue #2). Offen: H.264 kommt dort in 34 Slices je
-   Bild, und die Hardware-Decoder unter Windows nehmen höchstens 32 (weißes Bild). Klären, ob sich die Slice-Zahl
-   einstellen lässt; bis dahin HEVC empfehlen.
+   Bild, und die Hardware-Decoder unter Windows nehmen höchstens 32 (weißes Bild). Ob sich die Slice-Zahl einstellen
+   lässt, zeigt `slice_rate_probe` auf 10.x (auf 13.00, mit einem Slice je Bild, wirken die Felder nicht); bis dahin
+   HEVC empfehlen.
 5. Ruhemodus mit offenem Spiel und laufendem Stream: Der Neustart der Dienste endet dort nicht in `host ready`
    (`STATUS.md`). Das ist zu klären. Offen sind außerdem das Aufwecken per Controller und der einmalige Hänger im ersten
    Test. Wecken aus Moonlight geht nicht (`STATUS.md`, Issue #10). Tests nur nach Rückfrage.
