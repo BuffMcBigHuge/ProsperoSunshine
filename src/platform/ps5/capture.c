@@ -241,7 +241,9 @@ static ptrdiff_t record_shift(void)
     return (firmware & 0xffff0000u) == 0x13600000u ? 8 : 0;
 }
 
-static void configure(uint8_t *p, uint32_t mode, int variant)
+ptrdiff_t ps_capture_record_shift(void) { return record_shift(); }
+
+void ps_capture_build_config(uint8_t *p, const ps_capture_video_config *c, uint32_t mode, int variant)
 {
     static const struct { size_t at; uint64_t size; } headers[] = {
         {0, 0x2e0}, {8, 0x28}, {0x30, 0x58}, {0x38, 0x18},
@@ -259,24 +261,24 @@ static void configure(uint8_t *p, uint32_t mode, int variant)
     u32(p, 0x10, 0);
     // Purpose: Remote Play. HEVC above 1080p with it needs the service's memory pools, which are missing (docs/re/hevc.md);
     // video chat has the same encoder preset and allocates per request.
-    u32(p, 0x14, atomic_load(&video_codec) == 1 && atomic_load(&video_resolution) >= 5 ? 6 : 2);
-    u32(p, 0x18, atomic_load(&video_resolution));
-    u32(p, 0x1c, atomic_load(&video_timing));
-    u32(p, 0x20, atomic_load(&video_ten_bit));
-    u32(p, 0x24, atomic_load(&video_codec));
-    u32(p, 0x28, atomic_load(&session_resource));
-    const uint64_t peak = atomic_load(&opening_peak), fps = atomic_load(&video_timing) ? 60 : 30;
+    u32(p, 0x14, c->codec == 1 && c->resolution >= 5 ? 6 : 2);
+    u32(p, 0x18, c->resolution);
+    u32(p, 0x1c, c->timing);
+    u32(p, 0x20, c->ten_bit);
+    u32(p, 0x24, c->codec);
+    u32(p, 0x28, (uint32_t)c->resource);
+    const uint64_t peak = c->peak, fps = c->timing ? 60 : 30;
     // Frames between periodic IDRs. Clients ask for one after a loss, so these are only a safety net, and each one
     // costs bits and, with HEVC, skipped frames (docs/re/hevc.md).
     u32(p, 0x94, (uint32_t)(fps * 10));
     if (shift >= 0) {
         // Rate fields as SceRemotePlay 0x70130 computes them: average, peak, bits per frame.
-        u32(p, 0xc8, atomic_load(&opening_average));
+        u32(p, 0xc8, c->average);
         u32(p, 0xcc, (uint32_t)peak);
         u32(p, 0xd0, (uint32_t)(peak * 1001 / (fps * 1000)));
     } else {
         // No rate fields on 10.x: the encoder's QP follows the client's bitrate instead (encoder_qp.h).
-        const uint32_t average = atomic_load(&opening_average);
+        const uint32_t average = c->average;
         const ps_qp qp = ps_qp_for_bitrate(average);
         u32(p, 0xc4, qp.idr);
         u32(p, 0xc8, qp.other);
@@ -286,7 +288,7 @@ static void configure(uint8_t *p, uint32_t mode, int variant)
     u32(p, 0x2a4 + shift, 2); // composited screen, including home menu
     u32(p, 0x2b0 + shift, 1);
     p[0x2b4 + shift] = 1;
-    if (shift >= 0 && atomic_load(&video_codec) == 1 && variant != PS_EXP_MINIMAL) {
+    if (shift >= 0 && c->codec == 1 && variant != PS_EXP_MINIMAL) {
         const ptrdiff_t high = variant == PS_EXP_FULL ? shift : 0;
         // Remote Play's values (SceRemotePlay 0x6f7f0). With only the fields it sets for HEVC alone,
         // sceAvcap2Start returns 0x80c78000. The set is not minimised.
@@ -304,7 +306,7 @@ static void configure(uint8_t *p, uint32_t mode, int variant)
         // lost a frame per IDR. These are the largest values measured to start; above them, Start returns 0x80c78000
         // (docs/re/hevc.md).
         static const uint32_t budgets[] = {0, 0x20000, 0x20000, 0x40000, 0x60000, 0xc0000, 0x100000};
-        u32(p, 0x10c, budgets[atomic_load(&video_resolution)]);
+        u32(p, 0x10c, budgets[c->resolution < 7 ? c->resolution : 0]);
         p[0x128] = 1;
         u32(p, 0x12c, 0x19);
         u64(p, 0x188, 0x10);
@@ -315,6 +317,20 @@ static void configure(uint8_t *p, uint32_t mode, int variant)
         u32(p, 0x2c0 + high, 1);
         u32(p, 0x2c4 + high, 0x6e);
     }
+}
+
+static void configure(uint8_t *p, uint32_t mode, int variant)
+{
+    const ps_capture_video_config c = {
+        .resolution = atomic_load(&video_resolution),
+        .timing = atomic_load(&video_timing),
+        .codec = atomic_load(&video_codec),
+        .ten_bit = atomic_load(&video_ten_bit),
+        .average = atomic_load(&opening_average),
+        .peak = atomic_load(&opening_peak),
+        .resource = atomic_load(&session_resource),
+    };
+    ps_capture_build_config(p, &c, mode, variant);
     if (atomic_load(&override_field)) u32(p, atomic_load(&override_field), atomic_load(&override_value));
     for (int i = 0; i < 3; i++)
         if (atomic_load(&extra_field[i])) u32(p, atomic_load(&extra_field[i]), atomic_load(&extra_value[i]));

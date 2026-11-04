@@ -58,6 +58,17 @@ void ps_capture_set_resource(int id);
 void ps_capture_override_config(size_t field, uint32_t value);
 // Research: up to three more fields written after that one (slot 0..2, field 0 = none), for settings that span fields.
 void ps_capture_override_extra(int slot, size_t field, uint32_t value);
+// Research (dual_open_probe): the OpenVideo record as ps_capture_open writes it, from explicit values instead of the
+// settings for the next open, and without the override field. `record` holds 0x2e8 bytes; `output` is
+// sceAvcap2GetVideoOutMode's value; variant is a ps_exp_variant (experimental.h), PS_EXP_STANDARD as the host uses by
+// default. ps_capture_record_shift: how far this firmware's record moves the fields from 0x198 on (13.00: 0, 10.x: -0x18).
+typedef struct {
+    uint32_t resolution, timing, codec, ten_bit;  // as ps_capture_set_video_mode, _set_codec, _set_ten_bit
+    uint32_t average, peak;                       // bit/s
+    int resource;                                 // ResourceArbitrator id, cfg+0x28
+} ps_capture_video_config;
+void ps_capture_build_config(uint8_t *record, const ps_capture_video_config *config, uint32_t output, int variant);
+ptrdiff_t ps_capture_record_shift(void);
 // Research: raw result of the last sceAvcap2OpenVideo, and sceAvcap2ChangeScanInResolution at runtime.
 int ps_capture_last_open_rc(void);
 int ps_capture_change_scan_in(ps_capture *session, uint32_t resolution);
