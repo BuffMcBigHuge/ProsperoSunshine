@@ -556,6 +556,26 @@ Stream muss denselben Codec und denselben Dynamikumfang verlangen. Ab dem zweite
 Nicht geprüft: ein Spiel für zwei Spieler (keins installiert), also ob ein Spiel den Gast als zweiten Spieler annimmt; das
 echte Moonlight; über das Internet; HDR mit zwei Streams; drei oder vier Spieler; Firmware 10.20.
 
+**Tester, 0.2.2 auf 10.20 (PS5 Pro, GitHub-Issue 11, nicht selbst gemessen):** Overcooked! All You Can Eat mit bis zu vier
+Spielern, DualSense an der Konsole und drei Moonlight-Clients (Switch im LAN, iPhone über 4G, Android in einem anderen Haus),
+und alle Mischungen aus DualSense und Moonlight bis vier. Jedes Moonlight-Pad kam ohne Nutzer und bekam nach 3–7 s seinen
+eigenen. Keine Sendefehler an den Pads, Beenden und Übernahme wie oben. Zwei Mängel: Die Übernahme öffnete die Aufnahme im
+Modus des übernehmenden Geräts (1080p mit 35 statt 720p mit 16 Mbit/s für alle), und ein Gerät mit HDR wurde erst nach
+dem Start des Streams abgewiesen, Moonlight zeigte nur „error code -1“.
+
+**Behoben (2026-11-04, 13.00, Testclient):**
+
+- **Übernahme behält den Modus:** A mit 1280x720 und 8 Mbit/s angefragt (der Host öffnete mit 5708 kbit/s), B mit 1080p
+  und 20 Mbit/s angehängt. Als A ging: „keeping the running mode 1280x720@60, 5708 kbit/s“, B lief weiter in 1280x720,
+  ohne fehlende Bildnummer, längste Pause 33 ms.
+- **Angebot während eines Streams:** `ServerCodecModeSupport` war 769 ohne Stream, 1 während H.264 lief und 257 während
+  HEVC ohne HDR lief; danach wieder 769.
+- **HDR beim Start abgewiesen** (Patch `0013-join-with-matching-hdr`): `/resume` mit `hdrMode=1` (neu: `pair.py launch
+  --hdr`) während eines Streams ohne HDR von einem anderen Gerät bekam 409 mit „Another device is streaming without HDR.
+  Turn HDR off in Moonlight to join.“, während H.264 und während HEVC lief. Der laufende Stream lief ohne Lücke weiter.
+
+Nicht geprüft: wie Moonlight auf dem Handy die Meldung zeigt, und ein HDR-Stream, zu dem ein Gerät ohne HDR kommt.
+
 ### Neuer Stream vom selben Gerät löst den alten ab (2026-11-03, 13.00)
 
 Moonlight Web von außerhalb, hinter einem Proxy mit SSL-Inspection (Besitzer): Mehrere Versuche hingen alle gleich. Der Stream

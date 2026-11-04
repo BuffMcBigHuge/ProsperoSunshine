@@ -13,6 +13,7 @@
 #include "src/video.h"
 #include <x86intrin.h>
 #include <algorithm>
+#include <atomic>
 #include <condition_variable>
 #include <cstring>
 #include <mutex>
@@ -63,9 +64,15 @@ std::chrono::steady_clock::time_point capture_time(const prospero::CaptureSessio
 // if it fails, while H.264 may still run, so it takes a switch in the app, and a function that fails is off until the
 // host restarts: the client's next stream sees that here (serverinfo and RTSP read these for each stream).
 // hevc_mode = 1 in sunshine.conf turns it off, 2 turns off HDR.
+// While a stream runs, a device that joins gets its picture, so only its codec and dynamic range are offered: Moonlight
+// then picks them. It can't be made to pick HEVC, so a client set to H.264 is still turned away from an HEVC stream.
+std::atomic_int running_format{-1};  // the running stream's videoFormat, -1 while none runs
+std::atomic_bool running_hdr{false};
 void update_offers() {
     const int hevc_mode = config::video.hevc_mode;
     active_hevc_mode = hevc_mode == 1 || !ps_capture_hevc_allowed() ? 1 : hevc_mode == 2 || !ps_capture_hdr_allowed() ? 2 : 3;
+    if (running_format == 0) active_hevc_mode = 1;
+    else if (running_format == 1 && !running_hdr) active_hevc_mode = std::min(active_hevc_mode, 2);
     last_encoder_probe_supported_dynamic_range_for_codec[1] = active_hevc_mode == 3;
 }
 
@@ -90,6 +97,10 @@ struct {
     int video_format = 0;
     bool hdr = false;
     prospero::CaptureMode delivered{};
+    // What the stream holding the capture opened it with. A joined stream that takes the capture over keeps it.
+    prospero::CaptureMode mode{};
+    bool low_rate = false;
+    uint32_t requested = 0;  // bit/s
     std::vector<joined_stream *> joined;
     bool keyframe_wanted = false;  // a joined stream asked for one
 } owner;
@@ -104,6 +115,11 @@ bool streams_from(const std::string &cert) {
 std::string_view stream_kind(int video_format, bool hdr) {
     return video_format == 1 ? (hdr ? "HEVC HDR"sv : "HEVC"sv) : "H.264"sv;
 }
+}
+
+std::optional<bool> running_stream_hdr() {
+    if (running_format < 0) return std::nullopt;
+    return running_hdr.load();
 }
 
 int probe_encoders() {
@@ -129,8 +145,8 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     // Avcap2 encodes at 30 or 60 fps. On 13.00 and 10.20 360p, 540p and 720p start as well (STATUS.md), so a client that
     // asks for less gets less to receive and decode.
     const bool hevc = config.videoFormat == 1;
-    const bool low_rate = config.framerate > 0 && config.framerate <= 30;
-    const auto mode =
+    bool low_rate = config.framerate > 0 && config.framerate <= 30;
+    auto mode =
         prospero::choose_capture_mode(config.height, ps_capture_large_modes_allowed(), ps_capture_small_modes_allowed());
     BOOST_LOG(info) << "PS5 capture requested "sv << config.width << 'x' << config.height << '@' << config.framerate
                     << ", delivering "sv << mode.width << 'x' << mode.height << '@' << (low_rate ? 30 : 60);
@@ -168,6 +184,7 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     // range, since there is one encoder. When the stream holding the capture ends, a joined one takes it over.
     const std::string cert = channel_data ? stream::session::client_cert(*channel_data) : std::string{};
     int64_t next_index = 0;  // per stream, across a takeover of the capture
+    bool took_over = false;
     std::unique_lock lock(owner.mutex);
     if (streams_from(cert)) {
         BOOST_LOG(info) << "PS5 capture: the same device started a new stream, ending its old one"sv;
@@ -210,7 +227,25 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
         owner.changed.notify_all();
         if (shutdown_event->peek()) return;
         BOOST_LOG(info) << "PS5 capture: the stream holding the capture ended, this one takes it over"sv;
+        took_over = true;
     }
+    // config.bitrate is in kbit/s. The channel opens with its bitrate in the config: raising it later above the
+    // opening value stops the encoder (docs/re/hevc.md). Peak as Remote Play: H.264 average * 1.12, HEVC * 1.10.
+    // Above 50 Mbit/s is measured on firmware 13.00 only (docs/re/hevc.md); elsewhere it takes a switch in the app.
+    const uint32_t default_average = 6'000'000, max_average = ps_capture_high_bitrate_allowed() ? 150'000'000 : 50'000'000;
+    uint32_t requested = config.bitrate > 0 ? static_cast<uint32_t>(config.bitrate) * 1000u : default_average;
+    // A takeover keeps the running mode: the others keep the picture they had, and a friend on a slow link gets no more
+    // than before.
+    if (took_over) {
+        mode = owner.mode;
+        low_rate = owner.low_rate;
+        requested = owner.requested;
+        BOOST_LOG(info) << "PS5 capture: keeping the running mode "sv << mode.width << 'x' << mode.height << '@'
+                        << (low_rate ? 30 : 60) << ", "sv << requested / 1000 << " kbit/s"sv;
+    }
+    owner.mode = mode;
+    owner.low_rate = low_rate;
+    owner.requested = requested;
     owner.streaming = true;
     owner.cert = cert;
     owner.shutdown = shutdown_event;
@@ -218,21 +253,21 @@ void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data
     owner.hdr = hdr;
     owner.delivered = mode;
     owner.keyframe_wanted = false;
+    running_hdr = hdr;
+    running_format = config.videoFormat;
+    update_offers();
     lock.unlock();
     const auto release = util::fail_guard([] {
         {
             std::lock_guard lock(owner.mutex);
             owner.streaming = false;
             owner.shutdown.reset();
+            running_format = -1;
+            update_offers();
         }
         owner.changed.notify_all();
     });
 
-    // config.bitrate is in kbit/s. The channel opens with its bitrate in the config: raising it later above the
-    // opening value stops the encoder (docs/re/hevc.md). Peak as Remote Play: H.264 average * 1.12, HEVC * 1.10.
-    // Above 50 Mbit/s is measured on firmware 13.00 only (docs/re/hevc.md); elsewhere it takes a switch in the app.
-    const uint32_t default_average = 6'000'000, max_average = ps_capture_high_bitrate_allowed() ? 150'000'000 : 50'000'000;
-    const uint32_t requested = config.bitrate > 0 ? static_cast<uint32_t>(config.bitrate) * 1000u : default_average;
     const uint32_t average = std::min({requested, max_average, prospero::max_average_of(mode, low_rate)});
     ps_capture_set_opening_bitrate(average, average / 100 * (hevc ? 110 : 112));
     ps_capture_set_codec(hevc ? 1 : 0);

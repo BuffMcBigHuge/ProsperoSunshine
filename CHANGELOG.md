@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Changed
+
+- **A stream that takes the capture over keeps the running mode.** When the device holding the capture left, the next one
+  reopened it in its own mode, so everyone could jump from 720p to 1080p and a friend on a mobile link got twice the data.
+  Now the takeover keeps the resolution, frame rate and bitrate everyone had.
+- **A device that can't join is told so before its stream starts.** While a stream runs, the host offers new devices only
+  its codec and dynamic range, so Moonlight picks them on its own. A device whose Moonlight still asks for another dynamic
+  range is refused at the start with a message Moonlight shows ("Another device is streaming without HDR. Turn HDR off in
+  Moonlight to join."), instead of "error code -1" after its stream had started. A client set to H.264 is still turned
+  away from an HEVC stream once it has started, since Moonlight can't be made to pick HEVC.
+
 ### Fixed
 
 - **Starting or closing a game no longer drops a stream below 1080p to 1080p.** On 10.20 the console's output has no mode

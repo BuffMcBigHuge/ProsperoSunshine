@@ -420,6 +420,8 @@ def cmd_launch(a):
               "surroundAudioInfo": "196610", "remoteControllerBitmap": "1", "gcmap": "1"}
     if a.corever:
         params["corever"] = "1"
+    if a.hdr:
+        params["hdrMode"] = "1"
     st, sb = host.https_get(ident, "/serverinfo", base_params(ident))
     sroot = parse_xml(sb)
     check_status(sroot, "serverinfo")
@@ -484,6 +486,7 @@ def main():
     sl.add_argument("--rikeyid", type=int)
     sl.add_argument("--corever", action="store_true", help="add corever=1 (encrypted RTSP, like real Moonlight)")
     sl.add_argument("--resume", action="store_true")
+    sl.add_argument("--hdr", action="store_true", help="add hdrMode=1, as Moonlight does with HDR on")
     sub.add_parser("cancel")
     sub.add_parser("status")
     sc = sub.add_parser("cover")
