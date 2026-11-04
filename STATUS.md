@@ -501,6 +501,38 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### Zweiter Aufnahmekanal im Host (2026-11-04, 13.00, nicht veröffentlicht)
+
+Will ein weiteres Gerät einen anderen Codec, einen anderen Dynamikbereich oder eine andere Auflösung bis 1080p, öffnet
+der Host für dieses Gerät einen zweiten Kanal auf Profil 175. Bei gleichem Modus hängt es sich wie bisher an den laufenden
+Stream an.
+
+Gemessen mit Testclient A und B, dem Mario-64-Demo und `STREAMS` (Steuerkanal für den Test im LAN offen). B kam jeweils
+10 s nach A dazu:
+
+| Fall | A | B | Ergebnis |
+| --- | --- | --- | --- |
+| gleicher Modus | H.264 1080p, Kanal 0 | `role=joined channel=0` | A 1795, B 1499 Bilder |
+| H.264 und HEVC | H.264 1080p, Kanal 0 | HEVC 1080p, Kanal 1 | B dekodiert als HEVC Main |
+| 1080p und 720p | H.264 1080p, Kanal 0 | H.264 1280x720, Kanal 1 | B dekodiert als 1280x720 |
+| SDR und HDR | HEVC 1080p SDR, Kanal 0 | HEVC 10 Bit mit `--hdr`, Kanal 1 | `/resume` nahm B an, B ist Main 10 |
+| A geht zuerst | H.264, 25 s, Kanal 0 | HEVC, 40 s, Kanal 1 | B hatte danach allein weiter Bild und Ton |
+
+In allen Fällen gab es keine fehlende Bildnummer. Die längste Pause lag bei 37 ms, beide Ströme dekodierten mit ffmpeg
+fehlerfrei, und beide Geräte bekamen Ton (A ging zuerst: B 7789 Audiopakete in 40 s).
+
+Im `host_diag.log` öffnete, lief und schloss `capture2` viermal ohne Fehler. `Initialize` machte der andere Kanal, und
+`Terminate` blieb dem Kanal überlassen, der zuletzt schloss.
+
+Nicht geprüft:
+
+- ein drittes Gerät: Anhängen, Ablehnen und 409;
+- die Übernahme innerhalb von Kanal 1;
+- eine Anfrage über 1080p für Kanal 1;
+- ob eigene Bitraten bei gleichem Modus etwas ändern: wohl nicht, weil das System dann einen Encoder teilt;
+- der Ton über längere Zeit, wenn nur noch Kanal 1 läuft und Kanal 0 nur für den Ton offen bleibt;
+- das echte Moonlight.
+
 ### Laufende Streams in der App, `STREAMS` und `ENDSTREAM` (2026-11-04, 13.00, nicht veröffentlicht)
 
 Testclient A und B (zwei gekoppelte Geräte) mit dem Mario-64-Demo, Steuerkanal für den Test per `control_lan` im LAN
