@@ -61,6 +61,10 @@ old host keeps running.
 Pairing survives host restarts. To rename a device or take its access away, select **Paired devices** on the app's home page. The
 list also shows the mode each device last asked for. Removing a device ends its running stream, and it has to pair again to come back.
 
+While someone streams, the app's home page shows **Streaming now**: each device with its name, address, codec and HDR,
+resolution and frame rate, bitrate, how long it has been streaming and how many controllers it has. Select it to end one
+device's stream; the game and the other devices' streams go on, and the device stays paired and can connect again.
+
 ## Streaming
 
 Start **"PS5 Screen"** in Moonlight to stream what the console shows, or pick a game to start it as well. The first time, the
@@ -195,7 +199,7 @@ switch off and choose **Save and restart host**.
 ## Development control socket
 
 The host listens on TCP **47995** with a line-based control socket: `STATUS`, `PAIRINGS`, `PIN [<id>] <pin> [name]`,
-`DEVICES`, `RENAME <uuid> <name>`, `UNPAIR <uuid>`, `REPORT`, `AUTOLOAD [ON|OFF]` and `QUIT`. It is **unauthenticated**. By default it listens on `127.0.0.1` only (ROADMAP P9.1), so the app on the
+`DEVICES`, `STREAMS`, `ENDSTREAM <uuid>`, `RENAME <uuid> <name>`, `UNPAIR <uuid>`, `REPORT`, `AUTOLOAD [ON|OFF]` and `QUIT`. It is **unauthenticated**. By default it listens on `127.0.0.1` only (ROADMAP P9.1), so the app on the
 console can use it but the LAN cannot. Creating the empty file `/data/prosperosunshine/control_lan` re-enables LAN
 access for development. Do this only on trusted networks.
 

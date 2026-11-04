@@ -116,6 +116,29 @@ bool parse_device_line(const std::string &line, Device *device);
 std::string device_label(const Device &device);
 std::string device_info(const Device &device);
 
+// A running stream, as the host's STREAMS lists it. Like a Device, it stays in the app.
+struct Stream
+{
+    std::string id;      // the device's UUID, for ENDSTREAM; "" when the host does not know the device
+    std::string name;
+    std::string address; // "" when unknown
+    std::string codec;   // H.264, HEVC, AV1
+    bool hdr = false;
+    std::string mode;    // what it gets, like "1920x1080@60"; "" when unknown
+    long long kbps = 0;
+    long long seconds = 0; // since it started
+    int pads = 0;          // its virtual controllers
+    std::string role;      // capture (its stream holds the capture), joined (gets that picture), starting
+};
+// "OK uuid=<uuid> address=<ip> codec=<c> hdr=<0|1> mode=<WxH@fps> kbps=<n> secs=<n> pads=<n> role=<r> name=<name>":
+// key=value in any order, unknown keys skipped, the name the rest of the line. "-" stands for an unknown value.
+bool parse_stream_line(const std::string &line, Stream *stream);
+std::string stream_label(const Stream &stream);
+// "HEVC HDR, 1920x1080@60, 20 Mbit/s, 1 controller": what the stream sends and how many pads it has.
+std::string stream_info(const Stream &stream);
+// "45 s", "12 min", "1 h 05 min".
+std::string duration_text(long long seconds);
+
 // The log with what could identify someone taken out: IPv4 addresses, `names` (paired devices and the
 // console's name) and long hex runs (client ids, keys). Other text stays.
 std::string scrub(const std::string &text, const std::vector<std::string> &names);

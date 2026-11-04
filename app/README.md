@@ -54,6 +54,7 @@ and how the last request went.
 | Start at boot | The switch for the Payload Manager's autoload (below). A line under it warns when the Payload Manager's own autoload is off (with a running host, which can read `pldmgr_config.txt`; a title may not). |
 | Notice | One line above the pairing part when there is something to know about this console: the firmware is untested, the last capture attempt failed, and why (HDR on, capture in use, firmware not supported, the step that failed), or an Experimental switch failed or started and the Diagnostics report is wanted. It comes from the firmware and the host's `host_diag.log`. |
 | Pairing | A card per Moonlight client waiting to pair, with its name and address; a new request takes the focus and chimes. Cross opens the PIN keyboard: type the four digits Moonlight shows and press Done (or Options). The app waits until Moonlight has finished pairing and says whether it worked. Beside it, the paired devices (from `sunshine_state.json`). |
+| Streaming now | While someone streams, a card with the first two devices (from the host's `STREAMS`): name, codec and HDR, resolution and frame rate, bitrate, controllers and how long it has been streaming; "joined" marks a device that gets another device's picture. It takes the second pairing card's place, or the empty pairing card's. Cross opens the list of all streams with their addresses; Cross on one asks "End the stream of ...?", and a second Cross ends that device's stream (`ENDSTREAM`). The game and the other streams go on, and the device can connect again. |
 
 While a stream runs, Stop, Restart and Save and restart need a second Cross within four seconds: the
 player streaming the console may be the one pressing. Input is taken only after the app has been up
@@ -149,13 +150,16 @@ request:
 | `STATUS` | `OK running=<0\|1> app=<name> pending=<n>` |
 | `PAIRINGS` | `OK <id> <name> <address>` per pending request, then `END` |
 | `PIN <id> <pin> [name]` | `OK paired` or `ERR ...`, once Moonlight has finished the handshake |
+| `STREAMS` | `OK uuid=<uuid> address=<ip> codec=<H.264\|HEVC\|AV1> hdr=<0\|1> mode=<WxH@fps> kbps=<n> secs=<n> pads=<n> role=<capture\|joined\|starting> name=<name>` per running stream, then `END`. `-` stands for an unknown value. Mode, codec and bitrate are what the capture delivers, the same for every device that joined (`role=joined`); `role=starting` has not reached the capture yet and shows what it asked for. |
+| `ENDSTREAM <uuid>` | `OK ended`, `ERR not streaming` or `ERR no such device`, once that device's stream has ended |
 | `REPORT` | `OK port=47996`: for 8 s the host answers there with `diagnostics.txt` |
 | `AUTOLOAD [ON\|OFF]` | `OK list=<0\|1> manager=<0\|1> slot=<0\|1>` or `ERR ...`: the autoload list, as the host sees it or after its change |
 | `QUIT` | `OK bye`, then the host ends |
 
 The socket serves one client at a time and has no authentication; it is meant for the local network
-during development. The app keeps each connection short (a poll sends `STATUS` and `PAIRINGS` and
-closes), except for `PIN`, which waits up to 60 s for Moonlight.
+during development. The app keeps each connection short (a poll sends `STATUS` and `PAIRINGS`, then
+`DEVICES`, then `STREAMS`, each on a connection of its own), except for `PIN`, which waits up to 60 s for
+Moonlight, and `UNPAIR` and `ENDSTREAM`, which wait up to 20 s for the stream to end.
 
 ## Building
 

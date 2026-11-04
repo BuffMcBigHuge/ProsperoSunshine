@@ -489,6 +489,110 @@ std::string device_info(const Device &device)
     return device.mode.empty() ? "No stream recorded yet" : "Last asked for " + device.mode;
 }
 
+namespace
+{
+long long field_number(const std::string &text)
+{
+    if (text.empty() || text.size() > 15)
+        return 0;
+    long long value = 0;
+    for (const char c : text)
+    {
+        if (c < '0' || c > '9')
+            return 0;
+        value = value * 10 + (c - '0');
+    }
+    return value;
+}
+} // namespace
+
+bool parse_stream_line(const std::string &line, Stream *stream)
+{
+    if (line.rfind("OK ", 0) != 0)
+        return false;
+    // The values before the name hold no spaces, so the first " name=" is the key.
+    const std::size_t name_at = line.find(" name=");
+    if (name_at == std::string::npos)
+        return false;
+    Stream parsed;
+    bool have_id = false;
+    for (std::size_t at = 3; at < name_at;)
+    {
+        std::size_t end = line.find(' ', at);
+        if (end == std::string::npos || end > name_at)
+            end = name_at;
+        const std::string token = line.substr(at, end - at);
+        at = end + 1;
+        const std::size_t eq = token.find('=');
+        if (eq == std::string::npos || eq == 0)
+            continue;
+        const std::string key = token.substr(0, eq);
+        std::string value = token.substr(eq + 1);
+        if (value == "-")
+            value.clear();
+        if (key == "uuid")
+        {
+            parsed.id = value;
+            have_id = true;
+        }
+        else if (key == "address")
+            parsed.address = value;
+        else if (key == "codec")
+            parsed.codec = value;
+        else if (key == "hdr")
+            parsed.hdr = value == "1";
+        else if (key == "mode")
+            parsed.mode = value;
+        else if (key == "kbps")
+            parsed.kbps = field_number(value);
+        else if (key == "secs")
+            parsed.seconds = field_number(value);
+        else if (key == "pads")
+            parsed.pads = static_cast<int>(std::min<long long>(field_number(value), 99));
+        else if (key == "role")
+            parsed.role = value;
+    }
+    if (!have_id)
+        return false;
+    parsed.name = line.substr(name_at + 6);
+    *stream = parsed;
+    return true;
+}
+
+std::string stream_label(const Stream &stream)
+{
+    return stream.name.empty() ? "Unnamed device" : stream.name;
+}
+
+std::string stream_info(const Stream &stream)
+{
+    std::string info = stream.codec.empty() ? std::string("Video") : stream.codec;
+    if (stream.hdr)
+        info += " HDR";
+    if (!stream.mode.empty())
+        info += ", " + stream.mode;
+    if (stream.kbps >= 10000)
+        info += ", " + std::to_string((stream.kbps + 500) / 1000) + " Mbit/s";
+    else if (stream.kbps >= 1000)
+        info += ", " + std::to_string(stream.kbps / 1000) + "." + std::to_string(stream.kbps % 1000 / 100) + " Mbit/s";
+    else if (stream.kbps > 0)
+        info += ", " + std::to_string(stream.kbps) + " kbit/s";
+    info += stream.pads == 0 ? ", no controller" : stream.pads == 1 ? ", 1 controller" : ", " + std::to_string(stream.pads) + " controllers";
+    return info;
+}
+
+std::string duration_text(long long seconds)
+{
+    if (seconds < 0)
+        seconds = 0;
+    if (seconds < 60)
+        return std::to_string(seconds) + " s";
+    if (seconds < 3600)
+        return std::to_string(seconds / 60) + " min";
+    const long long minutes = seconds / 60 % 60;
+    return std::to_string(seconds / 3600) + " h " + (minutes < 10 ? "0" : "") + std::to_string(minutes) + " min";
+}
+
 std::string suggested_device_name(const std::string &name, const std::vector<std::string> &paired)
 {
     if (pairing_label(name) != "Moonlight")

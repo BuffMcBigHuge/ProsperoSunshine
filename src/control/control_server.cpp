@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "control/control_server.hpp"
 #include "control/autoload_host.hpp"
+#include "control/stream_list.hpp"
+#include "sunshine/video_ps5.hpp"
 #include "src/logging.h"
 #include "src/platform/common.h"
 #include "src/nvhttp.h"
 #include "src/process.h"
 #include "src/rtsp.h"
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <netinet/in.h>
+#include <optional>
 #include <poll.h>
 #include <sstream>
 #include <sys/socket.h>
@@ -21,6 +26,24 @@
 using namespace std::literals;
 
 namespace prospero {
+
+namespace {
+// The paired devices by client certificate: uuid and name.
+std::map<std::string, std::pair<std::string, std::string>> devices_by_cert() {
+    std::map<std::string, std::pair<std::string, std::string>> devices;
+    for (const auto &client : nvhttp::get_all_clients()) {
+        const std::string uuid = client.value("uuid", "");
+        const std::string cert = nvhttp::get_cert_by_uuid(uuid);
+        if (!cert.empty()) devices[cert] = {uuid, client.value("name", "")};
+    }
+    return devices;
+}
+
+long long seconds_since(std::chrono::steady_clock::time_point start, std::chrono::steady_clock::time_point now) {
+    if (start.time_since_epoch().count() == 0) return 0;  // not recorded yet
+    return std::chrono::duration_cast<std::chrono::seconds>(now - start).count();
+}
+}
 
 ControlServer::ControlServer(std::shared_ptr<safe::event_t<bool>> shutdown)
     : shutdown_(std::move(shutdown)), modes_(platf::appdata() / "device_modes.txt") {
@@ -77,15 +100,57 @@ std::string ControlServer::handle(const std::string &line) {
         return nvhttp::pin(id, pin, name) ? "OK paired" : "ERR pairing failed";
     }
     if (command == "DEVICES") {
-        const auto live = rtsp_stream::session_count() > 0 ? nvhttp::get_last_launch_client().uuid : std::string();
+        // Every device with a running session streams, also one that joined another's stream.
+        std::vector<std::string> live;
+        for (const auto &session : rtsp_stream::session_infos()) live.push_back(session.client_cert);
         std::string out;
         for (const auto &client : nvhttp::get_all_clients()) {
             const std::string uuid = client.value("uuid", "");
             const std::string mode = modes_.mode(uuid);
-            out += "OK " + uuid + (!live.empty() && uuid == live ? " 1 " : " 0 ") + (mode.empty() ? "-" : mode) + ' ' +
-                   client.value("name", "") + '\n';
+            const std::string cert = live.empty() ? std::string() : nvhttp::get_cert_by_uuid(uuid);
+            const bool streaming = !cert.empty() && std::find(live.begin(), live.end(), cert) != live.end();
+            out += "OK " + uuid + (streaming ? " 1 " : " 0 ") + (mode.empty() ? "-" : mode) + ' ' + client.value("name", "") +
+                   '\n';
         }
         return out + "END";
+    }
+    if (command == "STREAMS") {
+        const auto devices = devices_by_cert();
+        std::optional<CaptureFacts> capture;
+        if (const auto running = video::running_capture()) {
+            capture = CaptureFacts{running->cert,         running->joined, running->width,
+                                   running->height,       running->fps,    static_cast<int>(running->average / 1000),
+                                   running->video_format, running->hdr};
+        }
+        const auto now = std::chrono::steady_clock::now();
+        std::string out;
+        for (const auto &session : rtsp_stream::session_infos()) {
+            const StreamFacts facts{session.client_cert,  session.address,       session.width,
+                                    session.height,       session.fps,           session.bitrate,
+                                    session.video_format, session.dynamic_range > 0, seconds_since(session.started, now),
+                                    session.gamepads};
+            const auto device = devices.find(session.client_cert);
+            const bool known = device != devices.end();
+            out += stream_line(facts, capture, known ? device->second.first : std::string(),
+                               known ? device->second.second : std::string()) +
+                   '\n';
+        }
+        return out + "END";
+    }
+    if (command == "ENDSTREAM") {
+        std::string uuid;
+        in >> uuid;
+        if (uuid.empty()) return "ERR usage: ENDSTREAM <uuid>";
+        const std::string cert = nvhttp::get_cert_by_uuid(uuid);
+        if (cert.empty()) return "ERR no such device";
+        const auto sessions = rtsp_stream::session_infos();
+        if (std::none_of(sessions.begin(), sessions.end(), [&](const auto &s) { return s.client_cert == cert; }))
+            return "ERR not streaming";
+        // As a quit from that device while another streams (patch 0012): its sessions and gamepads end, the game and the
+        // other devices' streams go on. It stays paired and may connect again.
+        rtsp_stream::terminate_sessions_by_cert(cert);
+        BOOST_LOG(info) << "Control: one device's stream was ended"sv;
+        return "OK ended";
     }
     if (command == "RENAME") {
         std::string uuid, name;

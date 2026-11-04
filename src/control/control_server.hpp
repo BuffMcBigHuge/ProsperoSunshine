@@ -7,7 +7,11 @@
 //   PIN <pin> [name]            -> approves the only pending request ("OK paired" / "ERR ...")
 //   PIN <id> <pin> [name]       -> approves the given request
 //   DEVICES                     -> "OK <uuid> <streaming 0|1> <last mode or -> <name>" per paired device, then "END"
-//   RENAME <uuid> <name>        -> gives a paired device another name ("OK renamed" / "ERR ...")
+//   STREAMS                     -> per running stream "OK uuid=<uuid> address=<ip> codec=<H.264|HEVC|AV1> hdr=<0|1>
+//                                  mode=<WxH@fps> kbps=<n> secs=<n> pads=<n> role=<capture|joined|starting> name=<name>",
+//                                  then "END" (stream_list.hpp; "-" for an unknown uuid, address or mode)
+//   ENDSTREAM <uuid>            -> ends that device's stream; the game and the others' streams go on ("OK ended" / "ERR ...")
+//   RENAME <uuid> <name>      -> gives a paired device another name ("OK renamed" / "ERR ...")
 //   UNPAIR <uuid>               -> removes a paired device and ends its stream ("OK removed" / "ERR ...")
 //   REPORT                      -> "OK port=<n>": for some seconds, <appdata>/diagnostics.txt is on that port
 //   AUTOLOAD [ON|OFF]           -> the Payload Manager's autoload list, for the app (autoload_host.hpp)

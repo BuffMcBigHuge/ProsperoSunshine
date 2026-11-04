@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **The app shows who is streaming, and can end one device's stream.** While someone streams, the home page has a
+  **Streaming now** card: each device with its name, codec and HDR, resolution and frame rate, bitrate, how long it has
+  been streaming and how many controllers it has, and in its list also the address. Select a device there to end its
+  stream, after a confirmation; the game and the other devices' streams go on, and the device stays paired. For a device
+  that joined another's stream, it shows the picture it really gets, not what its Moonlight asked for. The control socket
+  has two new commands for it, `STREAMS` and `ENDSTREAM <uuid>`.
+
+### Changed
+
+- **Paired devices marks every device that streams.** With two players, the list showed only the device that started or
+  joined last as streaming.
+
 ## 0.2.3 (2026-11-04)
 
 ### Changed
