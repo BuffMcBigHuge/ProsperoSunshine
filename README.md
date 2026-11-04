@@ -222,6 +222,16 @@ docker run --rm --mount type=bind,source="$PWD",target=/repo prosperosunshine-sd
 An automated Moonlight-protocol test client (pairing, smoke test, reconnects, packet loss, A/V sync) is in
 `tools/moonlight/`.
 
+## Credits
+
+- The host is built on [Sunshine](https://github.com/LizardByte/Sunshine) and
+  [moonlight-common-c](https://github.com/moonlight-stream/moonlight-common-c), with the
+  [PS5 Payload SDK](https://github.com/ps5-payload-dev/sdk).
+- The capture record layout for firmware 13.60 comes from [PlayBridge](https://github.com/ramalhoboss/PlayBridge) and
+  [ps5-stream8](https://github.com/lescanotomas/ps5-stream8). According to [seregonwar](https://github.com/seregonwar),
+  both build on the analysis of seregonwar's PBS (PlayStation Broadcast System) payload. The record size for 12.40 comes
+  from a log in the [PBS issue tracker](https://github.com/seregonwar/PBS-Public-Issues-Tracker).
+
 ## License
 
 GPL-3.0-only, like Sunshine, which this project builds on (`LICENSE`). Third-party components, their licences and

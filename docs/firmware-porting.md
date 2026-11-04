@@ -28,7 +28,7 @@ Außer für 10.20 nicht selbst gemessen. Der Block bei `0xb8` wächst mit der Fi
 | 10.20 (Pro) | `0x2c8` | `0xc8` | −`0x18`, außerdem ohne die inneren Köpfe und Rate-Felder von 13.00 | Bericht in Issue 2 (Host 0.1.4 mit diesem Datensatz, danach 0.1.6 mit `record_shift`): `OpenVideo` und `Start` liefern 0, Moonlight streamt auf Android und iOS. H.264 hat 34 Slices je Bild, FFmpeg nimmt mit D3D11VA höchstens 32, also braucht Moonlight unter Windows dafür Software-Decoding; HEVC (nur `cfg+0x24 = 1`, auch 10 Bit) hat 17 und läuft dort mit Hardware-Decoding, gemessen mit Moonlight unter Windows (`STATUS.md`, `docs/re/hevc.md`). Der Ton mit etwa 0,4-facher Geschwindigkeit lag nicht an 10.x, sondern an `min_log_level = debug`: Jede Zeile geht synchron ins Kernel-Log, gemessen 5,2 ms je Zeile. Offen: Rate (der Encoder bleibt bei seiner Standardrate), Slices von H.264 |
 | 12.40 | `0x2e0` | nicht genannt | nicht genannt | Log in PBS-Public-Issues-Tracker, Issue 1 |
 | 13.00 | `0x2e0` | `0xe0` | – | gemessen, `configure()` |
-| 13.60 | `0x2e8` | `0xe8` | +8 | Quelltext von PlayBridge und ps5-stream8 |
+| 13.60 | `0x2e8` | `0xe8` | +8 | Quelltext von PlayBridge und ps5-stream8; laut seregonwar beruhen beide auf der Analyse des PBS-Payloads |
 
 `0x81950008` hat laut ps5-web-stream mehrere Zweige (Bildausgabe passt nicht, Größen im Datensatz fehlen, Ressource nicht aktiv). Laut PlayBridge erlaubt in `GetVideoOutMode` Bit `0x20` 1440p und Bit `0x08` 4K. Der Host prüft das nicht vorab, sondern fällt beim Scheitern zurück: Die Berichte passen dazu nicht vollständig (`0x13c` wird für 1080p und für 4K genannt). `host_diag.log` nennt den Wert seit diesem Stand als `video out mode`.
 
