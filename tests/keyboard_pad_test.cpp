@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <memory>
 using namespace prospero;
 using namespace std::chrono_literals;
 
@@ -362,6 +363,21 @@ int main() {
     pad.key(0x5C, true, t0);
     assert(!pad.menu_held());
     pad.clear();
+    // No game in front (the console's own screens): the menu keys too, whatever the profile, until a game is.
+    pad.set_profile(Profile::driving);
+    pad.set_outside_game(true);
+    assert(pad.in_menu() && !pad.menu_held());
+    assert(pad.key('W', false, t0) && pad.state(t0).buttons == moonlight::dpad_up && pad.state(t0).rt == 0);
+    pad.set_profile(Profile::action);  // a new profile keeps it
+    assert(pad.in_menu() && pad.state(t0) == PadInput{});
+    pad.key('S', false, t0);
+    assert(pad.state(t0).buttons == moonlight::dpad_down);
+    assert(!pad.key(0x14, false, t0) && !pad.in_vehicle());  // no vehicle layer there
+    pad.set_outside_game(false);
+    assert(!pad.in_menu() && pad.state(t0) == PadInput{});
+    pad.key('S', false, t0);
+    assert(pad.state(t0).ly == -32767 && pad.state(t0).buttons == 0);
+    pad.clear();
     pad.set_profile(Profile::action);
 
     // Shooter: Shift runs, C or Ctrl crouch, Q throws; the wheel changes weapon and its tilt is the D-pad.
@@ -493,6 +509,44 @@ int main() {
     pad.clear();
     pad.mouse_move(1000, 0, t0);
     assert(pad.state(t0) == PadInput{});
+
+    // A profile of the player's own: its keys and mouse buttons over its base, a key set to none doing nothing; the
+    // vehicle layer still goes over it.
+    auto own = std::make_shared<CustomProfile>();
+    own->name = "mine";
+    own->base = Profile::action;
+    own->keys = {{space, moonlight::right_button}, {'Q', 0}, {'B', moonlight::x}, {0x12, pad_control::half}, {0xA4, pad_control::half}};
+    own->mouse[1] = pad_control::r2;
+    own->wheel[0] = own->wheel[1] = moonlight::left_button;  // both ways: L1, the next weapon in the GTA Trilogy
+    pad.set_profile(Profile::action, own);
+    pad.scroll(120, t0);
+    assert(pad.state(t0).buttons == moonlight::left_button);
+    pad.clear();
+    pad.scroll(-120, t0);
+    assert(pad.state(t0).buttons == moonlight::left_button);
+    pad.clear();
+    pad.hscroll(120, t0);
+    assert(pad.state(t0).buttons == moonlight::dpad_right);  // the tilt as in action
+    pad.clear();
+    assert(pad.own_profile() == own.get() && pad.profile() == Profile::action);
+    assert(press(pad, space, t0) == moonlight::right_button && press(pad, 'B', t0) == moonlight::x);
+    assert(!pad.key('Q', false) && press(pad, 'E', t0) == moonlight::y);  // Q none; E as in action
+    pad.key('W', false, t0);
+    pad.key(0xA4, false, t0);  // left Alt walks, as in Elden Ring on a PC
+    assert(pad.state(t0).ly == 16384);
+    pad.key(lshift, false, t0);
+    assert(pad.state(t0).buttons == moonlight::b);  // and Shift still counts with it
+    pad.key(lshift, true, t0);
+    pad.key(0xA4, true, t0);
+    pad.key('W', true, t0);
+    assert(pad.mouse_button(1, false) && pad.state(t0).rt == 255 && pad.mouse_button(1, true));
+    pad.key(caps, false, t0);
+    assert(press(pad, space, t0) == moonlight::right_button && press(pad, 'B', t0) == moonlight::x);
+    pad.key('W', false, t0);
+    assert(pad.state(t0).rt == 13);
+    pad.set_profile(Profile::action);  // the same base without the own profile is a new profile
+    assert(!pad.own_profile() && !pad.in_vehicle() && pad.state(t0) == PadInput{});
+    assert(press(pad, space, t0) == moonlight::a);
 
     // The sensitivity's levels: 10 to 3000 in even steps, the middle where a new client starts.
     assert(sensitivity_of_level(-sensitivity_levels) == min_sensitivity && sensitivity_of_level(sensitivity_levels) == max_sensitivity);

@@ -2,8 +2,8 @@
 
 A device without a controller plays with its keyboard and mouse as a controller of its own
 ([README](../README.md#keyboard-and-mouse-as-a-controller)). How the keys and mouse map depends on the profile. Everything
-here is optional: without any setting, the `standard` profile applies and nothing else changes. The profiles are for
-those who want them, and for now they live in `sunshine.conf`, not in the app.
+here is optional: without any setting, the `standard` profile applies and nothing else changes. The profiles, the map by
+game and your own list are for those who want them, and for now they live in files, not in the app.
 
 ## Why these keys
 
@@ -16,7 +16,8 @@ on W and S, fighting games want exact diagonals on the D-pad, 2D games are playe
 They were chosen from the PC controls of the PS4 and PS5 games of each kind (Gran Turismo 7 and F1 by way of their PC
 peers, Street Fighter 6 and Tekken 8, God of War, Elden Ring, Horizon, Call of Duty, Destiny 2, Helldivers 2, Hollow
 Knight, EA FC and NBA 2K) and from the mappers people use for them (Steam Input, reWASD). No profile uses Alt, so none can
-form Moonlight's own shortcuts (Ctrl+Alt+Shift and a key), and the key right of the space bar is for menus, below.
+form Moonlight's own shortcuts (Ctrl+Alt+Shift and a key); left Alt is free for a profile of your own (Elden Ring walks with
+it on a PC), and the key right of the space bar is for menus, below.
 
 ## Every profile
 
@@ -42,7 +43,9 @@ turns no faster (GTA III and Elden Ring cap it), so raise the game's own camera 
 own menus are walked the same way whatever the profile. While you hold **the key right of the space bar** (right Alt or
 AltGr, the right ⌘ on a Mac, 変換 or 한/영 on Japanese and Korean keyboards), every profile gives the menu keys: `standard`'s,
 with W A S D on the D-pad, as some menus (the console's own among them) ignore the stick. Letting go brings the profile
-back; keys held across it have to be pressed again.
+back; keys held across it have to be pressed again. Outside a game (the home screen, the store, the console's settings) the
+host gives the menu keys whatever the profile; this needs the game in front, which the host looks up for your list and the
+profile by game.
 
 ## The profiles
 
@@ -95,8 +98,8 @@ back; keys held across it have to be pressed again.
 
 These games share one layout on PlayStation: L3 runs, ✕ jumps, ○ crouches, □ interacts and reloads, △ cycles weapons.
 Rockstar's open worlds (GTA V, Red Dead Redemption 2, the GTA Trilogy) use another one: ✕ runs, □ jumps, △ gets in and
-out of vehicles, ○ reloads, L1 changes weapon. In those `shooter` gets the vehicle layer right, but on foot Space sprints
-and R jumps.
+out of vehicles, ○ reloads, L1 changes weapon. Play those with a profile of your own based on `shooter`; the example
+below is one for GTA III.
 
 ### driving: racing (Gran Turismo 7, F1, Need for Speed)
 
@@ -175,6 +178,74 @@ Every other key and the mouse stay as on foot, so getting out, shooting from the
 The host can't see whether you are in a car, so switch it yourself; if the light is the wrong way round, press Caps Lock
 twice. Throttle on R2, brake on L2 and steering on the left stick hold in GTA V and the GTA Trilogy (Modern controls),
 Cyberpunk 2077, Far Cry 5 and 6, Watch Dogs, Days Gone, Death Stranding and Fortnite; the handbrake differs (○ in Far Cry 6
-and Days Gone, L1 in Fortnite). Leave the layer off for horses (Red Dead
+and Days Gone, L1 in Fortnite), which a profile of your own can change. Leave the layer off for horses (Red Dead
 Redemption 2, Ghost of Tsushima, Horizon's mounts, Assassin's Creed): they ride like walking. Planes and helicopters have no
 layer of their own.
+
+## The profile by game
+
+With `keyboard_mouse_profile_by_game = 1` in `sunshine.conf` (off by default), the game in front picks the profile:
+
+1. your own list, below;
+2. the title map in the host, made by `tools/title_profiles.py` from [Wikidata](https://www.wikidata.org) (CC0): about
+   3,000 PS4 and PS5 title IDs, 3,300 Store concepts (the `conceptId` in a PS5 game's `param.json`, the same in every
+   region) and 3,900 English names, each with the profile its genre gives;
+3. `keyboard_mouse_profile` for anything else.
+
+The host looks up the game in front at most every two seconds while the keys and mouse are in use; a new profile lets go
+of what was held. With no game in front, it is `standard`. Nothing is downloaded on the console: the map is part of the host and is renewed with each release. A
+game that is missing or in the wrong profile in the map can be fixed in your list, and on Wikidata for everyone.
+
+## Your own list and profiles
+
+`keyboard_profiles.txt`, next to `sunshine.conf` in `/data/prosperosunshine/`, holds your choices. It counts with or without
+the map. When the host starts it adds the installed titles the file doesn't mention yet, as commented lines with the
+profile they would get; to choose one, remove the `#` and change the profile if you like. Your lines are never changed.
+The host reads the file again whenever the game in front changes; mistakes go to `sunshine.log` with their line number.
+
+```
+# A line "TITLEID = profile" picks the profile for that title: any title ID of the console, also homebrew and forwarders.
+PPSA24662 = driving        # F1 25, not in the map yet
+PPSA99474 = kart           # my own Mario Kart 8 Deluxe forwarder, with the profile below
+CUSA13632 = platformer     # Hollow Knight
+PPSA03527 = gta            # GTA III Definitive Edition, with the profile below; Caps Lock in a car
+
+# A profile of your own starts from a profile and changes some keys or mouse buttons.
+[kart]
+base = driving
+Space = r1                 # drift
+Shift = l1                 # item
+Mouse1 = r2
+Q = none                   # nothing
+
+[gta]                      # Rockstar's layout: Space jumps, Shift runs, E or F gets in, R reloads
+base = shooter
+Space = square
+Shift = cross
+E = triangle
+F = triangle
+R = circle
+Ctrl = l3
+WheelUp = l1               # the next weapon; the Trilogy has no previous one
+WheelDown = l1
+
+[souls]
+base = action
+Ctrl = none                # run instead of walking: Shift stays
+```
+
+**Keys:** A to Z, 0 to 9, F1 to F12, Num0 to Num9, Space, Enter, Esc, Tab, Backspace, Shift, Ctrl, Alt, Up, Down, Left, Right,
+Insert, Delete, Home, End, PageUp, PageDown, and the punctuation keys `` ; = , - . / \ ` [ ] ' ``. Mouse1 to Mouse5 are the left, middle, right,
+back and forward buttons; WheelUp, WheelDown, WheelLeft and WheelRight are the wheel's steps and tilt, each a short tap.
+Alt is the left one, free in every profile, as some PC games use it (walk in Elden Ring, free
+look in PUBG); the key right of the space bar (the menu keys while held) and Caps Lock (the vehicle layer) can't be
+changed.
+
+**Buttons:** cross, circle, square, triangle, l1, r1, l2, r2, l3, r3, options, create, ps, touchpad, dpad-up, dpad-down,
+dpad-left, dpad-right, left-up, left-down, left-left, left-right (the left stick), right-up, right-down, right-left,
+right-right (the right stick), half (half deflection while held), none.
+
+Some uses: an emulator forwarder (a PS2 or Switch game with a title ID of its own) gets the profile of its game; an
+emulator itself (ProsperoEden, Crux2) gets the profile you play most in it, since the host only sees the emulator; a game
+whose handbrake or jump sits elsewhere gets a profile of your own; friends who play the same game every week get the
+keys they agreed on.

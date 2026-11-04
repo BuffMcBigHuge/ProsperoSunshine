@@ -20,6 +20,14 @@
 - **A vehicle layer for open worlds:** in `standard`, `action` and `shooter`, Caps Lock turns W and S into throttle and
   brake, A and D into steering and Space into the handbrake, for games where you walk and drive (GTA, Cyberpunk, Far Cry),
   and its light shows when it is on. The other keys and the mouse stay as on foot.
+- **The profile by game (advanced, off by default):** with `keyboard_mouse_profile_by_game = 1`, the game in front picks
+  the profile from a map of about 3,000 PS4 and PS5 games the host carries, made from Wikidata (CC0) by
+  `tools/title_profiles.py`: Gran Turismo 7 drives, Tekken 8 fights, Elden Ring plays as action. Outside a game (the
+  home screen, the console's menus) the keys are the menu keys whatever the profile, so W A S D move there.
+- **Your own list:** `keyboard_profiles.txt` next to `sunshine.conf` picks the profile per title, for any title ID, also
+  homebrew and forwarders (say, your own Mario Kart 8 Deluxe forwarder as `driving`), and holds profiles of your own with
+  some keys changed. The host writes your installed games into it as comments, each with the profile it would get.
+  `docs/keyboard-profiles.md` has every table and the file's format.
 - **A controller connected later takes that player's place quietly.** It gets the same slot and user, so the console
   doesn't ask again; from then on the keyboard and mouse are the console's keyboard and mouse again. If it drops, the
   console says so, and the next key takes a controller again. A second controller on that device is a new player.

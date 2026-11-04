@@ -15,11 +15,13 @@
 #include <cmath>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace prospero {
 
@@ -162,7 +164,18 @@ struct ProfileMap {
     ProfileMouse mouse;
     bool ease = false;           // throttle, brake and steering keys ease in over ease_time
     bool half_triggers = false;  // half deflection also halves the triggers
-    std::span<const KeyBinding> overlay{};  // the vehicle layer's or the menu keys, over keys
+    std::span<const KeyBinding> overlay{};  // the vehicle layer's keys, over everything
+    std::span<const KeyBinding> own{};      // the keys of a profile of the player's own, over keys
+};
+
+// A profile of the player's own (keyboard_profiles.txt, input/title_profile.hpp): a profile of this file with some keys
+// and mouse buttons changed. A key changed to 0 does nothing.
+struct CustomProfile {
+    std::string name;
+    Profile base = Profile::standard;
+    std::vector<KeyBinding> keys;
+    std::array<std::optional<uint64_t>, 6> mouse{};  // Sunshine's buttons 1 to 5
+    std::array<std::optional<uint64_t>, 4> wheel{};  // up, down, tilt left, tilt right
 };
 
 constexpr ProfileMap profile_map(Profile profile) {
@@ -227,6 +240,8 @@ constexpr ProfileMap vehicle_map(Profile profile) {
 // What a key does with a map, 0 for a key that is not the pad's.
 constexpr uint64_t key_control(const ProfileMap &map, uint16_t vk) {
     for (const auto &binding : map.overlay)
+        if (binding.vk == vk) return binding.control;
+    for (const auto &binding : map.own)
         if (binding.vk == vk) return binding.control;
     uint64_t control = 0;
     for (const auto &binding : map.keys)
@@ -412,19 +427,31 @@ public:
     int sensitivity() const { return sensitivity_; }
 
 
-    // A new profile lets everything go: a key held now means something else there. It starts on foot.
-    void set_profile(Profile profile) {
-        if (profile == profile_) return;
+    // A new profile lets everything go: a key held now means something else there. It starts on foot. own, if set, is a
+    // profile of the player's own on top of profile, its base.
+    void set_profile(Profile profile, std::shared_ptr<const CustomProfile> own = nullptr) {
+        if (profile == profile_ && own == own_) return;
         profile_ = profile;
+        own_ = std::move(own);
         clear();
     }
 
+    const CustomProfile *own_profile() const { return own_.get(); }
+
     Profile profile() const { return profile_; }
 
-    // The menu keys, standard's with W A S D on the D-pad, while the key right of the space bar is held; the vehicle
-    // layer waits meanwhile.
-    bool in_menu() const { return menu_; }
+    // The menu keys, standard's with W A S D on the D-pad, while the key right of the space bar is held or no game is in
+    // front (the console's own screens); the vehicle layer waits meanwhile.
+    bool in_menu() const { return menu_ || outside_; }
     bool menu_held() const { return menu_; }
+
+    // No game in front: the console's own screens, walked with the menu keys whatever the profile.
+    void set_outside_game(bool outside) {
+        if (outside == outside_) return;
+        let_go();
+        outside_ = outside;
+        map_ = make_map();
+    }
     bool in_vehicle() const { return vehicle_; }
 
     // Returns whether it changed what the pad holds. Keys that are not the pad's change nothing.
@@ -450,8 +477,9 @@ public:
             const bool generic = vk == vk::shift || vk == vk::ctrl || vk == 0x12;
             uint8_t &held = generic ? generic_modifiers_ : sided_modifiers_;
             held = release ? held & ~bit : held | bit;
-            // Left Alt is no profile's: while it is held and not the pad's, the player is reaching for a Moonlight shortcut
-            // (Ctrl+Alt+Shift and a key), so Ctrl and Shift let go of what they hold and don't count until it is up again.
+            // Left Alt is no built-in profile's (some PC games use it, so a profile of one's own may): while it is held
+            // and not the pad's, the player is reaching for a Moonlight shortcut (Ctrl+Alt+Shift and a key), so Ctrl and
+            // Shift let go of what they hold and don't count until it is up again.
             if (bit == 0x04 && !key_control(map_, vk)) {
                 if (release) return false;
                 bool changed = false;
@@ -580,13 +608,17 @@ public:
         return next;
     }
 
-    // Lets everything go and goes back on foot; the profile and the sensitivity stay.
+    // Lets everything go and goes back on foot; the profile, the sensitivity and whether a game is in front stay.
     void clear() {
         const int sensitivity = sensitivity_;
         const Profile profile = profile_;
+        auto own = std::move(own_);
+        const bool outside = outside_;
         *this = {};
         sensitivity_ = sensitivity;
         profile_ = profile;
+        own_ = std::move(own);
+        outside_ = outside;
         map_ = make_map();
     }
 
@@ -617,7 +649,15 @@ private:
             map.overlay = detail::menu_keys;
             return map;
         }
-        return vehicle_ ? vehicle_map(profile_) : profile_map(profile_);
+        ProfileMap map = vehicle_ ? vehicle_map(profile_) : profile_map(profile_);
+        if (own_) {
+            map.own = own_->keys;
+            for (size_t button = 0; button < map.mouse.buttons.size(); button++)
+                if (own_->mouse[button]) map.mouse.buttons[button] = *own_->mouse[button];
+            for (size_t side = 0; side < map.mouse.wheel.size(); side++)
+                if (own_->wheel[side]) map.mouse.wheel[side] = *own_->wheel[side];
+        }
+        return map;
     }
 
     bool all_modifiers() const {
@@ -670,9 +710,11 @@ private:
     }
 
     Profile profile_ = Profile::standard;
-    ProfileMap map_ = profile_map(Profile::standard);  // the profile's, the vehicle layer's or the menu keys
+    std::shared_ptr<const CustomProfile> own_;
+    ProfileMap map_ = profile_map(Profile::standard);  // the profile's, or the vehicle layer's, with own_ on top
     bool vehicle_ = false;
-    bool menu_ = false;  // the key right of the space bar is held: the menu keys
+    bool menu_ = false;     // the key right of the space bar is held: the menu keys
+    bool outside_ = false;  // no game in front: the menu keys
     std::bitset<256> menu_keys_held_;
     std::array<uint64_t, 256> held_{};  // what each held key does, fixed when it went down
     std::array<clock::time_point, 256> since_{};

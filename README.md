@@ -157,6 +157,12 @@ Each wheel step is a short tap on the D-pad. Moonlight's own shortcuts (Ctrl+Alt
 (right Alt or AltGr, the right ⌘ on a Mac) for the menu keys in any profile: `standard`'s, with W A S D on the D-pad,
 which every menu takes; some, the console's own among them, ignore the stick.
 
+**By game:** with `keyboard_mouse_profile_by_game = 1` (off by default) the game in front picks the profile, from a map
+of about 3,000 PS4 and PS5 games made from Wikidata. `keyboard_profiles.txt` next to `sunshine.conf` is your own list,
+which counts either way: a profile per title (any title ID, also homebrew and forwarders, such as your own Mario Kart 8
+Deluxe forwarder set to `driving`) and profiles of your own with some keys changed. The host writes your installed games
+into it as comments, so choosing one is removing a `#`. See [docs/keyboard-profiles.md](docs/keyboard-profiles.md).
+
 **When a controller connects** to that device, it takes the keyboard's place quietly: the same player, so the console
 doesn't ask again. From then on the keyboard and mouse are the console's keyboard and mouse, as before. If that
 controller drops (a flat battery, a loose cable), the console says so; the next key on the keyboard takes a controller
@@ -254,7 +260,8 @@ address.
   its own ([Keyboard and mouse as a controller](#keyboard-and-mouse-as-a-controller)), also for the host, who then can't
   type into text fields with the keyboard; use the console's on-screen keyboard, connect a controller, or set
   `keyboard_mouse_pad = 0` in `sunshine.conf`. In Moonlight's absolute mouse mode the mouse stops at the edge of the
-  window. The keys can't be remapped yet, and a game's own dead zone and acceleration make the mouse feel unlike on a PC.
+  window. Keys are remapped in `keyboard_profiles.txt` only, not yet in the app, and a game's own dead zone and top turning
+  speed make the mouse feel unlike on a PC.
 - Sound is stereo unless you turn on **Surround** under Experimental in the app's Settings. With it, a Moonlight that asks for
   5.1 or 7.1 gets the console's own multichannel sound. Which channel goes to which speaker is a guess so far (the order of the
   console's 8-channel audio output): the console used for testing outputs stereo, and then only front left and right carry

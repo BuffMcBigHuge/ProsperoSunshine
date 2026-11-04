@@ -504,6 +504,28 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### Profil je Spiel und eigene Liste (2026-11-04, 10.20, PS5 Pro)
+
+Gemessen wie oben (Moonlight für Linux, Hostlog), Host aus `keyboard-mouse-pad` mit Patch 0016 und 0017,
+`keyboard_mouse_profile_by_game = 1`.
+
+- **Liste beim Start:** Der Host legte `keyboard_profiles.txt` an, mit den 41 installierten Titeln als Kommentarzeilen:
+  Spiele, Homebrew (auch mit eigenen Präfixen wie `WBRT`), Forwarder und die Steam-Spiele von Playden (`FAKE…`). Titel aus
+  der Karte stehen mit ihrem Profil darin, etwa `PPSA10595 = fighting # TEKKEN™8 (from the title map)`.
+- **Eigene Liste:** `PPSA03527 = shooter` aktiviert: „Keyboard pad profile shooter for PPSA03527, from your list“. Danach
+  ein eigenes Profil `[gta]` auf Basis von `shooter` (Leertaste springt, Shift rennt, E und F steigen ein, R lädt nach,
+  das Rad wechselt die Waffe): „Keyboard pad profile gta for PPSA03527, from your list“; laut Besitzer wie in der
+  PC-Fassung.
+- **Karte:** It Takes Two (`PPSA02343`) und Elden Ring (`PPSA04609`) bekamen `action`, „from the title map“.
+- **Abdeckung der installierten Spiele:** Von etwa 25 PS5-Spielen auf der Konsole fand die Karte 18 (Titel-ID, Store-Konzept
+  aus `param.json` oder englischer Name). Es fehlen u. a. F1 25, EA FC 26, WWE 2K26 und GTA III Definitive Edition, die bei
+  Wikidata nicht als PS5-Spiele mit Genre stehen; für sie ist die eigene Liste da.
+- Unit-Tests `title_profile_test` (Titelschlüssel, Namen, sortierte Tabellen, Liste, eigene Profile, neue Titel) und
+  `titles_test` (Store-Konzept, englischer Name).
+
+Nicht geprüft: die Menütasten außerhalb eines Spiels live (kein Logeintrag in dieser Sitzung), ein Spielwechsel während
+eines Streams, PS4-Titel live.
+
 ### Tastatur und Maus als Controller (2026-11-04, 10.20, PS5 Pro)
 
 Gemessen vom Besitzer mit Moonlight für Linux auf einem PC ohne Controller, dazu Hostlog (`sunshine.log`) und Kernel-Log der
