@@ -16,6 +16,13 @@
 - **Paired devices marks every device that streams.** With two players, the list showed only the device that started or
   joined last as streaming.
 
+### Fixed
+
+- **HDR streams tell the client their colour space.** The host sent the HDR metadata as zeros, and Moonlight for Windows
+  passes these on to the display, where a tester saw oversaturated colours with hardware decoding. The host now sends the
+  usual HDR10 values (BT.2020 primaries, D65 white point, 1000 nits peak), as Sunshine does on Windows. Measured with the
+  test client; whether the colours on a Windows HDR display are right is not checked yet.
+
 ## 0.2.3 (2026-11-04)
 
 ### Changed
