@@ -501,6 +501,25 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### Laufende Streams in der App, `STREAMS` und `ENDSTREAM` (2026-11-04, 13.00, nicht veröffentlicht)
+
+Testclient A und B (zwei gekoppelte Geräte) mit dem Mario-64-Demo, Steuerkanal für den Test per `control_lan` im LAN
+geöffnet, danach wieder entfernt:
+
+- **Zwei Geräte:** `STREAMS` lieferte für beide H.264 1920x1080@60 mit 4148 kbit/s und einem Pad, A mit `role=capture`
+  und B mit `role=joined`. Die Sekunden zählten mit. `DEVICES` markierte beide als streamend.
+- **`ENDSTREAM` für B:** Antwort `OK ended`, Pad 1 wurde gelöst. A lief weiter: 2693 Bilder in 45 s, ohne fehlende
+  Bildnummer, längste Pause 22 ms.
+- **Fehlerantworten:** Für B danach `ERR not streaming`, für eine unbekannte UUID `ERR no such device`, ohne UUID
+  `ERR usage: ENDSTREAM <uuid>`.
+- **`ENDSTREAM` für den Halter der Aufnahme:** Mit A und B lief B als `role=capture` weiter
+  („this one takes it over“), ohne fehlende Bildnummer, längste Pause 22 ms.
+- **`ENDSTREAM` für den letzten Stream:** Danach war `STREAMS` leer, das Mario-Demo lief weiter, und der Host war frei.
+  Alle Pads wurden gelöst.
+
+Nicht geprüft: die Karte „Streaming now“ in der App, solange ein Stream läuft. Ohne Stream zeigt die App die Startseite wie
+bisher. Während eines Streams entstehen keine Screenshots, weil sie die Aufnahme belegen.
+
 ### HDR-Metadaten, Slices, 120 fps, zweiter Kanal (2026-11-04, 13.00, nicht veröffentlicht)
 
 **HDR-Metadaten.** Der Host schickte bei HDR im Steuerkanal nur Nullen (`hdr_info_raw_t(true)` ohne Werte). moonlight-common-c
