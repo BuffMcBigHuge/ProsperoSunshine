@@ -513,7 +513,7 @@ int main(void)
     setup(0x13600000u, 0, 0, 0, 0, 0, 4);
     fake_decide = no_answer;
     assert(open_and_close() == PS_CAPTURE_ERROR);
-    assert(logged("capture RUNNING outcome=timeout value=-1 waited_ms=2000 list_rc=0 active=175,177\n"));
+    assert(logged("capture RUNNING outcome=timeout value=-1 waited_ms=6000 list_rc=0 active=175,177\n"));
     fake_active[0] = fake_active[1] = 0;
     setup(0x13600000u, 0, 0, 0, 0, 0, 4);
     fake_decide = no_answer;

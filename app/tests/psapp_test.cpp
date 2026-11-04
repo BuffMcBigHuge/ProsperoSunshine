@@ -129,7 +129,7 @@ static void capture_line_tests()
     CHECK(diag::capture_summary(log) == "last open failed at RUNNING (error -1, rc 0): the system refused the resource, data[0]=3, "
                                         "waited 120 ms, active resources: 175,177");
     log = diag::parse_host_log(open + "capture RUNNING outcome=timeout value=-1 waited_ms=2000 list_rc=0 active=none\n" + end);
-    CHECK(diag::capture_summary(log) == "last open failed at RUNNING (error -1, rc 0): no answer from the system within 2 s, "
+    CHECK(diag::capture_summary(log) == "last open failed at RUNNING (error -1, rc 0): no answer from the system, "
                                         "waited 2000 ms, active resources: none");
     log = diag::parse_host_log(open + "capture RUNNING outcome=revoked value=-1 waited_ms=40 list_rc=0x80000001 active=none\n" + end);
     CHECK(diag::capture_summary(log) == "last open failed at RUNNING (error -1, rc 0): the system took the resource away, "

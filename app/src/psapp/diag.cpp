@@ -382,7 +382,7 @@ std::string capture_summary(const HostLog &log)
         const RunningWait &wait = log.running;
         out += wait.outcome == "refused"   ? ": the system refused the resource, data[0]=" + wait.value
                : wait.outcome == "revoked" ? std::string(": the system took the resource away")
-                                           : std::string(": no answer from the system within 2 s");
+                                           : std::string(": no answer from the system");
         out += ", waited " + wait.waited_ms + " ms, active resources: " + wait.active;
         if (wait.list_rc != "0")
             out += " (list rc " + wait.list_rc + ")";

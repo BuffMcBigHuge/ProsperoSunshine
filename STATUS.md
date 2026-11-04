@@ -501,6 +501,17 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### Langsame Zuteilung der Aufnahme (2026-11-04, 13.00, Release 0.2.3)
+
+Ein Tester auf 13.60 (GitHub-Issue 1, nicht selbst gemessen): Der erste Stream scheiterte, weil `RUNNING` zweimal in Folge
+nicht innerhalb von 2 s zugeteilt wurde (Profil 182, aktiv `1,100,190`); der nächste Stream zehn Sekunden später bekam die
+Zuteilung sofort. Der Host öffnet die Aufnahme erst nach dem ersten Ping des Clients, und Moonlight wartet 10 s auf das erste
+Videopaket (`FIRST_FRAME_TIMEOUT_SEC` in moonlight-common-c). Der Host wartet jetzt bis zu 6 s und schreibt
+`RUNNING granted after N ms`, wenn es 500 ms oder länger dauerte.
+
+Geprüft: Testclient, drei H.264-Streams hintereinander, ohne fehlende Bildnummer; die Zuteilung kam jedes Mal ohne diese Zeile,
+also in unter 500 ms. Nicht geprüft: eine wirklich langsame Zuteilung, sie ließ sich hier nicht herbeiführen.
+
 ### Wecken aus Moonlight (2026-11-03, 13.00, GitHub-Issue 10)
 
 Frage: Läuft ein Payload im Ruhemodus weiter, sodass der Host Moonlights Wake-on-LAN-Paket empfangen und die Konsole wecken

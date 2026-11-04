@@ -481,8 +481,12 @@ int ps_capture_open(ps_capture **out)
     rc = s->request(s->resource, "RUNNING", NULL, getpid());
     LOG("RUNNING rc=%#x\n", rc);
     if (rc < 0) goto fail;
+    // The open runs once the client's first ping came, and Moonlight waits 10 s for the first video packet
+    // (FIRST_FRAME_TIMEOUT_SEC, moonlight-common-c). On 13.60 the grant once took longer than 2 s twice in a row, and the
+    // same request went through right away ten seconds later (GitHub issue 1).
     int waited_ms = 0;
-    for (; waited_ms < 2000 && !atomic_load(&granted) && !atomic_load(&revoked) && !atomic_load(&refused); waited_ms += 10) usleep(10000);
+    for (; waited_ms < 6000 && !atomic_load(&granted) && !atomic_load(&revoked) && !atomic_load(&refused); waited_ms += 10) usleep(10000);
+    if (waited_ms >= 500 && atomic_load(&granted) && !atomic_load(&revoked)) LOG("RUNNING granted after %d ms\n", waited_ms);
     if (!atomic_load(&granted) || atomic_load(&revoked)) {
         // The app's report reads this line (parse_host_log): no answer, refused or taken away are different problems.
         char ids[32 * 12];

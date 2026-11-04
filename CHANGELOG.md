@@ -22,6 +22,9 @@
   below 1080p while the output isn't settled, for up to 6 s, and each reopen asks for the client's mode again. A mode the
   system really refuses still falls back to 1080p. The first open of a stream and everything from 1080p up stay as they
   were. Measured on 10.20 with a PS Vita and with Moonlight for Windows at 960x544, 1080p and 4K.
+- **A slow grant of the capture no longer fails the stream.** The host gave the console 2 s to grant the capture, though
+  Moonlight waits 10 s for the first picture. A tester on 13.60 saw the grant take longer twice in a row, and the stream
+  failed. Now the host waits up to 6 s, and the log notes a grant that took half a second or more.
 
 ## 0.2.2 (2026-11-03)
 
