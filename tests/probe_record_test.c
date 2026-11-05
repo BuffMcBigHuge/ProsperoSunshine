@@ -25,7 +25,7 @@ static int not_active(const char *step, const uint8_t *record)
 
 int main(void)
 {
-    static const uint32_t firmwares[] = {0x12400000u, 0x13000040u, 0x13600000u, 0x10200006u, 0x10400000u};
+    static const uint32_t firmwares[] = {0x12400000u, 0x13000040u, 0x13400000u, 0x13600000u, 0x10200006u, 0x10400000u};
     static const uint32_t rates[] = {20000000u, 150000000u};
     static const int variants[] = {PS_EXP_STANDARD, PS_EXP_MINIMAL, PS_EXP_FULL};
     int compared = 0;

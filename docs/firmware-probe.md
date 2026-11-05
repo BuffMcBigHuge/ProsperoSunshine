@@ -1,10 +1,12 @@
 # Firmware-Sonde
 
-Stand: 2. November 2026. `firmware_probe.elf` sammelt in einem Lauf von wenigen Minuten, was die Portierung des Hosts auf
+Stand: 5. November 2026. `firmware_probe.elf` sammelt in einem Lauf von wenigen Minuten, was die Portierung des Hosts auf
 Firmware 10.20 herausfinden musste (`docs/firmware-porting.md`), für eine Firmware, die noch niemand gemessen hat. Der
-Bericht sagt am Ende, was der Host auf dieser Firmware bräuchte. Validiert auf einer PS5 Pro mit 10.20: Der Lauf fand
-alles wieder, was dort von Hand gefunden wurde (Datensatz `0x2c8`, QP in `cfg+0xc4`/`+0xc8`, 34 Slices bei H.264, HEVC
-nur mit `cfg+0x24`).
+Bericht sagt am Ende, was der Host auf dieser Firmware bräuchte. Validiert am 5. November 2026 mit der Sonde aus diesem
+Stand auf einer PS5 Pro mit 10.20 (Host 0.3.1 lief, die Sonde hielt ihn an und startete ihn wieder) und einer PS5 mit
+10.40 (kein Host lief), je 147 s: Auf beiden fand sie den Datensatz des Hosts (`0x2c8`), den QP in `cfg+0xc4`/`+0xc8`,
+HEVC 8 und 10 Bit nur mit `cfg+0x24` und alle Modi von 360p bis 2160p in beiden Codecs. H.264 kommt auch mit den
+Slice-Feldern von 0.3.1 in 34 Slices je 1080p-Bild (`STATUS.md`, „Firmware-Sonde auf 10.20 und 10.40“).
 
 ## Wann sie läuft
 
@@ -90,7 +92,7 @@ Bildschirm ist und was die Konsole abspielt, auf dem Startbildschirm also auch A
 den Host neu startet, wie oben). `scripts/test.sh` prüft:
 
 - `tests/probe_record_test.c`: Der Datensatz-Baukasten der Sonde (`src/platform/ps5/probe_record.h`) ergibt mit den
-  Entscheidungen des Hosts in 640 Kombinationen byteweise den Datensatz von `configure()`, dazu die Forschungshaken in
+  Entscheidungen des Hosts in 768 Kombinationen byteweise den Datensatz von `configure()`, dazu die Forschungshaken in
   `capture.c` (Datensatz umschreiben, nur öffnen, Zahl der Versuche, letzter Fehler). Der Host aktiviert sie nie.
 - `tests/probe_scrub_test.cpp`: was maskiert wird und was nicht.
 - `tests/host_control_test.cpp`: dass die Sonde nur bei einer Client-Adresse in `STATUS` einen Stream annimmt.
