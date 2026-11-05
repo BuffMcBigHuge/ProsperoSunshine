@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Stopping and starting the host from a payload on the console, through the ports the app uses: QUIT on the control
 // socket (127.0.0.1:47995, answered "OK bye"), and the host's ELF to the ELF loader (127.0.0.1:9021). The firmware probe
-// and host_restart.elf use it, so that nobody has to press Stop host and Start host in the app.
+// and host_restart.elf use it, so that nobody has to press Stop host and Start host in the app. The host uses send_elf for
+// its control command PROBE, which starts the probe installed at kProbe.
 // The ELF started is /data/prosperosunshine/prospero_sunshine.elf, the one the app installed, unless the one-line file
 // /data/prosperosunshine/host_restart.next names another (a test build uploaded there), or says "none".
 #pragma once
@@ -21,6 +22,7 @@ namespace host_control {
 inline constexpr uint16_t kStreamPort = 47989, kControlPort = 47995, kLoaderPort = 9021;
 inline const char *const kInstalled = "/data/prosperosunshine/prospero_sunshine.elf";
 inline const char *const kNextFile = "/data/prosperosunshine/host_restart.next";
+inline const char *const kProbe = "/data/prosperosunshine/firmware_probe.elf";
 
 inline int loopback(uint16_t port) {
     const int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -116,18 +118,18 @@ inline std::string next_elf() {
     return path.empty() ? kInstalled : path;
 }
 
-// Sends the ELF at path to the loader and waits for the host's stream port.
-inline bool start(const std::string &path, std::string &detail) {
+// Sends the ELF at path to the loader. The bytes sent, or 0 with detail saying why not.
+inline size_t send_elf(const std::string &path, std::string &detail) {
     std::ifstream in(path, std::ios::binary);
     const std::vector<char> elf((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     if (elf.empty()) {
         detail = path + " not found";
-        return false;
+        return 0;
     }
     const int fd = loopback(kLoaderPort);
     if (fd < 0) {
         detail = "no ELF loader on 9021";
-        return false;
+        return 0;
     }
     size_t done = 0;
     while (done < elf.size()) {
@@ -136,8 +138,19 @@ inline bool start(const std::string &path, std::string &detail) {
         done += static_cast<size_t>(n);
     }
     close(fd);
-    const bool up = done == elf.size() && wait_port(kStreamPort, true, 30);
-    detail = path + " (" + std::to_string(elf.size()) + " bytes) sent, " + (up ? "host listening" : "host NOT listening after 30 s");
+    if (done != elf.size()) {
+        detail = path + ": the loader took " + std::to_string(done) + " of " + std::to_string(elf.size()) + " bytes";
+        return 0;
+    }
+    return done;
+}
+
+// Sends the ELF at path to the loader and waits for the host's stream port.
+inline bool start(const std::string &path, std::string &detail) {
+    const size_t size = send_elf(path, detail);
+    if (!size) return false;
+    const bool up = wait_port(kStreamPort, true, 30);
+    detail = path + " (" + std::to_string(size) + " bytes) sent, " + (up ? "host listening" : "host NOT listening after 30 s");
     return up;
 }
 

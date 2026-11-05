@@ -10,7 +10,8 @@ Slice-Feldern von 0.3.1 in 34 Slices je 1080p-Bild (`STATUS.md`, „Firmware-Son
 
 ## Wann sie läuft
 
-- **Nur, wenn der Nutzer sie startet:** Er schickt das ELF an den ELF-Loader (Port 9021). Nichts startet sie von selbst.
+- **Nur, wenn der Nutzer sie startet:** Er schickt das ELF an den ELF-Loader (Port 9021), oder der Host tut es auf den
+  Steuerbefehl `PROBE` hin (unten). Nichts startet sie von selbst. `firmware_probe.elf` liegt im Release-Archiv.
 - **Nie während eines Streams:** Sie fragt den Host über den Steuer-Socket (`STATUS`, `127.0.0.1:47995`). Läuft ein
   Stream, hört sie sofort auf und schreibt nur das in den Bericht. Kurz bevor sie den Host anhält, fragt sie noch einmal.
 - **Den Host hält sie an und startet ihn wieder:** `QUIT` über den Steuer-Socket, am Ende das installierte ELF an den
@@ -18,6 +19,16 @@ Slice-Feldern von 0.3.1 in 34 Slices je 1080p-Bild (`STATUS.md`, „Firmware-Son
 - **Sie lädt nichts hoch:** Alles bleibt auf der Konsole. Der Nutzer liest den Bericht und entscheidet, was er teilt.
 - Während des Laufs sollte kein Spiel starten oder enden, sonst schlagen Aufnahmen mit `0x81950009` fehl. Ein offenes
   Spiel im Vordergrund stört nicht.
+
+## Start über den Host (`PROBE`)
+
+Für einen Knopf „Run firmware probe“ auf der Diagnose-Seite der App und später auf der Web-Seite aus Issue #21: Liegt das
+ELF unter `/data/prosperosunshine/firmware_probe.elf`, schickt der Host es auf `PROBE` über den Steuer-Socket an den
+ELF-Loader und antwortet `OK started`. Läuft ein Stream, lehnt er mit `ERR a stream is running` ab; fehlt das ELF oder der
+Loader, mit `ERR` und dem Grund. Ab da läuft alles wie oben: Die Sonde fragt `STATUS`, hält den Host mit `QUIT` an und
+startet ihn am Ende wieder. Während des Laufs antwortet der Host also nicht; ob die Sonde fertig ist, steht in
+`firmware_probe/progress.txt`, das Ergebnis in `report.txt`. Wer den Knopf baut, sollte vorher sagen, dass der Lauf etwa
+2,5 Minuten dauert, den Host so lange anhält und dass in der Zeit kein Spiel starten oder enden sollte.
 
 ## Ergebnisse
 
@@ -95,4 +106,5 @@ den Host neu startet, wie oben). `scripts/test.sh` prüft:
   Entscheidungen des Hosts in 768 Kombinationen byteweise den Datensatz von `configure()`, dazu die Forschungshaken in
   `capture.c` (Datensatz umschreiben, nur öffnen, Zahl der Versuche, letzter Fehler). Der Host aktiviert sie nie.
 - `tests/probe_scrub_test.cpp`: was maskiert wird und was nicht.
-- `tests/host_control_test.cpp`: dass die Sonde nur bei einer Client-Adresse in `STATUS` einen Stream annimmt.
+- `tests/host_control_test.cpp`: dass die Sonde nur bei einer Client-Adresse in `STATUS` einen Stream annimmt, und dass
+  `send_elf` ein fehlendes ELF meldet.
