@@ -94,14 +94,17 @@ closes nothing.
 short press of Select sends Create when you let go, which means Create cannot be held. To get a plain Create button
 back, set `back_button_timeout = -1` in `sunshine.conf`; a value of 0 or more is the hold time in milliseconds.
 
-**Several controllers on one device:** every controller on a Moonlight client is a player of its own. The first plays as the
-console's user, and for each further one the console asks "Who's using this controller?". Two people on one PC need one
+**Several controllers on one device:** every controller on a Moonlight client is a player of its own. The host's first
+controller plays as the console's user, and for each further one the console asks "Who's using this controller?". Two people on one PC need one
 Moonlight with both controllers connected, not two clients. Measured here with the test client (two pads on one device),
 and a contributor played with two controllers on one Moonlight client on 10.20.
 
-**Only player 1 can press PS.** The PS button works only for the controller that plays as the console's user, so another
-player can't leave your game, open the control center or reach the console's settings. Their PS press is ignored, also the
-"hold Select" PS. To give it to everyone, turn on **PS for all players** in the app's Settings and restart the host.
+**Only the host has PS and Create.** The host is the device whose controller came first while no other was connected; its
+controller plays as the console's user. Every other player is a guest who can only play: their PS and Create presses are
+ignored, also the "hold Select" PS, so a guest can't leave your game, open the control center, reach the console's settings
+or broadcast your screen. The role belongs to the host's device, not to the first slot: when the host leaves, nobody else
+gets it, and the host's device takes it back when it reconnects. Once every controller is gone, the next device to connect
+is the host. To give PS and Create to everyone, turn on **PS for all players** in the app's Settings and restart the host.
 
 ## Playing over the internet
 

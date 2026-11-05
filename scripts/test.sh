@@ -26,6 +26,7 @@ run_test experimental_test
 run_test video_test
 run_test capture_session_test "$root/src/capture/capture_session.cpp"
 run_test gamepad_map_test
+run_test pad_roles_test
 run_test pad_touch_test
 run_test keyboard_map_test
 run_test listener_watch_test

@@ -66,9 +66,9 @@ const std::vector<OptionSpec> &option_specs()
         {"close_game_on_quit", "Quit closes the game",
          "On: quitting in Moonlight also closes the game the stream started or found in front, and unsaved progress is lost.",
          OptionKind::toggle, "Off", {}, 0, 0, 1, 0},
-        // The host reads this one (src/sunshine/main_ps5.cpp). Off, only player 1 has the PS button.
+        // The host reads this one (src/sunshine/platform_ps5.cpp). Off, only the host's controller has PS and Create.
         {"ps_button_all_players", "PS for all players",
-         "Off: only player 1, who plays as the console's user, can press PS. On: every player can, also a friend over the internet.",
+         "Off: only the host, who plays as the console's user, has PS and Create. On: every player has them, friends online too.",
          OptionKind::toggle, "Off", {}, 0, 0, 1, 0},
         };
         // The Experimental switches, which the host reads itself (src/sunshine/main_ps5.cpp), not Sunshine.

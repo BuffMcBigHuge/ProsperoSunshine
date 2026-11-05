@@ -356,3 +356,8 @@ echtem Moonlight beim Besitzer.
 9. Seltene Fehlstarts: 1 in 86 Starts im Docker-Client, 0 in 300 im Windows-Client, davon 150 mit 0.2.4 (`STATUS.md`).
    Ohne neuen Fehlstart gibt es hier nichts zu suchen; das Docker-Netz bleibt der wahrscheinlichste Grund.
 10. Adaptive Trigger (P9.10): Moonlight für PC müsste die Effekte beim Beenden zurücksetzen (`docs/re/adaptive-triggers.md`).
+11. Gäste spielen nur (Issue #15). Seit dem Stand nach 0.3.1 gehört die Host-Rolle einem gepairten Gerät statt dem ersten
+    Slot (`src/input/pad_roles.hpp`, Patch 0016), und Gäste haben weder PS noch Create. Offen, mit einer Probe auf der
+    Konsole: ob der Host einen echten Controller an der Konsole erkennt (dann wären alle Stream-Geräte Gäste), was ein
+    Stream-Pad mit zwei DualSense an der Konsole macht und welchen Nutzer das Pad des Hosts nimmt (heute der erste Ordner
+    in `/user/home`). Danach ein Schalter „Guests can only play“, standardmäßig an.

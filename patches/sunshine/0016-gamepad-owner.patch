@@ -1,0 +1,47 @@
+ProsperoSunshine: tell the platform which paired client a session's gamepads belong to
+
+The PS5 host gives the host role (the console's user, PS and Create) to a paired device, not to a gamepad slot, so a
+device that leaves and comes back gets it again and nobody inherits it (GitHub issue 15). alloc_gamepad only gets the
+session's feedback queue, so stream::session::start() tells the platform once which client that queue belongs to,
+through the new platf::set_gamepad_owner. The session holds the queue, so the mail hands out the same one to a resumed
+input when it is rebound.
+
+--- a/src/platform/common.h
++++ b/src/platform/common.h
+@@ -1304,6 +1304,16 @@
+    * @return 0 when the gamepad exists and was rebound; otherwise -1.
+    */
+   int rebind_gamepad(input_t &input, const gamepad_id_t &id, feedback_queue_t feedback_queue);
++
++  /**
++   * @brief Tell the platform which paired client a session's gamepad feedback queue belongs to.
++   *
++   * The PS5 host gives the host role (the console's user, PS and Create) to a paired device rather than to a gamepad slot.
++   *
++   * @param feedback_queue The session's feedback queue, the one alloc_gamepad later gets for its gamepads.
++   * @param owner The paired client's certificate.
++   */
++  void set_gamepad_owner(const feedback_queue_t &feedback_queue, std::string_view owner);
+   /**
+    * @brief Release gamepad resources.
+    *
+--- a/src/stream.cpp
++++ b/src/stream.cpp
+@@ -576,6 +576,7 @@
+     std::string info_address;  ///< Address the client streams from.
+     std::chrono::steady_clock::time_point info_started;  ///< When the session started.
+     std::shared_ptr<input::input_t> info_input;  ///< The session's input, for its gamepad count.
++    platf::feedback_queue_t owner_queue;  ///< Kept so a resumed input gets the queue platf::set_gamepad_owner was given.
+     std::atomic<std::uint64_t> info_video_bytes {0};  ///< Video bytes sent to the client, FEC included.
+     std::atomic<std::uint32_t> info_recoveries {0};  ///< The client's requests for an IDR or to invalidate reference frames.
+     std::atomic<std::uint32_t> info_rtt_ms {0};  ///< Round-trip time of the control connection; the control thread sets it.
+@@ -2320,6 +2321,9 @@
+      */
+     int start(session_t &session, const std::string &addr_string) {
+       session.input = input::alloc(session.mail, session.input_session_id);
++      // The mail hands out the same queue while someone holds it: the new input's, or a resumed input's once it is rebound.
++      session.owner_queue = session.mail->queue<platf::gamepad_feedback_msg_t>(mail::gamepad_feedback);
++      platf::set_gamepad_owner(session.owner_queue, session.client_cert);
+ 
+       session.broadcast_ref = broadcast.ref();
+       if (!session.broadcast_ref) {

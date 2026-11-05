@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+
+- **The host role belongs to a device, and guests lose Create too.** Until now the controller in the first slot played as
+  the console's user and had PS, so when its device left, whoever got that slot next took both over. Now the host is the
+  device whose controller came first while none was connected. When it leaves, nobody inherits the role, and its next
+  controller takes it back, also after a reconnect; once every controller is gone, the next device is the host. Guests can
+  no longer press Create either, since its menu captures and broadcasts what the console shows. **PS for all players**
+  in the app's Settings still gives both to everyone (GitHub issue #15).
+
 ### Fixed
 
 - **Firmware 13.40: the capture opens.** 13.40 refused 13.00's capture record at `OpenVideo` (`0x80c70010`), as 13.60 did

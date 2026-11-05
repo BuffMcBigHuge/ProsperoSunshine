@@ -4,6 +4,7 @@
 #include "audio/channel_map.hpp"
 #include "input/gamepad_map.hpp"
 #include "input/keyboard_map.hpp"
+#include "input/pad_roles.hpp"
 #include "input/pad_touch.hpp"
 #include "platform/ps5/kbm.h"
 #include "platform/ps5/pad.h"
@@ -26,8 +27,10 @@
 #include <condition_variable>
 #include <cstring>
 #include <mutex>
+#include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 #include <thread>
@@ -477,7 +480,7 @@ struct input_raw_t {
     std::array<ps_pad *, MAX_GAMEPADS> pads{};
     std::array<bool, MAX_GAMEPADS> active{};  // last state had something pressed or deflected
     std::array<bool, MAX_GAMEPADS> back{};    // Select is down
-    std::array<bool, MAX_GAMEPADS> ps_held{}; // a PS press that was held back, logged once per press
+    std::array<bool, MAX_GAMEPADS> ps_held{}; // a guest's PS or Create press that was held back, logged once per press
     std::array<std::chrono::steady_clock::time_point, MAX_GAMEPADS> back_since{};
     std::array<feedback_queue_t, MAX_GAMEPADS> feedback{};
     std::array<uint8_t, MAX_GAMEPADS> client_index{};
@@ -496,7 +499,8 @@ struct input_raw_t {
     std::optional<std::pair<float, float>> pointer;  // the last absolute position, for abs_mouse
     int sessions = 0;
     uint32_t user = 0;
-    bool ps_all_players = false;  // ps_button_all_players: every pad may press PS, not only pad 0
+    bool ps_all_players = false;  // ps_button_all_players: every pad may press PS and Create, not only the host's
+    prospero::PadRoles<MAX_GAMEPADS> roles;  // who is the host: a paired device, not a slot (GitHub issue 15)
     std::jthread output_thread;
 };
 
@@ -600,8 +604,8 @@ input_t input() {
     const auto settings = config::parse_config(file_handler::read_file(config::sunshine.config_file.c_str()));
     const auto all = settings.find("ps_button_all_players");
     raw->ps_all_players = all != settings.end() && all->second == "1";
-    BOOST_LOG(info) << (raw->ps_all_players ? "PS5 input: every player can press PS"sv
-                                            : "PS5 input: only player 1 can press PS"sv);
+    BOOST_LOG(info) << (raw->ps_all_players ? "PS5 input: every player can press PS and Create"sv
+                                            : "PS5 input: only the host can press PS and Create"sv);
     raw->output_thread = std::jthread(poll_pad_output, raw);
     return input_t{raw};
 }
@@ -614,24 +618,56 @@ static void request_motion(const input_raw_t &input, int nr) {
     }
 }
 
+namespace {
+// Which paired device each session's feedback queue belongs to: stream::session::start() tells (patch 0016), and
+// alloc_gamepad, which only gets the queue, asks. The weak pointer lets an ended session's entry go.
+struct gamepad_owner_t {
+    std::weak_ptr<void> queue;
+    const void *key;
+    std::string owner;
+};
+std::mutex gamepad_owners_mutex;
+std::vector<gamepad_owner_t> gamepad_owners;
+
+std::string gamepad_owner(const feedback_queue_t &queue) {
+    std::lock_guard lock(gamepad_owners_mutex);
+    for (const auto &entry : gamepad_owners)
+        if (entry.key == queue.get() && !entry.queue.expired()) return entry.owner;
+    return {};
+}
+}  // namespace
+
+void set_gamepad_owner(const feedback_queue_t &queue, std::string_view owner) {
+    if (!queue) return;
+    std::lock_guard lock(gamepad_owners_mutex);
+    std::erase_if(gamepad_owners, [&](const gamepad_owner_t &entry) { return entry.queue.expired() || entry.key == queue.get(); });
+    gamepad_owners.push_back({queue, queue.get(), std::string(owner)});
+}
+
 int alloc_gamepad(input_t &input, const gamepad_id_t &id, const gamepad_arrival_t &, feedback_queue_t feedback) {
     if (id.globalIndex < 0 || id.globalIndex >= MAX_GAMEPADS) return -1;
+    const std::string owner = gamepad_owner(feedback);
     std::lock_guard lock(input->mutex);
     input->feedback[id.globalIndex] = std::move(feedback);
     input->client_index[id.globalIndex] = id.clientRelativeIndex;
     auto *&pad = input->pads[id.globalIndex];
     if (!pad) {
-        // The first pad plays as the console's user. Every further one, from a second client or a second controller on
-        // the same client, is another player: the system asks who uses it, and they pick a user or a guest.
-        const bool first = id.globalIndex == 0;
-        const int rc = ps_pad_open(first ? input->user : PS_PAD_NO_USER, &pad);
+        // The host's pad plays as the console's user. Every other one, from another device or a second controller on the
+        // host's, is a guest: the system asks who uses it, and they pick a user or a guest (pad_roles.hpp).
+        const bool host = input->roles.attach(id.globalIndex, owner);
+        const int rc = ps_pad_open(host ? input->user : PS_PAD_NO_USER, &pad);
         if (rc) {
             BOOST_LOG(error) << "PS5 virtual pad "sv << id.globalIndex << " failed: "sv << rc;
+            input->roles.detach(id.globalIndex);
             pad = nullptr;
             return -1;
         }
+        // No device ids in the log: it goes into the report people post.
         BOOST_LOG(info) << "PS5 virtual pad "sv << id.globalIndex << " attached"sv
-                        << (first ? ""sv : ", the console asks who uses it"sv);
+                        << (host ? " as the host's controller"sv
+                                 : input->roles.host_away() ? ", the console asks who uses it; the host is away and keeps the role"sv
+                                                            : ", the console asks who uses it"sv)
+                        << (owner.empty() ? " (device unknown)"sv : ""sv);
     }
     request_motion(*input, id.globalIndex);
     return 0;
@@ -654,12 +690,15 @@ void free_gamepad(input_t &input, int nr) {
     set_triggers(*input, nr, prospero::triggers_off);
     const int rc = ps_pad_close(input->pads[nr]);  // sends a neutral state before removal
     input->pads[nr] = nullptr;
+    const bool was_host = input->roles.is_host(nr);
+    input->roles.detach(nr);
     input->colors[nr] = {};  // a later pad in this slot reports its colour anew
     input->triggers[nr] = {};
     input->touch[nr].clear();
     input->back[nr] = false;
     input->ps_held[nr] = false;
-    BOOST_LOG(info) << "PS5 virtual pad "sv << nr << " detached ("sv << rc << ')';
+    BOOST_LOG(info) << "PS5 virtual pad "sv << nr << " detached ("sv << rc << ')'
+                    << (was_host ? (input->roles.host_away() ? ", the host's device keeps the role"sv : ", the host role is free"sv) : ""sv);
 }
 
 void gamepad_update(input_t &input, int nr, const gamepad_state_t &state) {
@@ -674,9 +713,10 @@ void gamepad_update(input_t &input, int nr, const gamepad_state_t &state) {
     // Sunshine turns a held Select into PS (back_button_timeout), but Select is Create here and pressing it
     // first would open the Create menu. So Create only goes out, as a tap, when Select comes up early. The
     // margin keeps Sunshine's own forced release at the timeout from counting as early.
-    uint32_t flags = prospero::allowed_buttons(state.buttonFlags, nr, input->ps_all_players);
+    const auto role = input->roles.is_host(nr) ? prospero::PadRole::host : prospero::PadRole::guest;
+    uint32_t flags = prospero::allowed_buttons(state.buttonFlags, role, input->ps_all_players);
     if ((state.buttonFlags & ~flags) && !(input->ps_held[nr]))
-        BOOST_LOG(info) << "PS5 virtual pad "sv << nr << ": PS ignored, only player 1 has it (ps_button_all_players)"sv;
+        BOOST_LOG(info) << "PS5 virtual pad "sv << nr << ": PS or Create ignored, only the host has them (ps_button_all_players)"sv;
     input->ps_held[nr] = state.buttonFlags & ~flags;
     bool create_tap = false;
     if (const auto timeout = config::input.back_button_timeout; timeout >= 0ms) {

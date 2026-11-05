@@ -501,6 +501,33 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### Host-Rolle am Gerät (2026-11-05, 13.00, Testclient, Home-Bildschirm, nicht veröffentlicht)
+
+Host `commit=roles-1` (der Stand dieses Commits ohne die Doku), drei gepairte Identitäten des Linux-Testclients (A, B, C),
+alle H.264 1080p60 auf „PS5 Screen“ mit `--no-script`; B, C und A beim zweiten Mal treten per `/resume` bei. Ablauf und Log:
+
+- A allein: Pad 0 „attached as the host's controller“.
+- B tritt bei: Pad 1 „the console asks who uses it“. Drei PS-Drücke von B (`--tick-kind ps`): dreimal „PS or Create
+  ignored, only the host has them“.
+- A geht (sein `/cancel` beendet nur seine Sitzung): „pad 0 detached (0), the host's device keeps the role“.
+- C tritt bei und bekommt den freien Slot 0: „the console asks who uses it; the host is away and keeps the role“. Zwei
+  Select-Drücke von C (`--tick-kind back`, Create): beide ignoriert.
+- C geht, A tritt wieder bei: Pad 0 „attached as the host's controller“.
+- A geht, dann B; danach sind alle Pads abgemeldet (`STREAMS` leer). Alle vier Streams fehlerfrei dekodiert (1795, 4479,
+  883 und 704 Bilder).
+- Ein Lauf davor ohne Beitritt (B, C und A rief `/launch` statt `/resume`): Jedes Gerät war allein, wurde Host, und nach
+  seinem Abmelden war die Rolle frei („the host role is free“).
+
+Nicht geprüft: echtes Moonlight, ein echter DualSense an der Konsole, und ob der Dialog „Wer benutzt diesen Controller?“
+einem Gast den Nutzer des Hosts anbietet.
+
+### Testbuild für 13.40 (2026-11-05, 13.00)
+
+Pre-Release `v0.3.1-fw1340-1` für Issue #14: 13.40 und alles bis 13.60 bekommt den Datensatz von 13.60. Gemessen nur auf
+13.00, wo sich nichts ändert (die 288 Datensätze in `capture_records_test` gleich): Testclient, Mario-64-Demo, je 30 s H.264
+mit 1795 Bildern bei 59,94 fps und HEVC mit 1794 Bildern bei 59,95 fps, fehlerfrei dekodiert, Ton ohne Fehler. Auf 13.40
+ungetestet, der Bericht des Testers steht aus.
+
 ### Berichte eines Mitwirkenden (2026-11-04, Discord, PS5 Pro mit 10.20)
 
 - **HDR-Farben unter Windows:** Moonlight unter Windows mit HDR-Bildschirm und Hardware-Decoding, HEVC 10 Bit HDR 1920x1080,

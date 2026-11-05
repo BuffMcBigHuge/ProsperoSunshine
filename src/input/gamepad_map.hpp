@@ -30,12 +30,13 @@ struct PadState {
     uint8_t lx, ly, rx, ry, l2, r2;
 };
 
-// The PS button of a further player: pad 0 plays as the console's user, every other pad is a player the console asked
-// about. Unless the owner allows it for all (ps_button_all_players), only pad 0's PS button goes through, so another
-// player can't leave the game, open the control center or reach the settings. Sunshine has already turned a held
-// Select into home here, so that way is closed too.
-constexpr uint32_t allowed_buttons(uint32_t flags, int pad, bool all_players) {
-    return pad == 0 || all_players ? flags : flags & ~moonlight::home;
+// The host's pad plays as the console's user; every other pad is a guest the console asked about (pad_roles.hpp). Unless
+// the owner allows it for all (ps_button_all_players), a guest's PS and Create don't go through, so a guest can't leave
+// the game, open the control center, reach the settings or open the Create menu, which captures and broadcasts what the
+// console shows. Sunshine has already turned a held Select into home here, so that way is closed too.
+enum class PadRole { host, guest };
+constexpr uint32_t allowed_buttons(uint32_t flags, PadRole role, bool all_players) {
+    return role == PadRole::host || all_players ? flags : flags & ~(moonlight::home | moonlight::back);
 }
 
 // A trigger counts as pressed (the digital L2/R2 bit) above this analog value.

@@ -34,12 +34,11 @@ int main() {
     mask_only[0] = 0x01;
     mask_only[23] = 0xff;
     assert(map_trigger_effects(mask_only, triggers_off).flags == 0);
-    // Only player 1 has PS unless every player may.
-    constexpr uint32_t with_home = moonlight::home | moonlight::a | moonlight::back;
-    static_assert(allowed_buttons(with_home, 0, false) == with_home);
-    static_assert(allowed_buttons(with_home, 1, false) == (moonlight::a | moonlight::back));
-    static_assert(allowed_buttons(with_home, 3, false) == (moonlight::a | moonlight::back));
-    static_assert(allowed_buttons(with_home, 2, true) == with_home);
-    static_assert(allowed_buttons(0, 1, false) == 0);
-    std::cout << "PASS: gamepad mapping (face, system, sticks, triggers, trigger effects, PS for player 1 only)\n";
+    // Only the host has PS and Create unless every player may.
+    constexpr uint32_t with_home = moonlight::home | moonlight::a | moonlight::back | moonlight::start;
+    static_assert(allowed_buttons(with_home, PadRole::host, false) == with_home);
+    static_assert(allowed_buttons(with_home, PadRole::guest, false) == (moonlight::a | moonlight::start));
+    static_assert(allowed_buttons(with_home, PadRole::guest, true) == with_home);
+    static_assert(allowed_buttons(0, PadRole::guest, false) == 0);
+    std::cout << "PASS: gamepad mapping (face, system, sticks, triggers, trigger effects, PS and Create for the host only)\n";
 }
