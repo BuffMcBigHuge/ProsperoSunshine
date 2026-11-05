@@ -8,7 +8,7 @@ the PS5 screen, game audio and controller input over your LAN.
 > **Status: 0.3.1 ([changelog](CHANGELOG.md)).** Pairing, H.264, HEVC and HDR from 360p up to 4K at 30 or 60 fps, game audio, controller, keyboard and mouse input work end to end
 > with Moonlight on PC, in the browser (Moonlight Web) and on iPhone. Sessions of 30 minutes and ten reconnects
 > were tested without errors on firmware 13.00. Firmware 10.20 was tested by a contributor at 1080p. Users report streams on
-> 13.60, not measured here. A second device can join a running stream as another player, in its own codec, dynamic range or resolution up to 1080p. Not every client or game has
+> 13.40 and 13.60, not measured here. A second device can join a running stream as another player, in its own codec, dynamic range or resolution up to 1080p. Not every client or game has
 > been tried.
 
 ## How it works
@@ -141,7 +141,8 @@ ProsperoSunshine's ports by default. Nothing is open to the internet, only to th
 
 If you set up ps5-tailscale before 0.7.3, its saved config keeps the old UDP list: add `47998, 47999, 48000` under its
 **Settings**, or Moonlight pairs and lists the games but the stream fails with "control stream establishment failed". A
-contributor tested this on a PS5 Pro on 10.20 with Moonlight on iOS; it isn't tested here. Without a payload on the
+contributor tested this on a PS5 Pro on 10.20 with Moonlight on iOS, and with a console in another home on 0.3.1; it isn't
+tested here. Without a payload on the
 console, a PC or router at home acting as a Tailscale subnet router works too; the friend then adds the console's LAN
 address.
 
@@ -254,10 +255,10 @@ expect it to fail.
    whether it worked or not. Add your Moonlight client and what you saw on the screen. The report has no addresses, device names
    or ids in it.
 
-**H.264 on firmware 10.x:** 10.x used to cut every 1080p frame into 34 slices, and Moonlight on Windows then showed a white
-picture with hardware decoding. Since 0.3.1 the host asks for 4 slices per frame. Nobody has tried that on 10.x yet: if you can,
-stream H.264, then open the app's **Diagnostics** page and look for `first frame has N slices` (it is in `host_diag.log`, not
-in `sunshine.log`). Tell us the number and whether the picture came. Until then, HEVC is the safe choice there.
+**H.264 on firmware 10.x:** 10.x cuts every 1080p H.264 frame into 34 slices, and Moonlight on Windows then shows a white or
+black picture with hardware decoding. The slice fields that 0.3.1 sets don't change that on 10.20 (measured by a contributor),
+so use HEVC on 10.x, or software decoding for H.264. If you are on another 10.x version and stream H.264, the app's
+**Diagnostics** page shows `first frame has N slices` (it is in `host_diag.log`, not in `sunshine.log`); the number helps.
 
 **Surround:** turn on **Surround** under Experimental, set Moonlight to 5.1 or 7.1 and play a game with surround sound for a
 minute. `sunshine.log` gets a line `12-channel levels` every 30 seconds; post a few of them with what you heard from which

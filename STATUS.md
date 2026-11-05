@@ -537,6 +537,22 @@ ungetestet, der Bericht des Testers steht aus.
 - **Tailscale:** Mit [ps5-tailscale](https://github.com/holdmysocks/ps5-tailscale) ab 0.7.3 (sein Beitrag, UDP 47998–48000 in
   den Standardports) erreichte Moonlight auf iOS den Host über die Tailnet-Adresse der Konsole. Hier nicht geprüft.
 
+### Berichte nach 0.3.1 (2026-11-05)
+
+Hier nicht nachgemessen; die Angaben stammen aus den Berichten.
+
+- **Slices bei H.264 auf 10.20 (Mitwirkender, Discord, PS5 Pro):** Host 0.3.1, Moonlight unter Windows mit H.264 1920x1080@60
+  und Hardware-Decoding (D3D11VA). `host_diag.log`: `firmware 10.x: no rate fields, QP 24/28`, `OpenVideo rc=0`,
+  `Start rc=0`, `first frame has 34 slices, more than hardware decoders on Windows take`, `capture open ok`. Die Felder
+  `cfg+0x40/0x44/0x48` werden also angenommen und wirken nicht; der Rückfall greift nicht, weil nichts abgelehnt wird.
+  Moonlights Log zeigt wiederholt `avcodec_send_packet() failed: Invalid data found when processing input` und „Resetting
+  decoder due to consistent failure“, auf dem Bildschirm kein Bild.
+- **Tailscale mit einer Konsole in einem anderen Haushalt (derselbe Mitwirkende):** aktuelles ps5-tailscale und Host 0.3.1,
+  Moonlight streamte über das Tailnet.
+- **Firmware 13.40 (GitHub-Issue 14, PS5 Slim Digital):** Testbuild `0.3.1-fw1340-1` (13.40 bekommt den Datensatz von
+  13.60): `capture OpenVideo rc=0`, `Start rc=0`, `capture open ok`, Ton über Avcap2; Moonlight auf Android zeigte H.264.
+  Eingabe und lange Sitzungen sind dort noch nicht berichtet.
+
 ### Raumklang auf 13.60 (2026-11-04, Bericht in PR 16 von BuffMcBigHuge)
 
 Ein Mitwirkender baute parallel zu 0.3.1 denselben Weg (Typ 3 bei 5.1/7.1) und maß auf 13.60 mit echten 5.1-Quellen. Hier
@@ -589,7 +605,8 @@ Bildern, ohne Lücke, längste Pause 28 und 21 ms, fehlerfrei dekodiert, je 3812
 **Slices bei H.264 auf 10.x.** Der Host setzt dort für H.264 `cfg+0x40 = 1`, `cfg+0x44 = 4`, `cfg+0x48 = 1`. Scheitert das
 Öffnen damit, öffnet er sofort ohne sie und lässt sie bis zum Neustart weg, wenn es dann geht. Das erste Bild jedes Öffnens
 mit den Feldern wird gelesen und seine Slices geloggt (`first frame has N slices`). Geprüft nur in den Unit-Tests: Die Records
-ändern sich allein für H.264 auf 10.x (48 von 240 Zeilen der Golden-Datei), 13.00 bleibt byte-gleich. Auf 10.x nicht gemessen.
+ändern sich allein für H.264 auf 10.x (48 von 240 Zeilen der Golden-Datei), 13.00 bleibt byte-gleich. Auf 10.20 inzwischen
+gemessen: wirkungslos, weiter 34 Slices (oben, „Berichte nach 0.3.1“).
 
 ### Release 0.3.0 auf der Konsole (2026-11-04, 13.00)
 

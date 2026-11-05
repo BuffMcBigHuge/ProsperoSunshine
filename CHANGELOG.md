@@ -14,8 +14,16 @@
 ### Fixed
 
 - **Firmware 13.40: the capture opens.** 13.40 refused 13.00's capture record at `OpenVideo` (`0x80c70010`), as 13.60 did
-  before 0.1.5. It now gets 13.60's record, as does any version between 13.40 and 13.60. Not tested on 13.40 yet; a test
-  build is out for it (issue #14). Firmware 13.00 and every other version keep their record byte for byte.
+  before 0.1.5. It now gets 13.60's record, as does any version between 13.40 and 13.60. A tester confirmed it on 13.40
+  with a test build of this change: `OpenVideo` returns 0 and Moonlight on Android shows the picture with H.264 (issue #14).
+  Not tested here. Firmware 13.00 and every other version keep their record byte for byte.
+
+### Known limits
+
+- **The slice fields from 0.3.1 do nothing on 10.20.** A contributor measured it on a PS5 Pro: the console accepts them and
+  still cuts every 1080p H.264 frame into 34 slices, so Moonlight on Windows with hardware decoding still fails on H.264
+  there. The fallback doesn't help either, since nothing is refused. Use HEVC on 10.x; it has 17 slices and decodes in
+  hardware. Where 10.x takes the slice count is being looked into.
 
 ## 0.3.1 (2026-11-04)
 

@@ -29,7 +29,7 @@ Seit 0.1.5 sind folgende Releases dazugekommen:
   - README-Abschnitt zum Spielen über das Internet.
 - **0.3.1:**
   - Raumklang 5.1/7.1 hinter dem Schalter „Surround“, Kanalreihenfolge ungeprüft.
-  - H.264 auf 10.x verlangt 4 Slices je Bild (ungeprüft auf 10.x).
+  - H.264 auf 10.x verlangt 4 Slices je Bild; auf 10.20 wirkungslos (gemessen von einem Mitwirkenden, `STATUS.md`).
 
 Firmware: 13.00 und 10.20 sind geprüft. 10.40 und 13.60 streamen laut Nutzerberichten (Issues #1 und #2), dort aber nicht
 gemessen.
@@ -336,9 +336,10 @@ echtem Moonlight beim Besitzer.
    wenn es länger dauert. Ein Bericht damit zeigt, wie lang die Zuteilung dort braucht. Danach die Checkliste in
    `docs/firmware-porting.md` für 13.60.
 4. 10.x: 10.20 ist geprüft, 10.40 streamt HEVC laut Nutzerbericht (Issue #2). Offen: H.264 kommt dort in 34 Slices je
-   Bild, und die Hardware-Decoder unter Windows nehmen höchstens 32 (weißes Bild). Seit 0.3.1 verlangt der Host dort 4
-   Slices über die Felder von Remote Play und fällt ohne sie zurück, wenn die Firmware sie ablehnt. Offen: ob sie auf 10.x
-   wirken; ein Log mit `first frame has N slices` von 10.x zeigt es. Bis dahin HEVC empfehlen.
+   Bild, und die Hardware-Decoder unter Windows nehmen höchstens 32 (weißes Bild). Seit 0.3.1 setzt der Host dort die
+   Slice-Felder von Remote Play (`cfg+0x40/0x44/0x48`, Offsets aus SceRemotePlay von 13.00); 10.20 nimmt sie an und
+   schneidet trotzdem 34 Slices. Nächster Schritt: das Feld finden, das auf 10.x die Slice-Zahl setzt (eine Sonde eines
+   Mitwirkenden, die freie Wörter im Encoder-Block durchprobiert, oder SceRemotePlay von 10.20). Bis dahin HEVC empfehlen.
 5. Ruhemodus mit offenem Spiel und laufendem Stream: Der Neustart der Dienste endet dort nicht in `host ready`
    (`STATUS.md`). Das ist zu klären. Offen sind außerdem das Aufwecken per Controller und der einmalige Hänger im ersten
    Test. Wecken aus Moonlight geht nicht (`STATUS.md`, Issue #10). Tests nur nach Rückfrage.

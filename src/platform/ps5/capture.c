@@ -330,7 +330,8 @@ void ps_capture_build_config(uint8_t *p, const ps_capture_video_config *c, uint3
     if (shift < 0 && c->codec == 0 && !c->no_slices) {
         // 10.x cuts H.264 into one slice per macroblock row, 34 at 1080p, and the hardware decoders on Windows take at most
         // 32. Remote Play sets these three for H.264 (SceRemotePlay 0x6f9df..0x6fa32): on, slices per frame, on. 13.00
-        // sends one slice per frame anyway (STATUS.md), so they are left out there.
+        // sends one slice per frame anyway (STATUS.md), so they are left out there. 10.20 accepts them and still cuts 34
+        // (measured by a contributor on 0.3.1), so on 10.x the count must sit elsewhere; these offsets are 13.00's.
         u32(p, 0x40, 1);
         u32(p, 0x44, PS_H264_SLICES);
         u32(p, 0x48, 1);
