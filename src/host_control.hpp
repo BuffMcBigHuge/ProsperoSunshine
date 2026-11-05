@@ -78,7 +78,24 @@ inline bool streaming_in(const std::string &status) {
            status[at + 9] != '\r';
 }
 
-inline bool streaming() { return streaming_in(status()); }
+// Whether the probe must not go on: a stream in STATUS, or no answer while the host listens. A host that is up but silent
+// may be busy with a stream, and stopping it then would cut someone's stream, so that counts as busy too.
+inline bool busy_in(const std::string &status, bool host_listening) {
+    return status.empty() ? host_listening : streaming_in(status);
+}
+
+// STATUS asked up to three times, a second apart, since the control socket takes one client at a time. why says what
+// was seen when busy.
+inline bool busy(std::string &why) {
+    std::string answer;
+    for (int i = 0; i < 3 && answer.empty(); i++) {
+        if (i) sleep(1);
+        answer = status();
+    }
+    const bool listening_now = listening(kStreamPort);
+    why = answer.empty() ? "the host listens but didn't answer STATUS" : "the host is streaming";
+    return busy_in(answer, listening_now);
+}
 
 // Asks a running host to quit and waits for its stream port to close. True if no host runs afterwards.
 inline bool stop(std::string &detail) {
@@ -131,6 +148,14 @@ inline size_t send_elf(const std::string &path, std::string &detail) {
         detail = "no ELF loader on 9021";
         return 0;
     }
+    // In the host this runs on the control socket's thread: a loader that closes early must not raise SIGPIPE, and one
+    // that accepts but doesn't read must not block QUIT and RELISTEN behind it.
+#ifdef SO_NOSIGPIPE
+    int one = 1;
+    setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
+#endif
+    timeval timeout{5, 0};
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout);
     size_t done = 0;
     while (done < elf.size()) {
         const ssize_t n = write(fd, elf.data() + done, elf.size() - done);

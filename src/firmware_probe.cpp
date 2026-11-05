@@ -453,6 +453,9 @@ struct Working {
     bool inner = false, rate = false;
 } working;
 bool layout_tried;
+// The host's own combination (its shift, with inner headers and rate fields from 13.00 on) is among those that start. On
+// 13.00 all four variants start and the first is taken as the working layout, so the summary asks this instead.
+bool host_layout_starts;
 
 ps_probe_layout working_layout(uint32_t codec = 0, uint32_t resolution = 4, uint32_t timing = 1, uint32_t ten_bit = 0) {
     return layout_for(working.shift, working.inner, working.rate, codec, resolution, timing, ten_bit, 6000000, 6720000);
@@ -821,6 +824,8 @@ void phase_layout() {
         const Result r = run(t);
         out("  %s: %s", label, r.opened() ? outcome(r).c_str() : ("Start " + outcome(r)).c_str());
         if (r.opened() && r.frames > 0 && !working.found) working = {true, a.shift, a.inner, a.rate};
+        if (r.opened() && r.frames > 0 && a.shift == host_shift && a.inner == (host_shift >= 0) && a.rate == (host_shift >= 0))
+            host_layout_starts = true;
     }
     if (working.found)
         out("working layout: shift %+td (total %#tx), inner headers %s, rate fields %s; the host uses shift %+td", working.shift,
@@ -1052,7 +1057,8 @@ void summary() {
     out("== Summary: what the host needs on this firmware");
     out("host's own code: H.264 %s, HEVC 8-bit %s, HEVC 10-bit %s", yes_no(found.host_h264), yes_no(found.host_hevc8), yes_no(found.host_hevc10));
     if (working.found) {
-        if (working.shift != host_shift || working.inner != (host_shift >= 0) || working.rate != (host_shift >= 0))
+        if (!host_layout_starts &&
+            (working.shift != host_shift || working.inner != (host_shift >= 0) || working.rate != (host_shift >= 0)))
             out("record: CHANGE record_shift() to %+td (total %#tx), inner headers %s, rate fields %s (the host has %+td)", working.shift,
                 0x2e0 + working.shift, working.inner ? "yes" : "no", working.rate ? "yes" : "no", host_shift);
         else
@@ -1090,10 +1096,12 @@ int main() {
     // Never during a stream: the probe stops the host, and with it the user's stream. Asked again right before that.
     const auto stream_running = [] {
         before("host: STATUS");
-        if (!host_control::streaming()) return false;
-        out("stopped here: the host is streaming; end the stream and run the probe again");
+        std::string why;
+        if (!host_control::busy(why)) return false;
+        out("stopped here: %s; %s, and run the probe again", why.c_str(),
+            why == "the host is streaming" ? "end the stream" : "if nothing streams, restart the host from the app");
         write_file("report.txt", report);
-        write_file("progress.txt", "done (a stream was running)\n");
+        write_file("progress.txt", "done (a stream was running, or the host didn't answer)\n");
         if (detail) fclose(detail);
         return true;
     };

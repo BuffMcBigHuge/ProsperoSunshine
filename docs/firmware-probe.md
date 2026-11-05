@@ -13,7 +13,10 @@ Slice-Feldern von 0.3.1 in 34 Slices je 1080p-Bild (`STATUS.md`, „Firmware-Son
 - **Nur, wenn der Nutzer sie startet:** Er schickt das ELF an den ELF-Loader (Port 9021), oder der Host tut es auf den
   Steuerbefehl `PROBE` hin (unten). Nichts startet sie von selbst. `firmware_probe.elf` liegt im Release-Archiv.
 - **Nie während eines Streams:** Sie fragt den Host über den Steuer-Socket (`STATUS`, `127.0.0.1:47995`). Läuft ein
-  Stream, hört sie sofort auf und schreibt nur das in den Bericht. Kurz bevor sie den Host anhält, fragt sie noch einmal.
+  Stream, hört sie sofort auf und schreibt nur das in den Bericht. Antwortet der Host dreimal nicht, während er auf 47989
+  lauscht, gilt er ebenfalls als beschäftigt: Die Sonde hält dann lieber an, als einen Stream abzuschneiden. Kurz bevor
+  sie den Host anhält, fragt sie noch einmal. Ein Moonlight-Start zwischen `/launch` und RTSP rutscht durch beide
+  Prüfungen; das Fenster ist kurz.
 - **Den Host hält sie an und startet ihn wieder:** `QUIT` über den Steuer-Socket, am Ende das installierte ELF an den
   Loader (`src/host_control.hpp`). Dafür muss niemand in der App Stop und Start drücken.
 - **Sie lädt nichts hoch:** Alles bleibt auf der Konsole. Der Nutzer liest den Bericht und entscheidet, was er teilt.
@@ -46,6 +49,10 @@ In `/data/prosperosunshine/firmware_probe/`:
 Abfragen von Avcap2 und ResourceArbitrator, `QUIT` und der Neustart des Hosts), schreibt die Sonde eine Zeile mit `->`
 nach `detail.log`, mit `fsync` auf die Platte, und dieselbe Zeile ins klog. Die letzte `->`-Zeile ist der Aufruf, an dem
 es hing.
+
+**Wenn die Sonde nicht fertig wird** (`progress.txt` steht nicht auf `done`, etwa nach einem Absturz oder Hänger), bleibt
+der Host angehalten: In der App „Start host“ drücken. Ein Knopf in der App kann das später selbst tun, wenn sich
+`progress.txt` nicht mehr ändert.
 
 ## Was im Bericht steht
 
@@ -107,4 +114,4 @@ den Host neu startet, wie oben). `scripts/test.sh` prüft:
   `capture.c` (Datensatz umschreiben, nur öffnen, Zahl der Versuche, letzter Fehler). Der Host aktiviert sie nie.
 - `tests/probe_scrub_test.cpp`: was maskiert wird und was nicht.
 - `tests/host_control_test.cpp`: dass die Sonde nur bei einer Client-Adresse in `STATUS` einen Stream annimmt, und dass
-  `send_elf` ein fehlendes ELF meldet.
+  Schweigen als beschäftigt gilt, solange der Host lauscht, und dass `send_elf` ein fehlendes ELF meldet.
