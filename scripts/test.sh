@@ -30,6 +30,8 @@ run_test gamepad_map_test
 run_test pad_roles_test
 run_test pad_touch_test
 run_test keyboard_map_test
+run_test keyboard_pad_test
+run_test title_profile_test
 run_test listener_watch_test
 run_test device_modes_test
 run_test stream_list_test
