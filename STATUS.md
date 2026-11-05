@@ -504,6 +504,37 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### Tastatur und Maus als Controller (2026-11-04, 10.20, PS5 Pro)
+
+Gemessen vom Besitzer mit Moonlight für Linux auf einem PC ohne Controller, dazu Hostlog (`sunshine.log`) und Kernel-Log der
+Konsole. Host aus `keyboard-mouse-pad` (0.3.0 mit dem Tastatur-Patch, heute 0017), per ELF-Loader gestartet.
+
+- **Pad beim ersten Tastendruck:** „The keyboard and mouse of a client without a controller play as virtual pad 0“, im
+  Kernel-Log `DEVICE_ADDED` und `DEVICE_OWNER_CHANGED` auf den Benutzer der Konsole. Kein „Keyboard connected“: die geteilte
+  Tastatur und Maus der Konsole entstehen für dieses Gerät nicht.
+- **GTA III Definitive Edition (Profil `shooter`):** Laufen mit W A S D, Kamera mit der Maus, Zielen und Schießen mit den
+  Maustasten, der Waffen-Cheat (R2 R2 L1 R2 ← ↓ → ↑ ← ↓ → ↑) über 3, Q und die Pfeiltasten eingegeben. Im Auto mit der
+  Fahrzeugebene (Feststelltaste): Gas, Bremse und Lenkung mit Anlauf; laut Besitzer „perfekt“.
+- **Ein Controller übernimmt:** Ein DualShock 4 am selben Gerät (USB): „Controller [0] takes over the keyboard's virtual pad
+  0“, keine Frage „Who's using this controller?“. Beim Abziehen „virtual pad 0 detached“, die Konsole meldet die Trennung;
+  die nächste Taste legte nach 8 s wieder Pad 0 an. Ein zweiter Controller am selben Gerät wurde Pad 1 mit Frage.
+- **Zwei Geräte:** Ein DualShock 4 an einem anderen Gerät als Spieler 1 (It Takes Two), danach die Tastatur dieses PCs:
+  „virtual pad 1 attached, the console asks who uses it“. F1 (PS) bewirkte für Spieler 2 nichts. Am Ende beide Pads gelöst.
+- **Menütasten:** Ein Menü in Elden Ring reagiert nur auf das Steuerkreuz, nicht auf den linken Stick. Mit gehaltener Taste
+  rechts der Leertaste (Rechts-Alt auf einer spanischen Tastatur) W und S auf dem Steuerkreuz: Das Menü ließ sich bedienen,
+  sechs Wechsel im Log („menu keys“, „back to action“).
+- **Mausempfindlichkeit:** Strg+Alt mit dem Mausrad, je Schritt im Log und in `keyboard_sensitivity.txt` je Gerät und Profil
+  gespeichert. GTA III und Elden Ring begrenzen die Drehgeschwindigkeit des rechten Sticks selbst: Über etwa 1000 % drehte
+  die Kamera laut Besitzer nicht schneller (ein Versuchsbuild ging bis 10 000 %).
+- **Moonlight-Clients:** Ein Gerät mit einem gepaarten, aber ausgeschalteten Controller bekam das Tastatur-Pad; ein noch per
+  USB steckender Controller übernahm es sofort beim Verbinden (Moonlight-Log „Gamepad 0 (player 0) is: PS4 Controller“).
+- Unit-Test `keyboard_pad_test`: Tasten, Sticks, Moonlight-Kürzel, Maus, Radtipps, sieben Profile, Anlauf, Fahrzeugebene,
+  Menütasten in jedem Tastaturlayout, Create und PS, Empfindlichkeit je Gerät, Einstellungen.
+
+Nicht geprüft: die Profile `driving`, `fighting`, `platformer` und `sports` in einem Spiel, Moonlight für Windows, macOS,
+Android und iOS, Mac-, japanische und koreanische Tastaturen (nur im Unit-Test), der absolute Mausmodus, die Kürzel
+Strg+Alt+Shift während des Spiels, Firmware 13.00.
+
 ### Host-Rolle am Gerät (2026-11-05, 13.00, Testclient, Home-Bildschirm, nicht veröffentlicht)
 
 Host `commit=roles-1` (der Stand dieses Commits ohne die Doku), drei gepairte Identitäten des Linux-Testclients (A, B, C),
