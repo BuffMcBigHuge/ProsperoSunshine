@@ -574,8 +574,12 @@ ELF-Loader gestartet. Moonlight für Linux auf einem PC ohne Controller, dazu Ho
 - **Mausempfindlichkeit:** Strg+Alt mit dem Rad, rund 60 Schritte im Log, bei schon offenem Pad. `keyboard_sensitivity.txt`
   hielt danach den letzten Wert (750 % für `standard`), eine `.new`-Datei blieb nicht übrig.
 
-Nicht geprüft (nur im Unit-Test oder im Code): Strg+Alt mit dem Rad vor dem ersten Pad, kein Pad frei (vier belegt) und der
-neue Versuch nach 10 s, eine Taste, die nach dem Abziehen eines Controllers wiederholt wird.
+- **Nach dem zweiten Review (das Pad entsteht beim Druck, bevor es ihn sieht):** gut 40 s Maus, Rad, Shift und M einzeln
+  und Strg+Alt mit dem Rad (drei Schritte im Log; in `standard` ist Strg kein Knopf): kein Pad, kein `DEVICE_ADDED`. W
+  öffnete es als Pad des Hosts, dem Benutzer zugewiesen; am Streamende „the host role is free“.
+
+Nicht geprüft (nur im Unit-Test oder im Code): kein Pad frei (vier belegt) und der neue Versuch nach 10 s, Strg zuerst in
+`shooter` oder `sports`, eine Taste, die nach dem Abziehen eines Controllers wiederholt wird.
 
 ### Host-Rolle am Gerät (2026-11-05, 13.00, Testclient, Home-Bildschirm, nicht veröffentlicht)
 

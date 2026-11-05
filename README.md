@@ -151,7 +151,7 @@ helicopters have no layer of their own yet.
 A key gives full deflection, two keys on one stick a diagonal, and opposite keys cancel out, also on the D-pad. The mouse
 turns the right stick faster the faster it moves and lets go shortly after it stops. **Ctrl+Alt and the wheel** set how
 fast while you play, a step at a time (nothing shows on the console, which everyone sees); the host keeps it per device and
-profile. It works in Moonlight's relative mouse mode (Ctrl+Alt+Shift+M), which games use.
+profile. Where Ctrl is a button (`shooter`, `sports`), press Alt before Ctrl, or Ctrl adds the controller like any button. It works in Moonlight's relative mouse mode (Ctrl+Alt+Shift+M), which games use.
 Each wheel step is a short tap on the D-pad. Moonlight's own shortcuts (Ctrl+Alt+Shift and a key) stay Moonlight's.
 
 **Menus:** the arrows, Enter, Backspace and Esc are the same in every profile. Hold **the key right of the space bar**

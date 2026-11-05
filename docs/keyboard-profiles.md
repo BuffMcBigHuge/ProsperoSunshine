@@ -37,7 +37,9 @@ side, from 10 % to 1000 % of the base speed, each about 21 % faster than the las
 host keeps it per device and profile in `keyboard_sensitivity.txt` (a device is a hash of its pairing, not its address),
 so a laptop can keep shooters faster than action games. `keyboard_mouse_sensitivity` (in percent) in `sunshine.conf` moves
 where a new device starts. A game's own dead zone and top turning speed still apply: once the stick is at full, the camera
-turns no faster (GTA III and Elden Ring cap it), so raise the game's own camera sensitivity first.
+turns no faster (GTA III and Elden Ring cap it), so raise the game's own camera sensitivity first. Before the controller is
+there, Ctrl+Alt and the wheel don't add it, except that where Ctrl is a button (`shooter`, `sports`), Ctrl pressed first
+counts as a press and adds the controller like any other; press Alt first, then Ctrl.
 
 **Menus:** the arrows, Enter, Backspace and Esc work the same in every profile, as in the menus of PC games, so a game's
 own menus are walked the same way whatever the profile. While you hold **the key right of the space bar** (right Alt or

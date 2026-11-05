@@ -219,6 +219,26 @@ int main() {
         fresh.set_profile(Profile::driving);
         assert(fresh.key('W', false, t0) && fresh.pressed(t0) && fresh.state(t0).rt > 0);
     }
+    // input.cpp tries a press on a copy first, so a press that gets no pad leaves the pad as it was.
+    {
+        KeyboardPad held;
+        held.set_profile(Profile::shooter);
+        held.key(vk::lshift, false, t0);  // L3 in shooter
+        KeyboardPad probe = held;
+        assert(!probe.key('M', false, t0));  // M has no control in shooter
+        assert(probe.pressed(t0));           // Shift still holds L3 in the copy
+        KeyboardPad other = held;
+        assert(other.key('W', false, t0) && other.state(t0).ly > 0);
+        assert(held.state(t0).ly == 0 && held.state(t0).buttons == moonlight::left_stick);
+        // Alt first, then Ctrl: Ctrl doesn't count while left Alt (no control of shooter) is held, so Ctrl+Alt and the
+        // wheel add no pad that way, even where Ctrl is a button.
+        KeyboardPad watcher;
+        watcher.set_profile(Profile::shooter);
+        assert(!watcher.key(0xA4, false, t0) && !watcher.key(vk::lctrl, false, t0) && !watcher.pressed(t0));
+        KeyboardPad ctrl_first;
+        ctrl_first.set_profile(Profile::shooter);
+        assert(ctrl_first.key(vk::lctrl, false, t0) && ctrl_first.pressed(t0));  // ○: Ctrl first is a press
+    }
 
     // Wheel: each step a tap of 50 ms on the D-pad, a pause, then the next.
     pad.scroll(120, t0);

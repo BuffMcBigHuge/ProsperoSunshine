@@ -35,7 +35,7 @@ held.
  
    /**
     * @brief Release all platform resources associated with a virtual gamepad.
-@@ -844,13 +849,13 @@
+@@ -843,13 +848,63 @@
    }
  
    /**
@@ -48,13 +48,9 @@ held.
    std::string keyboard_pad_profile_name(const prospero::KeyboardPad &pad) {
 -    return std::string(prospero::profile_name(pad.profile()));
 +    return pad.own_profile() ? pad.own_profile()->name : std::string(prospero::profile_name(pad.profile()));
-   }
- 
-   /**
-@@ -1578,6 +1583,56 @@
-   }
- 
-   /**
++  }
++
++  /**
 +   * @brief The keyboard pad profile for the running game.
 +   *
 +   * ProsperoSunshine: the player's own list (keyboard_profiles.txt), then, with keyboard_mouse_profile_by_game on, the
@@ -102,24 +98,21 @@ held.
 +    BOOST_LOG(info) << "Keyboard pad profile "sv << (choice.own ? choice.own->name : std::string(prospero::profile_name(choice.profile)))
 +                    << " for "sv << title << ", from "sv << prospero::source_name(choice.source);
 +    return choice;
-+  }
-+
-+  /**
-    * @brief Send what the keys and the mouse hold to the stream's own pad, adding the pad on the first press.
-    *
-    * The pad comes the way a controller's does: the lowest free slot, counting toward the four, and the platform gives it
-@@ -1590,7 +1645,9 @@
-       return;
-     }
-     const auto now = std::chrono::steady_clock::now();
--    input->keyboard_pad.set_profile(keyboard_pad_profile);
+   }
+ 
+   /**
+@@ -858,7 +913,9 @@
+    * @param input Stream input state.
+    */
+   void update_keyboard_pad_profile(input_t &input) {
+-    input.keyboard_pad.set_profile(keyboard_pad_profile);
 +    const auto choice = keyboard_pad_game_profile();
-+    input->keyboard_pad.set_profile(choice.profile, choice.own);
-+    input->keyboard_pad.set_outside_game(choice.outside);
-     input->keyboard_pad.set_sensitivity(
-       mouse_sensitivities.find(input->keyboard_pad_client, keyboard_pad_profile_name(input->keyboard_pad)).value_or(mouse_sensitivity)
++    input.keyboard_pad.set_profile(choice.profile, choice.own);
++    input.keyboard_pad.set_outside_game(choice.outside);
+     input.keyboard_pad.set_sensitivity(
+       mouse_sensitivities.find(input.keyboard_pad_client, keyboard_pad_profile_name(input.keyboard_pad)).value_or(mouse_sensitivity)
      );
-@@ -2719,9 +2776,12 @@
+@@ -2760,9 +2817,12 @@
      if (!profile.empty() && !prospero::parse_profile(profile)) {
        BOOST_LOG(warning) << "Unknown keyboard_mouse_profile ["sv << profile << "], using standard"sv;
      }
