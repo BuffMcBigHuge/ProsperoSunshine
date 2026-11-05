@@ -16,6 +16,9 @@
 //   UNPAIR <uuid>               -> removes a paired device and ends its stream ("OK removed" / "ERR ...")
 //   REPORT                      -> "OK port=<n>": for some seconds, <appdata>/diagnostics.txt is on that port
 //   AUTOLOAD [ON|OFF]           -> the Payload Manager's autoload list, for the app (autoload_host.hpp)
+//   PROBE                       -> sends <appdata>/firmware_probe.elf to the ELF loader ("OK started" / "ERR ..."), refused
+//                                  while a stream runs; the probe then stops the host and starts it again
+//                                  (docs/firmware-probe.md). For the app's Diagnostics page and a web page later.
 //   QUIT                        -> raises the host's shutdown event
 // It has no authentication, so it listens on 127.0.0.1 only (the PS5 app); the empty file
 // <appdata>/control_lan opens it to the LAN for development on trusted networks (ROADMAP P9.1).

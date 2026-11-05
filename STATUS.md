@@ -504,6 +504,29 @@ Die Grenze hängt also am Bit je Bild, nicht am HEVC-Budget `cfg+0x10c`, das H.2
 
 Nicht geprüft: echtes Moonlight auf dem Build mit Deckel, ein kleiner Modus, der seinen Deckel wirklich ausschöpft, eine echte PS Vita auf 13.00 (auf 10.20 lief sie, „Modi unter 1080p auf Firmware 10.20“).
 
+### Firmware-Sonde auf 10.20 und 10.40 (2026-11-05, Bericht eines Mitwirkenden)
+
+`firmware_probe.elf` aus diesem Stand (`docs/firmware-probe.md`), je ein Lauf ohne Optionen und ohne Proben, auf dem
+Startbildschirm. PS5 Pro mit 10.20: Host 0.3.1 lief, `QUIT` hielt ihn an, am Ende lief das installierte ELF wieder. PS5 mit
+10.40: kein Host lief, keiner wurde gestartet. Beide Läufe 147 s, der Startbildschirm blieb im Vordergrund. Hier nicht
+nachgemessen; die Angaben stammen aus den beiden `report.txt`.
+
+| | 10.20 (Pro) | 10.40 |
+| --- | --- | --- |
+| Datensatz des Hosts | `0x2c8` (−0x18), als einzige Größe von −0x40 bis +0x20 angenommen; Baukasten = `configure()` | ebenso |
+| H.264 1080p60, 3 s | 180 Bilder, 34 Slices je Bild | 180 Bilder, 34 Slices |
+| HEVC 8/10 Bit nur mit `cfg+0x24` | 17 Slices | 17 Slices |
+| QP 20/24 in `0xc4`/`0xc8` gegen ohne | 3,5-fache Bytes; 52 scheitert an `Start` (`0x80c78000`) | 4,8-fache Bytes; 52 ebenso |
+| `SetVideoBitrate` von 6 auf 20 Mbit/s | danach 1 Bild, dann `0x80c78000` | 0 Bilder, dann `0x80c78000` |
+| ResourceArbitrator | per NID, Firmware in der Tabelle | per NID (`0xde0`, `0xfe0`, `0x1220`, `0x1360`), 10.40 nicht in der Tabelle |
+
+- Auf beiden lehnt der Validator dieselben Wörter ab (`0x80`, `0x188`, `0x1fc`, `0x2b0`), die Bitratenfelder von 13.00
+  lassen `Start` scheitern, ebenso H.264 10 Bit (`0x80c70004`) und HEVC mit den Remote-Play-Feldern von 13.00 (`0x81950001`).
+- Alle zwölf Modi liefern Bilder (360p60, 540p60, 720p60, 1080p30, 1440p60, 2160p60 in H.264 und HEVC).
+- **H.264-Slices:** Die Slice-Felder von 0.3.1 (`0x40`/`0x44`/`0x48`) nimmt die Firmware an, die Zahl der Slices ändern
+  sie nicht: 360p 23, 540p und 1080p 34, 720p, 1440p und 2160p 45. HEVC: 6, 9, 12, 17, 23, 34. Über 32 Slices lehnen die
+  Hardware-Decoder von FFmpeg unter Windows ab.
+
 ### Host-Rolle am Gerät (2026-11-05, 13.00, Testclient, Home-Bildschirm, nicht veröffentlicht)
 
 Host `commit=roles-1` (der Stand dieses Commits ohne die Doku), drei gepairte Identitäten des Linux-Testclients (A, B, C),
