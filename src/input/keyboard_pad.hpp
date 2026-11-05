@@ -440,12 +440,12 @@ public:
 
     Profile profile() const { return profile_; }
 
-    // The menu keys, standard's with W A S D on the D-pad, while the key right of the space bar is held or no game is in
-    // front (the console's own screens); the vehicle layer waits meanwhile.
+    // The menu keys, standard's with W A S D on the D-pad, while the key right of the space bar is held or no game is
+    // running (the home screen and the console's menus, with no game open or suspended); the vehicle layer waits meanwhile.
     bool in_menu() const { return menu_ || outside_; }
     bool menu_held() const { return menu_; }
 
-    // No game in front: the console's own screens, walked with the menu keys whatever the profile.
+    // No game running: the console's own screens, walked with the menu keys whatever the profile.
     void set_outside_game(bool outside) {
         if (outside == outside_) return;
         let_go();
@@ -549,7 +549,8 @@ public:
         if (map_.mouse.wheel[2] || map_.mouse.wheel[3]) horizontal_.add(tilt_.add(distance), now);
     }
 
-    PadInput state(clock::time_point now) {
+    // movement false leaves out the mouse's movement and the wheel's taps: what the keys and mouse buttons alone hold.
+    PadInput state(clock::time_point now, bool movement = true) {
         // How far each control is in, 0..1: a key eases in in the driving profile, everything else is fully in.
         std::array<double, 64> level{};
         const auto hold = [&](uint64_t control, double amount) {
@@ -565,8 +566,8 @@ public:
         }
         for (int button = 0; button < static_cast<int>(buttons_.size()); button++)
             if (buttons_[button]) hold(mouse_control(map_, button), 1.0);
-        if (const int side = vertical_.side(now)) hold(map_.mouse.wheel[side > 0 ? 0 : 1], 1.0);
-        if (const int side = horizontal_.side(now)) hold(map_.mouse.wheel[side > 0 ? 3 : 2], 1.0);
+        if (const int side = movement ? vertical_.side(now) : 0) hold(map_.mouse.wheel[side > 0 ? 0 : 1], 1.0);
+        if (const int side = movement ? horizontal_.side(now) : 0) hold(map_.mouse.wheel[side > 0 ? 3 : 2], 1.0);
         const auto in = [&](uint64_t control) { return level[std::countr_zero(control)]; };
         const bool half = in(pad_control::half) > 0;
 
@@ -583,10 +584,21 @@ public:
         const double left = half ? 0.5 : 1.0;
         pad.lx = axis(in(pad_control::left_right) - in(pad_control::left_left), left, 0);
         pad.ly = axis(in(pad_control::left_up) - in(pad_control::left_down), left, 0);
-        const auto [mx, my] = mouse_stick(now);
+        const auto [mx, my] = movement ? mouse_stick(now) : std::pair{0, 0};
         pad.rx = axis(in(pad_control::right_right) - in(pad_control::right_left), 1.0, mx);
         pad.ry = axis(in(pad_control::right_up) - in(pad_control::right_down), 1.0, my);
         return pad;
+    }
+
+    // Whether a key or mouse button holds one of the pad's controls, which is what adds the pad: the mouse's movement and
+    // the wheel alone don't, and neither do modifiers or Ctrl's half deflection with nothing to halve.
+    bool pressed(clock::time_point now) { return state(now, false) != PadInput{}; }
+
+    // Forget the mouse's movement and the wheel's taps; what the keys and buttons hold stays.
+    void drop_movement() {
+        motion_count_ = 0;
+        vertical_.clear();
+        horizontal_.clear();
     }
 
     // When the state changes without input: the mouse movement leaving the window, a wheel tap starting or ending, a
@@ -714,7 +726,7 @@ private:
     ProfileMap map_ = profile_map(Profile::standard);  // the profile's, or the vehicle layer's, with own_ on top
     bool vehicle_ = false;
     bool menu_ = false;     // the key right of the space bar is held: the menu keys
-    bool outside_ = false;  // no game in front: the menu keys
+    bool outside_ = false;  // no game running: the menu keys
     std::bitset<256> menu_keys_held_;
     std::array<uint64_t, 256> held_{};  // what each held key does, fixed when it went down
     std::array<clock::time_point, 256> since_{};

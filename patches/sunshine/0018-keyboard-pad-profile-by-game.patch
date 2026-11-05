@@ -4,14 +4,15 @@ The keyboard and mouse of a client without a controller map with the profile of 
 own list, keyboard_profiles.txt next to sunshine.conf ("PPSA01234 = driving" per line, any title ID including homebrew
 and forwarders, and profiles of their own in [name] sections), and with keyboard_mouse_profile_by_game = 1 (off by
 default) from the title map tools/title_profiles.py makes from Wikidata, by title ID, the Store concept in param.json,
-or the English name. Anything else keeps keyboard_mouse_profile, and with no game in front (the home screen, the
-console's menus) it is the menu keys, standard's with W A S D on the D-pad, whatever the profile. The game in front is
-looked up at most every two seconds while the keys and mouse are in use, the list read anew when it changes; a new
-profile lets go of what the old one held.
+or the English name. Anything else keeps keyboard_mouse_profile, and with no game running (none open, not even
+suspended behind the home screen) it is the menu keys, standard's with W A S D on the D-pad, whatever the profile. The
+running title (sceLncUtilGetAppIdOfRunningBigApp, through ps_title_running) is looked up at most every two seconds
+while the keys and mouse are in use, the list read anew when it changes; a new profile lets go of what the old one
+held.
 
 --- a/src/input.cpp
 +++ b/src/input.cpp
-@@ -32,10 +32,13 @@
+@@ -33,10 +33,13 @@
  #include "config.h"
  #include "file_handler.h"
  #include "globals.h"
@@ -25,7 +26,7 @@ profile lets go of what the old one held.
  #include "thread_pool.h"
  #include "utility.h"
  
-@@ -218,6 +221,8 @@
+@@ -219,6 +222,8 @@
    static int mouse_sensitivity = prospero::default_sensitivity;  ///< The mouse's speed on the right stick, in percent, until a client sets its own.
    static prospero::SensitivityList mouse_sensitivities;  ///< What each client set per profile with Ctrl+Alt and the wheel.
    static std::filesystem::path sensitivity_file;  ///< keyboard_sensitivity.txt, next to sunshine.conf.
@@ -34,7 +35,7 @@ profile lets go of what the old one held.
  
    /**
     * @brief Release all platform resources associated with a virtual gamepad.
-@@ -825,13 +830,13 @@
+@@ -844,13 +849,13 @@
    }
  
    /**
@@ -50,15 +51,17 @@ profile lets go of what the old one held.
    }
  
    /**
-@@ -1529,6 +1534,54 @@
+@@ -1578,6 +1583,56 @@
    }
  
    /**
-+   * @brief The keyboard pad profile for the game in front.
++   * @brief The keyboard pad profile for the running game.
 +   *
 +   * ProsperoSunshine: the player's own list (keyboard_profiles.txt), then, with keyboard_mouse_profile_by_game on, the
-+   * title map from Wikidata (src/input/title_profiles.hpp), else keyboard_mouse_profile. With no game in front (the
-+   * home screen, the console's menus) it is the menu keys, whatever the profile: W A S D on the D-pad. The game is looked up
++   * title map from Wikidata (src/input/title_profiles.hpp), else keyboard_mouse_profile. With no game running (none open,
++   * not even suspended behind the home screen) it is the menu keys, whatever the profile: W A S D on the D-pad. The
++   * running title is sceLncUtilGetAppIdOfRunningBigApp's, so a suspended game keeps its profile in the console's menus,
++   * and an app of the console's such as Settings is a title without one (keyboard_mouse_profile). The game is looked up
 +   * at most every two seconds while the keys and the mouse are in use, and its profile and the list anew only when it
 +   * changes, so an edited list counts from the next game on.
 +   *
@@ -90,7 +93,7 @@ profile lets go of what the old one held.
 +    }
 +    if (title.empty()) {
 +      choice = {prospero::Profile::standard, nullptr, prospero::ProfileSource::chosen, true};
-+      BOOST_LOG(info) << "Keyboard pad: menu keys, no game in front"sv;
++      BOOST_LOG(info) << "Keyboard pad: menu keys, no game running"sv;
 +      return choice;
 +    }
 +    const auto meta = prospero::read_title_meta("/user", title);
@@ -105,7 +108,7 @@ profile lets go of what the old one held.
     * @brief Send what the keys and the mouse hold to the stream's own pad, adding the pad on the first press.
     *
     * The pad comes the way a controller's does: the lowest free slot, counting toward the four, and the platform gives it
-@@ -1541,7 +1594,9 @@
+@@ -1590,7 +1645,9 @@
        return;
      }
      const auto now = std::chrono::steady_clock::now();
@@ -116,7 +119,7 @@ profile lets go of what the old one held.
      input->keyboard_pad.set_sensitivity(
        mouse_sensitivities.find(input->keyboard_pad_client, keyboard_pad_profile_name(input->keyboard_pad)).value_or(mouse_sensitivity)
      );
-@@ -2664,9 +2719,12 @@
+@@ -2719,9 +2776,12 @@
      if (!profile.empty() && !prospero::parse_profile(profile)) {
        BOOST_LOG(warning) << "Unknown keyboard_mouse_profile ["sv << profile << "], using standard"sv;
      }

@@ -71,7 +71,7 @@ struct ProfileChoice {
     Profile profile;
     std::shared_ptr<const CustomProfile> own;  // a profile of the player's own on top of profile, its base
     ProfileSource source;
-    bool outside = false;  // no game in front: the menu keys
+    bool outside = false;  // no game running: the menu keys
 };
 
 // Any title ID of the console, four capitals and five digits: games (PPSA, CUSA), homebrew and forwarders alike.

@@ -43,9 +43,10 @@ turns no faster (GTA III and Elden Ring cap it), so raise the game's own camera 
 own menus are walked the same way whatever the profile. While you hold **the key right of the space bar** (right Alt or
 AltGr, the right ⌘ on a Mac, 変換 or 한/영 on Japanese and Korean keyboards), every profile gives the menu keys: `standard`'s,
 with W A S D on the D-pad, as some menus (the console's own among them) ignore the stick. Letting go brings the profile
-back; keys held across it have to be pressed again. Outside a game (the home screen, the store, the console's settings) the
-host gives the menu keys whatever the profile; this needs the game in front, which the host looks up for your list and the
-profile by game.
+back; keys held across it have to be pressed again. With no game running (none open, not even suspended behind the home
+screen) the host gives the menu keys whatever the profile, so W A S D move on the home screen. A game suspended behind the
+home screen still counts as running, so its profile stays in the console's menus; and the console's own apps, such as
+Settings, count as a title without a profile and get `keyboard_mouse_profile`. Hold the key right of the space bar there.
 
 ## The profiles
 
@@ -193,7 +194,7 @@ With `keyboard_mouse_profile_by_game = 1` in `sunshine.conf` (off by default), t
 3. `keyboard_mouse_profile` for anything else.
 
 The host looks up the game in front at most every two seconds while the keys and mouse are in use; a new profile lets go
-of what was held. With no game in front, it is `standard`. Nothing is downloaded on the console: the map is part of the host and is renewed with each release. A
+of what was held. With no game running, it is the menu keys (see Menus above). Nothing is downloaded on the console: the map is part of the host and is renewed with each release. A
 game that is missing or in the wrong profile in the map can be fixed in your list, and on Wikidata for everyone.
 
 ## Your own list and profiles

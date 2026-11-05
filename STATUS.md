@@ -557,6 +557,26 @@ Nicht geprüft: die Profile `driving`, `fighting`, `platformer` und `sports` in 
 Android und iOS, Mac-, japanische und koreanische Tastaturen (nur im Unit-Test), der absolute Mausmodus, die Kürzel
 Strg+Alt+Shift während des Spiels, Firmware 13.00.
 
+### Tastatur-Pad nach dem Review von PR 20 (2026-11-05, 10.20, PS5 Pro)
+
+Host aus `keyboard-mouse-pad` (0.3.2 mit den Patches 0017 und 0018 und den Korrekturen aus dem Review), vorübergehend per
+ELF-Loader gestartet. Moonlight für Linux auf einem PC ohne Controller, dazu Hostlog und Kernel-Log der Konsole.
+
+- **Maus und Rad allein öffnen kein Pad:** Im zweiten Stream (gut 1,5 Minuten) bewegte der Besitzer nur die Maus und drehte
+  das Rad, dazu ein Klick, um das Fenster nach vorn zu holen. Kein „play as virtual pad“, im Kernel-Log kein `DEVICE_ADDED`.
+  Im ersten Stream hatte ein Klick ins Bild das Pad geöffnet (die linke Maustaste ist in `standard` R2), wie vorgesehen.
+- **Die erste Taste öffnet es:** im dritten Stream 3 s nach dem Verbinden „PS5 virtual pad 0 attached as the host's
+  controller“ (die Rolle aus 0.3.2). Die Konsole wies es dem Benutzer zu, ohne „Wer benutzt diesen Controller?“.
+- **Spiel und Menüs:** „menu keys, no game running“ auf dem Home-Bildschirm, `gta` für GTA III aus der eigenen Liste. Dort
+  laut Besitzer Laufen, Kamera, Zielen und Schießen mit der Maus und der Waffen-Cheat (3 3 Q 3 und die Pfeiltasten)
+  einwandfrei.
+- **Streamende:** „pad 0 detached (0), the host role is free“; im nächsten Stream öffnete die erste Taste das Pad wieder.
+- **Mausempfindlichkeit:** Strg+Alt mit dem Rad, rund 60 Schritte im Log, bei schon offenem Pad. `keyboard_sensitivity.txt`
+  hielt danach den letzten Wert (750 % für `standard`), eine `.new`-Datei blieb nicht übrig.
+
+Nicht geprüft (nur im Unit-Test oder im Code): Strg+Alt mit dem Rad vor dem ersten Pad, kein Pad frei (vier belegt) und der
+neue Versuch nach 10 s, eine Taste, die nach dem Abziehen eines Controllers wiederholt wird.
+
 ### Host-Rolle am Gerät (2026-11-05, 13.00, Testclient, Home-Bildschirm, nicht veröffentlicht)
 
 Host `commit=roles-1` (der Stand dieses Commits ohne die Doku), drei gepairte Identitäten des Linux-Testclients (A, B, C),

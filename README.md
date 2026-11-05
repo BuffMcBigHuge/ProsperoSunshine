@@ -111,8 +111,9 @@ is the host. To give PS and Create to everyone, turn on **PS for all players** i
 
 A device without a controller plays with its keyboard and mouse: they become a controller of their own, a player like any
 other. If you already play with keyboard and mouse on a PC, it should feel familiar: W A S D move, the mouse turns the
-camera, the mouse buttons are the triggers, Esc pauses. The controller appears with the first key that is one of its
-buttons. Like any controller, it plays as the console's user if its device is the host (see above), and otherwise the
+camera, the mouse buttons are the triggers, Esc pauses. The controller appears with the first key or mouse button that is
+one of its buttons; moving the mouse or turning the wheel alone doesn't add it, so someone who only watches takes no player
+slot. Like any controller, it plays as the console's user if its device is the host (see above), and otherwise the
 console asks "Who's using this controller?".
 
 | Keys (every profile) | Controller |
@@ -155,9 +156,14 @@ Each wheel step is a short tap on the D-pad. Moonlight's own shortcuts (Ctrl+Alt
 
 **Menus:** the arrows, Enter, Backspace and Esc are the same in every profile. Hold **the key right of the space bar**
 (right Alt or AltGr, the right ⌘ on a Mac) for the menu keys in any profile: `standard`'s, with W A S D on the D-pad,
-which every menu takes; some, the console's own among them, ignore the stick.
+which every menu takes; some, the console's own among them, ignore the stick. With no game running (none open, not even
+suspended behind the home screen), the keys are the menu keys anyway.
 
-**By game:** with `keyboard_mouse_profile_by_game = 1` (off by default) the game in front picks the profile, from a map
+**Typing:** the keyboard is a controller here, so it doesn't type into the console's text fields. Use the console's
+on-screen keyboard (✕ on Enter picks a letter), connect a controller, or set `keyboard_mouse_pad = 0` to send the keys to the
+console as before.
+
+**By game:** with `keyboard_mouse_profile_by_game = 1` (off by default) the running game picks the profile, from a map
 of about 3,000 PS4 and PS5 games made from Wikidata. `keyboard_profiles.txt` next to `sunshine.conf` is your own list,
 which counts either way: a profile per title (any title ID, also homebrew and forwarders, such as your own Mario Kart 8
 Deluxe forwarder set to `driving`) and profiles of your own with some keys changed. The host writes your installed games

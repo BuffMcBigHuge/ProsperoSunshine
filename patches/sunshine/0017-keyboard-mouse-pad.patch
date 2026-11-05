@@ -4,15 +4,18 @@ A friend who joins from a laptop without a controller sees the game but can't pl
 virtual keyboard and mouse that every client shares, which work in the console's menus and in few games. While a
 stream's client has no controller, its key and mouse events now go to src/input/keyboard_pad.hpp instead, which turns
 them into a gamepad state with one of its profiles, and from there to a pad of its own in gamepads[0]. The pad is
-added on the first press the way a controller is (alloc_id, platf::alloc_gamepad), so it takes the lowest free slot
-and counts toward the four, and goes neutral and away with the stream's other pads. Only input.cpp knows which stream
-an event comes from: the platform layer's keyboard and mouse calls don't get the client.
+added on the first press of a key or mouse button that is one of its controls, the way a controller is (alloc_id,
+platf::alloc_gamepad), so it takes the lowest free slot and counts toward the four, and goes neutral and away with the
+stream's other pads. The mouse's movement and the wheel alone don't add it, so a client that only watches takes no
+player slot. Only input.cpp knows which stream an event comes from: the platform layer's keyboard and mouse calls
+don't get the client.
 
 The client's first controller takes that pad over, slot, user and all, so the console doesn't ask who uses it again;
 from then on the keyboard and mouse go to the shared ones. When that controller goes, its pad goes with it and the
 console says so; the next key takes a pad again. A key or button this client pressed on the shared ones before still
-comes up there. With no pad free they go to the shared ones too. Like any pad, it plays as the host or as a guest by its
-client (patch 0016, src/input/pad_roles.hpp), and a guest's Create and PS don't go through.
+comes up there. With no pad free they go to the shared ones too, until a press 10 s later or the client's next stream
+tries again. Like any pad, it plays as the host or as a guest by its client (patch 0016, src/input/pad_roles.hpp), and
+a guest's Create and PS don't go through.
 
 sunshine.conf: keyboard_mouse_pad = 0 turns it off, keyboard_mouse_profile picks a profile (standard unless set),
 keyboard_mouse_sensitivity (percent) is where a client's mouse starts. Ctrl+Alt with the wheel changes the sensitivity
@@ -21,15 +24,16 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
 
 --- a/src/input.cpp
 +++ b/src/input.cpp
-@@ -14,6 +14,7 @@
+@@ -14,6 +14,8 @@
  #include <chrono>
  #include <cmath>
  #include <cstring>
 +#include <filesystem>
++#include <fstream>
  #include <functional>
  #include <list>
  #include <memory>
-@@ -29,8 +30,10 @@
+@@ -29,8 +31,10 @@
  
  // local includes
  #include "config.h"
@@ -40,7 +44,7 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
  #include "logging.h"
  #include "platform/common.h"
  #include "thread_pool.h"
-@@ -208,6 +211,14 @@
+@@ -208,6 +212,14 @@
  #endif
    static std::bitset<platf::MAX_GAMEPADS> gamepadMask {};
  
@@ -55,7 +59,7 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
    /**
     * @brief Release all platform resources associated with a virtual gamepad.
     *
-@@ -325,6 +336,16 @@
+@@ -325,6 +337,17 @@
  
      int32_t accumulated_vscroll_delta {};  ///< Accumulated vscroll delta.
      int32_t accumulated_hscroll_delta {};  ///< Accumulated hscroll delta.
@@ -64,6 +68,7 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
 +    prospero::KeyboardPad keyboard_pad;  ///< What the keys and the mouse hold.
 +    bool keyboard_pad_open {};  ///< Whether gamepads[0] is that pad; the client's first controller takes it over.
 +    bool keyboard_pad_failed {};  ///< No pad was free: the keys and the mouse go to the shared ones, as before.
++    std::chrono::steady_clock::time_point keyboard_pad_retry {};  ///< When a press may try for a pad again.
 +    prospero::PadInput keyboard_pad_sent {};  ///< The state last sent to that pad.
 +    std::bitset<256> shared_keys;  ///< Keys of this client held on the shared keyboard; they come up there.
 +    std::array<bool, 6> shared_buttons {};  ///< The same for the buttons on the shared mouse.
@@ -72,7 +77,7 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
    };
  
    /**
-@@ -389,6 +410,11 @@
+@@ -389,6 +412,11 @@
     * @param input Retained input session whose gamepads should be destroyed.
     */
    void destroy_gamepads(const std::shared_ptr<input_t> &input) {
@@ -84,7 +89,7 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
      for (auto &gamepad : input->gamepads) {
        if (gamepad.back_timeout_id) {
          task_pool.cancel(gamepad.back_timeout_id);
-@@ -762,6 +788,68 @@
+@@ -762,6 +790,101 @@
    }
  
    /**
@@ -109,6 +114,23 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
 +  }
 +
 +  void send_keyboard_pad(std::shared_ptr<input_t> &input);
++
++  /// How long after no pad was free a press of the client's tries for one again.
++  constexpr auto keyboard_pad_retry_after = 10s;
++
++  /**
++   * @brief Let a press try for a pad again some time after none was free.
++   *
++   * A player who left frees their pad, so a client that found all four busy gets one with a later press; until then its
++   * keys and mouse stay on the shared ones. Only a press tries, so the mouse doesn't flip between the two meanwhile.
++   *
++   * @param input Stream input state.
++   */
++  void retry_keyboard_pad(input_t &input) {
++    if (input.keyboard_pad_failed && std::chrono::steady_clock::now() >= input.keyboard_pad_retry) {
++      input.keyboard_pad_failed = false;
++    }
++  }
 +
 +  /**
 +   * @brief Forget what the keys and the mouse hold on the stream's own pad, without touching the pad.
@@ -145,7 +167,23 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
 +    const auto profile = keyboard_pad_profile_name(input.keyboard_pad);
 +    const int percent = input.keyboard_pad.sensitivity();
 +    mouse_sensitivities.set(input.keyboard_pad_client, profile, percent);
-+    file_handler::write_file(sensitivity_file.c_str(), mouse_sensitivities.text());
++    // Written next to it and renamed over it, so a crash or a full disk mid-write leaves the old file whole.
++    auto temporary = sensitivity_file;
++    temporary += ".new";
++    std::error_code ec;
++    {
++      std::ofstream out(temporary, std::ios::trunc);
++      out << mouse_sensitivities.text();
++      if (!out.flush()) {
++        ec = std::make_error_code(std::errc::io_error);
++      }
++    }
++    if (!ec) {
++      std::filesystem::rename(temporary, sensitivity_file, ec);
++    }
++    if (ec) {
++      BOOST_LOG(warning) << "Couldn't save keyboard_sensitivity.txt: "sv << ec.message();
++    }
 +    BOOST_LOG(info) << "Mouse sensitivity "sv << percent << "% ("sv << profile << ')';
 +  }
 +
@@ -153,7 +191,7 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
     * @brief Forward a client input packet directly to the platform backend.
     *
     * @param input Platform input backend that receives the event.
-@@ -772,6 +860,12 @@
+@@ -772,6 +895,12 @@
        return;
      }
  
@@ -166,7 +204,7 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
      input->mouse_left_button_timeout = DISABLE_LEFT_BUTTON_DELAY;
      refresh_touch_port(input);
      if (input->touch_port) {
-@@ -900,6 +994,12 @@
+@@ -900,6 +1029,12 @@
      auto width = (float) util::endian::big(packet->width);
      auto height = (float) util::endian::big(packet->height);
  
@@ -179,22 +217,29 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
      auto tpcoords = client_to_touchport(input, {x, y}, {width, height});
      if (!tpcoords) {
        return;
-@@ -923,6 +1023,14 @@
+@@ -923,6 +1058,21 @@
  
      auto release = util::endian::little(packet->header.magic) == MOUSE_BUTTON_UP_EVENT_MAGIC_GEN5;
      auto button = util::endian::big(packet->button);
-+    // A button this client pressed on the shared mouse before still comes up there.
++    // A button this client holds on the shared mouse stays there until it comes up, a repeated press included.
 +    const bool shared_held = button > 0 && button < input->shared_buttons.size() && input->shared_buttons[button];
-+    if (keyboard_pad_mode(*input) && !(release && shared_held)) {
++    if (!release) {
++      retry_keyboard_pad(*input);
++    }
++    if (keyboard_pad_mode(*input) && !shared_held) {
 +      if (input->keyboard_pad.mouse_button(button, release)) {
 +        send_keyboard_pad(input);
 +      }
 +      return;
 +    }
++    // Before the early returns below, so a button can't stay marked as held on the shared mouse.
++    if (release && shared_held) {
++      input->shared_buttons[button] = false;
++    }
      if (button > 0 && button < mouse_press.size()) {
        if (mouse_press[button] != release) {
          // button state is already what we want
-@@ -931,6 +1039,9 @@
+@@ -931,6 +1081,9 @@
  
        mouse_press[button] = !release;
      }
@@ -204,12 +249,15 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
      /**
       * When Moonlight sends mouse input through absolute coordinates,
       * it's possible that BUTTON_RIGHT is pressed down immediately after releasing BUTTON_LEFT.
-@@ -1199,6 +1310,20 @@
+@@ -1199,6 +1352,27 @@
  
      update_modifier_state(*input, keyCode, release);
  
-+    // A key this client pressed on the shared keyboard before still comes up there.
-+    if (keyboard_pad_mode(*input) && !(release && input->shared_keys[keyCode])) {
++    // A key this client holds on the shared keyboard stays there until it comes up, a repeated press included.
++    if (!release) {
++      retry_keyboard_pad(*input);
++    }
++    if (keyboard_pad_mode(*input) && !input->shared_keys[keyCode]) {
 +      const bool menu_before = input->keyboard_pad.menu_held();
 +      const bool extended = (packet->modifiers & MODIFIER_EXTENDED) != 0;
 +      if (input->keyboard_pad.key(keyCode, release, std::chrono::steady_clock::now(), extended)) {
@@ -221,11 +269,15 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
 +      }
 +      return;
 +    }
++    // Before the early returns below, so a key can't stay marked as held on the shared keyboard.
++    if (release) {
++      input->shared_keys[keyCode] = false;
++    }
 +
      // Right-alt maps to meta, so it must not also register as ALT
      int modifiers = packet->modifiers;
      if (config::input.key_rightalt_to_key_win && input->alt_keys.right_pressed && !input->alt_keys.left_pressed) {
-@@ -1248,6 +1373,7 @@
+@@ -1248,6 +1422,7 @@
      }
  
      state.pressed = !release;
@@ -233,7 +285,7 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
  
      send_key_and_modifiers(keyCode, release, packet->flags, synthetic_modifiers, state.extended);
  
-@@ -1267,6 +1393,14 @@
+@@ -1267,6 +1442,14 @@
        return;
      }
  
@@ -248,7 +300,7 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
      if (config::input.high_resolution_scrolling) {
        platf::scroll(platf_input, util::endian::big(packet->scrollAmt1));
      } else {
-@@ -1290,6 +1424,12 @@
+@@ -1290,6 +1473,12 @@
        return;
      }
  
@@ -261,7 +313,7 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
      if (config::input.high_resolution_scrolling) {
        platf::hscroll(platf_input, util::endian::big(packet->scrollAmount));
      } else {
-@@ -1318,6 +1458,32 @@
+@@ -1318,6 +1507,32 @@
    }
  
    /**
@@ -294,7 +346,7 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
     * @brief Allocate a virtual gamepad or refresh feedback after a retained controller arrives.
     *
     * @param input Stream input state.
-@@ -1331,6 +1497,10 @@
+@@ -1331,6 +1546,10 @@
        return -1;
      }
  
@@ -305,7 +357,7 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
      auto &gamepad = input->gamepads[client_index];
      if (gamepad.id >= 0) {
        // Resume-time motion requests can arrive before the client assigns this
-@@ -1359,6 +1529,63 @@
+@@ -1359,6 +1578,68 @@
    }
  
    /**
@@ -329,13 +381,18 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
 +    auto &gamepad = input->gamepads[0];
 +    if (!input->keyboard_pad_open || gamepad.id < 0) {
 +      input->keyboard_pad_open = false;
-+      // Modifiers, keys without a button and a stick back at the centre don't add a pad.
-+      if (state == prospero::PadInput {}) {
++      // Only a key or mouse button that is one of the pad's controls adds the pad. The mouse's movement and the wheel
++      // alone don't, so a friend who only watches and nudges the mouse takes no player slot (nor the host role); they
++      // count once the pad is there. Modifiers and keys without a control don't add one either.
++      if (!input->keyboard_pad.pressed(now)) {
++        input->keyboard_pad.drop_movement();
 +        return;
 +      }
 +      if (alloc_gamepad(input, 0, {}) < 0) {
-+        BOOST_LOG(warning) << "No virtual pad free for a client's keyboard and mouse; they go to the shared ones"sv;
++        BOOST_LOG(warning) << "No virtual pad free for a client's keyboard and mouse; they go to the shared ones, and a press tries again in "sv
++                           << std::chrono::duration_cast<std::chrono::seconds>(keyboard_pad_retry_after).count() << " s"sv;
 +        input->keyboard_pad_failed = true;
++        input->keyboard_pad_retry = now + keyboard_pad_retry_after;
 +        clear_keyboard_pad(*input);
 +        return;
 +      }
@@ -369,7 +426,7 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
     * @brief Called to pass a controller arrival message to the platform backend.
     * @param input The input context pointer.
     * @param packet The controller arrival packet.
-@@ -1622,6 +1849,17 @@
+@@ -1622,6 +1903,17 @@
  
      auto &gamepad = input->gamepads[packet->controllerNumber];
  
@@ -387,17 +444,18 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
      // If this is an event for a new gamepad, create the gamepad now. Ideally, the client would
      // send a controller arrival instead of this but it's still supported for legacy clients.
      if ((packet->activeGamepadMask & (1 << packet->controllerNumber)) && gamepad.id < 0) {
-@@ -2324,6 +2562,9 @@
+@@ -2324,6 +2616,10 @@
    void reset_input_state(const std::shared_ptr<input_t> &input) {
      reset_mouse_buttons();
      reset_keyboard_keys();
 +    clear_keyboard_pad(*input);
++    input->keyboard_pad_failed = false;  // the next stream of this client tries for a pad again
 +    input->shared_keys.reset();
 +    input->shared_buttons = {};
      reset_gamepads(input);
    }
  
-@@ -2409,6 +2650,27 @@
+@@ -2409,6 +2705,27 @@
    [[nodiscard]] std::unique_ptr<platf::deinit_t> init() {
      platf_input = platf::input();
  
@@ -425,7 +483,7 @@ keyboard_sensitivity.txt and shows nothing on the console, which everyone stream
      return std::make_unique<deinit_t>();
    }
  
-@@ -2452,6 +2714,7 @@
+@@ -2452,6 +2769,7 @@
            mail->event<input::touch_port_t>(mail::touch_port),
            mail->queue<platf::gamepad_feedback_msg_t>(mail::gamepad_feedback)
          );

@@ -194,6 +194,32 @@ int main() {
     assert(pad.state(t0 + 60ms) == PadInput{});
     pad.clear();
 
+    // What adds the pad: a key or mouse button that is one of its controls, not the mouse's movement or the wheel, so a
+    // friend who only watches and nudges the mouse takes no player slot.
+    {
+        KeyboardPad fresh;
+        fresh.mouse_move(1000, 0, t0);
+        fresh.scroll(120, t0);
+        fresh.hscroll(120, t0);
+        assert(fresh.state(t0) != PadInput{} && !fresh.pressed(t0));
+        fresh.drop_movement();  // the movement before the pad doesn't count once it is there
+        assert(fresh.state(t0) == PadInput{} && !fresh.next_change(t0));
+        assert(!fresh.key(vk::lshift, false) && !fresh.pressed(t0));  // a modifier without a control
+        assert(!fresh.key('M', false) && !fresh.pressed(t0));         // a key without a control
+        assert(fresh.key('W', false) && fresh.pressed(t0));
+        fresh.key('W', true);
+        assert(fresh.mouse_button(1, false) && fresh.pressed(t0));  // R2
+        fresh.mouse_button(1, true);
+        assert(!fresh.pressed(t0));
+        // Ctrl in action halves the sticks: alone, as for Ctrl+Alt and the wheel, it deflects nothing.
+        fresh.set_profile(Profile::action);
+        assert(fresh.key(vk::lctrl, false) && !fresh.pressed(t0));
+        assert(fresh.key('D', false) && fresh.pressed(t0) && fresh.state(t0).lx == 16384);
+        // In driving, W eases in from its first step.
+        fresh.set_profile(Profile::driving);
+        assert(fresh.key('W', false, t0) && fresh.pressed(t0) && fresh.state(t0).rt > 0);
+    }
+
     // Wheel: each step a tap of 50 ms on the D-pad, a pause, then the next.
     pad.scroll(120, t0);
     assert(pad.state(t0).buttons == moonlight::dpad_up);
@@ -613,5 +639,5 @@ int main() {
     assert(keyboard_pad_sensitivity("fast") == default_sensitivity && keyboard_pad_sensitivity("150%") == default_sensitivity);
 
     std::cout << "PASS: keyboard pad (keys, sticks, shortcuts, mouse, wheel taps, seven profiles, easing, vehicle layer, "
-                 "Create and PS, sensitivity per client, settings)\n";
+                 "what adds the pad, sensitivity per client, settings)\n";
 }
