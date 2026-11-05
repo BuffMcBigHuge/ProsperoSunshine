@@ -572,6 +572,13 @@ nicht nachgemessen; die Angaben stammen aus seinem PR.
 - Für 7.1 nimmt er Sunshines Reihenfolge an (hinten vor seitlich), der Host seit 0.3.1 die von `sceAudioOut` (seitlich vor
   hinten). Für 5.1 ergeben beide dasselbe. Gemessen ist keine.
 
+### Release 0.3.2 auf der Konsole (2026-11-05, 13.00)
+
+App aus `build/app` kopiert und neu registriert, sie zeigt `v01.000.018`; nach „Restart host“ meldet das Kernel-Log
+`version=0.3.2 commit=86c5eb2d` und `only the host can press PS and Create`. Testclient, Mario-64-Demo: H.264 und HEVC 1080p
+je 30 s mit 1795 und 1796 Bildern, ohne Lücke, längste Pause 23 und 21 ms, fehlerfrei dekodiert, keine Tonfehler. Die
+Host-Rolle selbst ist im Abschnitt zu Issue 15 gemessen, nicht noch einmal auf diesem Build.
+
 ### Release 0.3.1 auf der Konsole (2026-11-04, 13.00)
 
 App aus `build/app` kopiert und neu registriert, sie zeigt `v01.000.017`; nach „Restart host“ meldet `host_diag.log`
