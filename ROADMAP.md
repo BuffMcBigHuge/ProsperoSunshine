@@ -1,8 +1,8 @@
 # ProsperoSunshine Roadmap und Umsetzungsplan
 
-Stand: 4. November 2026, nach Release 0.3.1. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
+Stand: 5. November 2026, nach Release 0.3.2. Dieses Dokument ist der verbindliche Arbeitsplan. `PLAN.md` enthält Ziel, Regeln für das PS5-Backend und Hintergründe, `STATUS.md` den jeweils nachgewiesenen Stand. Bei Widersprüchen gilt für Fakten `STATUS.md`, für Reihenfolge und Abnahme dieses Dokument.
 
-## Stand (4. November 2026, nach Release 0.3.1)
+## Stand (5. November 2026, nach Release 0.3.2)
 
 Seit 0.1.5 sind folgende Releases dazugekommen:
 
@@ -30,8 +30,11 @@ Seit 0.1.5 sind folgende Releases dazugekommen:
 - **0.3.1:**
   - Raumklang 5.1/7.1 hinter dem Schalter „Surround“, Kanalreihenfolge ungeprüft.
   - H.264 auf 10.x verlangt 4 Slices je Bild; auf 10.20 wirkungslos (gemessen von einem Mitwirkenden, `STATUS.md`).
+- **0.3.2:**
+  - Die Host-Rolle (Konsolennutzer, PS, Create) gehört einem gepairten Gerät; Gäste verlieren auch Create (Issue #15).
+  - Firmware 13.40 bekommt den Datensatz von 13.60 (Issue #14, von einem Tester bestätigt).
 
-Firmware: 13.00 und 10.20 sind geprüft. 10.40 und 13.60 streamen laut Nutzerberichten (Issues #1 und #2), dort aber nicht
+Firmware: 13.00 und 10.20 sind geprüft. 10.40, 12.70, 13.40 und 13.60 streamen laut Nutzerberichten (Issues #1, #2, #14, #17), dort aber nicht
 gemessen.
 
 Co-op: Weitere Geräte hängen sich an den laufenden Stream. Ein Tester spielte auf 10.20 mit vier Spielern, auch über das
@@ -357,7 +360,7 @@ echtem Moonlight beim Besitzer.
 9. Seltene Fehlstarts: 1 in 86 Starts im Docker-Client, 0 in 300 im Windows-Client, davon 150 mit 0.2.4 (`STATUS.md`).
    Ohne neuen Fehlstart gibt es hier nichts zu suchen; das Docker-Netz bleibt der wahrscheinlichste Grund.
 10. Adaptive Trigger (P9.10): Moonlight für PC müsste die Effekte beim Beenden zurücksetzen (`docs/re/adaptive-triggers.md`).
-11. Gäste spielen nur (Issue #15). Seit dem Stand nach 0.3.1 gehört die Host-Rolle einem gepairten Gerät statt dem ersten
+11. Gäste spielen nur (Issue #15). Seit 0.3.2 gehört die Host-Rolle einem gepairten Gerät statt dem ersten
     Slot (`src/input/pad_roles.hpp`, Patch 0016), und Gäste haben weder PS noch Create. Offen, mit einer Probe auf der
     Konsole: ob der Host einen echten Controller an der Konsole erkennt (dann wären alle Stream-Geräte Gäste), was ein
     Stream-Pad mit zwei DualSense an der Konsole macht und welchen Nutzer das Pad des Hosts nimmt (heute der erste Ordner
